@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+- **Self-update** (`autoupdate.py`): every scheduled sync fast-forwards the Mac checkout to the latest tested `main`, reinstalls only when the code changed, and re-runs on the new code. Skipped on local changes; disable with `GARMIN_AUTO_UPDATE=0` or `--no-update`. Ends manual "git pull" steps.
+- **Settings seeding:** `config/athlete.json` (private repo, no secrets) is applied to any machine's database for keys not yet set: timezone, goals, knee limitation.
+- **GitHub CI** (`.github/workflows/ci.yml`): ruff + pytest on Python 3.12 and 3.13 for every push and PR.
+
 ## [0.10.0] - 2026-11-23
 
 Phase 9: dashboard.
