@@ -12,8 +12,7 @@ Rules (see METRICS.md §Phase 5):
 - Matched-pace norms: medians of your runs in the last 180 days within +/- 15 s/km of this run's
   pace (min 3 runs), compared per metric.
 - Vertical ratio = vertical oscillation / step length * 100 (Garmin's definition).
-- Heat: HR residual (actual - expected HR at that pace from your own speed-HR regression)
-  regressed on temperature across runs -> bpm per degree C (personal, needs >= 8 runs).
+- Effort: compare moving heart rate across similar steady outdoor runs.
 """
 
 from __future__ import annotations
@@ -27,6 +26,7 @@ from bisect import bisect_left
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from garmin_mcp import conditions, run_evidence
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
@@ -209,10 +209,10 @@ def _history(conn: sqlite3.Connection, end: str, days: int = 180,
     out = []
     for aid, start in conn.execute(
             f"SELECT activity_id, start_time_local FROM activities WHERE type IN ({RUN_IN}) AND "
-            "fit_parsed=1 AND substr(start_time_local,1,10) BETWEEN ? AND ? ORDER BY "
-            "start_time_local", (*RUN_TYPES, lo, end)):
-        if aid == exclude:
-            continue
+            "fit_parsed=1 AND substr(start_time_local,1,10) BETWEEN ? AND ? "
+            "AND (? IS NULL OR julianday(start_time_local) < "
+            "(SELECT julianday(start_time_local) FROM activities WHERE activity_id=?)) "
+            "ORDER BY julianday(start_time_local)", (*RUN_TYPES, lo, end, exclude, exclude)):
         m = run_metrics(conn, aid)
         if m:
             out.append((aid, start[:10], m))
@@ -231,27 +231,7 @@ def matched_pace_norms(hist: list[tuple[int, str, dict[str, Any]]], speed: float
     if len(near) < 3:
         return None
     return {"runs": len(near), **{k: _r(statistics.median(v), 3) for k in FORM_KEYS
-                                  if (v := [m[k] for m in near if m.get(k) is not None])}}
-
-
-def heat_model(hist: list[tuple[int, str, dict[str, Any]]]) -> dict[str, Any] | None:
-    pts = [(m["avg_speed"], m["avg_hr"], m["temperature_c"]) for _, _, m in hist
-           if m["avg_speed"] and m["avg_hr"] and m["temperature_c"] is not None]
-    if len(pts) < 8:
-        return {"available": False, "reason": f"needs >= 8 runs with temperature, have {len(pts)}"}
-
-    def fit(xs: list[float], ys: list[float]) -> tuple[float, float]:
-        mx, my = statistics.fmean(xs), statistics.fmean(ys)
-        sxx = sum((x - mx) ** 2 for x in xs) or 1
-        b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
-        return b, my - b * mx
-
-    b1, a1 = fit([p[0] for p in pts], [p[1] for p in pts])
-    resid = [hr - (a1 + b1 * v) for v, hr, _ in pts]
-    b2, _ = fit([p[2] for p in pts], resid)
-    return {"available": True, "bpm_per_deg_c": round(b2, 2), "runs": len(pts),
-            "note": "watch temperature reads high (wrist/body heat); use the slope, not absolute "
-                    "values"}
+                                  if len(v := [m[k] for m in near if m.get(k) is not None]) >= 3}}
 
 
 def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
@@ -262,8 +242,11 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
     m = run_metrics(conn, aid)
     if not m:
         return {"error": "not enough moving data in the FIT file for running analysis"}
-    day = a[2][:10]
-    hist = _history(conn, day, 180, exclude=aid)
+    try:
+        day = date.fromisoformat((a[2] or "")[:10]).isoformat()
+    except ValueError:
+        day = None
+    hist = _history(conn, day, 180, exclude=aid) if day else []
     norms, window = None, 15
     for window in (15, 30):  # widen if too few runs at a closely matched pace
         norms = matched_pace_norms(hist, m["avg_speed"], window)
@@ -277,11 +260,16 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
                       for k in FORM_KEYS}
     similar = [(x[1], x[2]) for x in hist if a[3] and x[2]["avg_speed"] and
                abs((x[2]["moving_s"] * x[2]["avg_speed"]) - a[3]) <= 0.25 * a[3]]
-    heat = heat_model(hist + [(aid, day, m)])
+    cached = {other_id: measurements for other_id, _, measurements in hist}
+
+    def measurements(c: sqlite3.Connection, activity_id: int) -> dict | None:
+        return cached[activity_id] if activity_id in cached else run_metrics(c, activity_id)
+
+    effort = run_evidence.matched_effort(conn, aid, m, measurements)
     load = conn.execute("SELECT trimp, z1_s, z2_s, z3_s FROM activity_load WHERE activity_id=?",
                         (aid,)).fetchone() if _has(conn, "activity_load") else None
     summary = json.loads(a[6] or "{}")
-    facts = _facts(m, comparison, similar, heat, summary)
+    facts = _facts(m, comparison, effort, summary)
     return {
         "id": aid, "name": a[0], "date": day, "distance_km": _r((a[3] or 0) / 1000, 2),
         "pace": _pace(m["avg_speed"]), "graded_pace": _pace(m["graded_speed"]),
@@ -294,10 +282,13 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
         "garmin": {"aerobic_te": a[4], "anaerobic_te": a[5],
                    "label": summary.get("trainingEffectLabel")},
         "load": {"trimp": load[0], "seiler_zone_s": list(load[1:])} if load else None,
-        "heat_model": heat,
+        "heat_model": {"available": False, "reason": "Watch temperature does not establish "
+                       "outdoor heat exposure. Use separately sourced conditions."},
+        "comparable_effort": effort,
+        "conditions": conditions.for_activity(conn, aid),
         "facts_for_recap": facts,
-        "narrate_as": "Activity recap: what kind of run it was, pacing, efficiency vs your norm, "
-                      "form vs your norm at this pace, one thing to try next time.",
+        "narrate_as": "Activity recap: pacing, heart rate on similar runs, form at this pace, "
+                      "and one thing to check next time.",
     }
 
 
@@ -305,9 +296,11 @@ def _has(conn: sqlite3.Connection, table: str) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone() is not None
 
 
-def _facts(m: dict[str, Any], comp: dict[str, Any] | None, similar: list,
-           heat: dict[str, Any] | None, summary: dict[str, Any]) -> list[str]:
-    f = []
+def _facts(m: dict[str, Any], comp: dict[str, Any] | None, effort: dict,
+           summary: dict[str, Any]) -> list[str]:
+    f = [run_evidence.headline(effort)]
+    if check := run_evidence.next_check(effort):
+        f.append(check)
     if m["steady"] and m["decoupling_pct"] is not None:
         d = m["decoupling_pct"]
         f.append(f"Pace-to-heart-rate efficiency changed by {-d:+.1f}% in the second half. "
@@ -320,11 +313,6 @@ def _facts(m: dict[str, Any], comp: dict[str, Any] | None, similar: list,
                  "Second half slower by recorded distance." if delta > 1 else
                  "Both distance halves took about the same elapsed time.")
     if comp:
-        ef = comp["efficiency_factor"]
-        if ef["diff"] is not None and ef["your_norm_at_this_pace"]:
-            pct = ef["diff"] / ef["your_norm_at_this_pace"] * 100
-            f.append(f"Efficiency {pct:+.1f}% vs your norm at this pace "
-                     + ("(better: more speed per heartbeat)." if pct > 0 else "(lower)."))
         for k, label, unit in (("cadence_spm", "Cadence", "spm"),
                                ("ground_contact_ms", "Ground contact", "ms"),
                                ("vertical_ratio_pct", "Vertical ratio", "%")):
@@ -332,10 +320,6 @@ def _facts(m: dict[str, Any], comp: dict[str, Any] | None, similar: list,
             if d is not None and abs(d) >= {"cadence_spm": 3, "ground_contact_ms": 10,
                                             "vertical_ratio_pct": 0.4}[k]:
                 f.append(f"{label} {d:+.1f} {unit} vs your norm at this pace.")
-    if heat and heat.get("available") and m["temperature_c"] is not None:
-        f.append(f"Pace-adjusted heart rate was associated with watch temperature "
-                 f"(~{heat['bpm_per_deg_c']} bpm per °C across these runs). Sun exposure, "
-                 "wearing the watch and other run conditions can affect the comparison.")
     if summary.get("trainingEffectLabel"):
         f.append(f"Garmin training effect label: {summary['trainingEffectLabel']}.")
     return f
@@ -383,7 +367,8 @@ def activity_stream(conn: sqlite3.Connection, aid: int, every_s: int = 10) -> di
                         "altitude_m": _r(r["altitude"]), "power_w": r["power"],
                         "distance_km": _r((r["distance"] or 0) / 1000, 3)})
             last = r["t"]
-    return {"activity_id": aid, "every_s": every_s, "points": len(out), "stream": out}
+    return {"activity_id": aid, "every_s": every_s, "points": len(out), "stream": out,
+            "start_utc": datetime.fromtimestamp(t0, UTC).isoformat()}
 
 
 # --------------------------------------------------------------------------- other sports

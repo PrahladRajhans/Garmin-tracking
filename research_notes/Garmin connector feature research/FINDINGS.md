@@ -47,12 +47,12 @@ Goal: a free personal FR955 connector. **Local sync → SQLite → thin MCP serv
   Table 3, UTC behavior, confounders and explicit remaining scientific verification.
 - [Dashboard audit](../../docs/UI_REVIEW.md): synthetic before/after screenshots, W3C
   contrast/focus references, browser evidence and device limitations for v0.14.1.
-- This index retains the original research proposals. Current tools (43), exclusions and
+- This index retains the original research proposals. Current tools (44), exclusions and
   deployment state are governed by HANDOVER/ROADMAP, rather than the early proposals above.
 
 [Environmental context feasibility](environmental_context_feasibility.md) covers weather,
 air-quality and sleep research, public data limits, and a staged validation proposal.
 
 [Owner reference review](owner_reference_review_2026-11.md) records the submitted
-product, tutorial, forum and upstream library links, the ideas used, and retrieval limits.
+product, tutorial, forum and upstream library links, the methods and presentation choices implemented in v0.17.0, and retrieval limits.
 Current personal signal and telemetry formulas are in [METRICS](../../METRICS.md).

@@ -186,3 +186,17 @@ The recent run timeline has two separate optional overlays. Speed and heart rate
 and cadence and step length, use relative change from each signal's median on their
 common elapsed-time axis. The readout shows actual sensor values with units. No route
 coordinates are included. The owner can try these pairs before a broader rollout.
+
+## Matched effort and timed conditions (v0.17.0)
+
+A run starts with one sentence about heart rate versus comparable sessions and a brief
+check when the reading falls outside their observed span. Selecting the card opens the
+measured points, a dashed median, a shaded min–max and dated rows in actual units.
+The points are unconnected because these are separate efforts. Each available run
+page can be opened from its row. Training puts the pre-run readiness benchmark behind
+a short summary and expandable paired runs. No fit is shown on that scatter plot.
+
+In Run timeline, outdoor temperature and AQI are secondary information in the point
+readout, with units, source and standard. They add no axis and are present only for
+covered sample times. Outdoor conditions lists the Garmin snapshot and expandable
+source windows. The dashboard remains an offline file with the current bundled controls.

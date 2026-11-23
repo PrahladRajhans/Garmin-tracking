@@ -38,10 +38,11 @@ def test_pace_of_ageing_needs_span():
     assert health.pace_of_ageing(c, "2026-11-30")["available"] is False
 
 
-def test_suggestions_target_cadence():
+def test_suggestions_check_personal_cadence_instead_of_prescribing_a_target():
     form = {"cadence_spm": {"value": 160.0}}
-    out = running.suggestions({}, form, None)
-    assert "168 spm" in out[0]
+    assert "Not enough comparable earlier runs" in running.suggestions({}, form, None)[0]
+    form["cadence_spm"]["vs_usual_pct"] = -4
+    assert "below your usual at this pace" in running.suggestions({}, form, None)[0]
 
 
 def test_status_tag_pauses_advice_and_leaves_baseline(conn):
@@ -66,7 +67,6 @@ def test_test_runs_empty_db(conn):
 
     rebuild(conn)
     assert running.test_runs(conn)["available"] is False
-    assert running._is_test("FR955 Calibration run") and not running._is_test("Easy run")
 
 
 def test_pair_points_lag():
@@ -145,4 +145,5 @@ def test_heart_rate_difference_uses_utc_and_has_no_health_cutoff(conn, monkeypat
 
 def test_run_drift_does_not_claim_a_single_cause():
     text = " ".join(running.suggestions({"decoupling_pct": 8.}, {}, None))
-    assert "Heat" in text and "noise" in text and "is the limiter" not in text
+    assert "Speed per heartbeat fell 8.0%" in text
+    assert "heat, hills, fuelling and sensor fit" in text

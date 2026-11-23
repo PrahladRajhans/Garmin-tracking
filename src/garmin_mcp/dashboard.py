@@ -18,19 +18,23 @@ import statistics
 import tempfile
 import warnings
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
 from garmin_mcp import (
     coaching,
+    conditions,
     dashboard_history,
     engine,
     health,
     insights,
     loads,
     norms,
+    readiness_benchmark,
     recovery,
+    run_evidence,
     running,
     scores,
     signal_context,
@@ -77,14 +81,16 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     hrv_info = recovery.hrv_status(hrv, end)
     hrv_info["previous_average"] = recovery.hrv_status(hrv, previous_week).get("rolling_7d_ms")
     runs = []
+    weight = _weight(conn)
+    read_run = lru_cache(maxsize=160)(coaching.run_metrics)
     for aid, start, dist in conn.execute(
             "SELECT activity_id, start_time_local, distance_m FROM activities WHERE type LIKE "
             "'%run%' AND fit_parsed=1 AND substr(start_time_local,1,10)<=? "
-            "ORDER BY start_time_local DESC LIMIT 8", (end,)):
-        b = running.running_breakdown(conn, aid, _weight(conn))
+            "ORDER BY julianday(start_time_local) DESC LIMIT 8", (end,)):
+        b = running.running_breakdown(conn, aid, weight, read_metrics=read_run)
         if b.get("available"):
             interval = max(10, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0) / 150))
-            b.update(date=start[:10], km=round((dist or 0) / 1000, 2),
+            b.update(date=start[:10], start_local=start, km=round((dist or 0) / 1000, 2),
                      trace=coaching.activity_stream(conn, aid, interval))
             runs.append(b)
     return {
@@ -107,6 +113,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "weekly_review": insights.weekly_review(conn, end)
         if _has(conn, "fitness") and _has(conn, "activity_load") else None,
         "weekly_load": _weekly_load(conn, end),
+        "readiness_benchmark": readiness_benchmark.benchmark(conn, end, read_metrics=read_run),
         "shifts": health.shifts(conn, end),
         "ageing": health.pace_of_ageing(conn, end),
         "marathon": health.marathon_shape(conn, end),
@@ -114,9 +121,9 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
         "calendar": dashboard_history.collect(conn, end, engine._tz(conn)),
-        "runs": runs, "form": running.form_trends(conn, 40),
+        "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
         "explore": engine.explore(conn, end, 365, 8),
-        "tests": running.test_runs(conn),
+        "tests": running.test_runs(conn, read_metrics=read_run),
         "vo2_reference": norms.comparison(conn, end),
         "sync_retry_required": conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
         is not None,
@@ -222,18 +229,20 @@ def _point(x: float, y: float, label: str, value: str, cls: str = "hit", extra: 
 
 
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
-           x_label: str, y_label: str, initial: str, controls: str = "") -> str:
+           x_label: str, y_label: str, initial: str, controls: str = "",
+           *, readout_below: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
                f'<line class="cursor-y" x1="{left}" x2="{right}"/>'
                '<circle r="3.3"/></g>')
+    caption = (f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
+               f'<span>{_e(initial)}</span></figcaption>')
     return (f'<figure class="chart-interaction" data-chart="{kind}">'
-            f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
-            f'<span>{_e(initial)}</span></figcaption>{controls}<span class="sr-only" role="status"></span>'
+            f'{"" if readout_below else caption}{controls}<span class="sr-only" role="status"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
-            f'{"".join(parts)}{overlay}</svg></figure>')
+            f'{"".join(parts)}{overlay}</svg>{caption if readout_below else ""}</figure>')
 
 
 def _horizontal_scale(ticks: list[float], left: int, right: int, y, fmt) -> list[str]:
@@ -276,7 +285,9 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                nd: int = 0, cls: str = "s1", w: int = W, fmt: Any = None,
                x_label: str = "Date", y_label: str = "Value",
                averages: dict[str, float] | None = None, break_gaps: bool = False,
-               elapsed: dict[str, float] | None = None) -> str:
+               elapsed: dict[str, float] | None = None, *, connect_points: bool = True,
+               reference: float | None = None, band_label: str = "Your usual range",
+               details: dict[str, str] | None = None) -> str:
     """Date spacing reflects elapsed days. Missing observations stay out of the cursor."""
     bounds = band_series if band_series and len(band_series) == len(points) else [band] * len(points)
     rows = [(label, value, interval) for (label, value), interval in
@@ -284,16 +295,21 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     if not rows:
         return '<p class="empty">No measurements recorded for this chart.</p>'
     days = None
-    try:
-        rows.sort(key=lambda row: date.fromisoformat(row[0][:10]))
-        days = [date.fromisoformat(row[0][:10]).toordinal() for row in rows]
-    except ValueError:
-        pass
+    if elapsed is not None:
+        rows.sort(key=lambda row: elapsed[row[0]])
+    else:
+        try:
+            rows.sort(key=lambda row: date.fromisoformat(row[0][:10]))
+            days = [date.fromisoformat(row[0][:10]).toordinal() for row in rows]
+        except ValueError:
+            pass
     values = [v for _, v, _ in rows]
     values.extend(v for _, _, interval in rows if interval for v in interval)
     averages = averages or {}
     labels = [label for label, _, _ in rows]
     values.extend(averages[d] for d in labels if d in averages)
+    if reference is not None:
+        values.append(reference)
     ticks = _ticks(*_scale(values))
     h = max(h, 184)
     left, right, top, bottom = 51, w - 31, 29, h - 49
@@ -312,7 +328,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     g = _horizontal_scale(ticks, left, right, y, fmt or _tick_number)
     if band:
         g.append(f'<rect class="band" x="{left}" y="{y(band[1]):.2f}" width="{right - left}" '
-                 f'height="{max(0, y(band[0]) - y(band[1])):.2f}"><title>Your usual range</title></rect>')
+                 f'height="{max(0, y(band[0]) - y(band[1])):.2f}"><title>{_e(band_label)}</title></rect>')
     elif band_series:
         # Draw the envelope only across adjacent valid bounds.
         for i, (a, b) in enumerate(pairwise(rows)):
@@ -325,19 +341,26 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     for i, (_, value, _) in enumerate(rows):
         gap = break_gaps and days and i and days[i] - days[i - 1] > 1
         locations.append(f'{"M" if i == 0 or gap else "L"}{x(i):.2f},{y(value):.2f}')
-    g.append(f'<path d="{" ".join(locations)}" class="ln {cls}{" context" if break_gaps else ""}"/>')
+    if connect_points:
+        g.append(f'<path d="{" ".join(locations)}" class="ln {cls}{" context" if break_gaps else ""}"/>')
+    if reference is not None:
+        yr = y(reference)
+        g.append(f'<line x1="{left}" x2="{right}" y1="{yr:.2f}" y2="{yr:.2f}" class="ref"/>')
     g.append(_smooth_line(labels, averages, x, y))
     for i, (label, value, interval) in enumerate(rows):
         display = fmt(value) if fmt else _f(value, nd, unit)
         if label in averages:
             display += f" · 7-day avg {_f(averages[label], nd, unit)}"
         if interval:
-            display += f" · usual range {_f(interval[0], nd)}–{_f(interval[1], nd, unit)}"
-        marker = "dot s1" if i == len(rows) - 1 else "context-dot" if break_gaps else "hit"
+            display += f" · {band_label.lower()} {_f(interval[0], nd)}–{_f(interval[1], nd, unit)}"
+        if details and label in details:
+            display += f" · {details[label]}"
+        marker = ("dot s1" if i == len(rows) - 1 else
+                  "context-dot" if break_gaps or not connect_points else "hit")
         g.append(_point(x(i), y(value), label, display, marker))
     g += _x_ticks(labels, x, bottom, w > W)
     return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label,
-                  "Hover, tap, or slide to read a point")
+                  "Hover, tap, or slide to read a point", readout_below=bool(details))
 
 
 def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None = None,
@@ -385,13 +408,14 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
-            w: int = W, h: int = 238, x_unit: str = "", y_unit: str = "", lag: int = 0) -> str:
+            w: int = W, h: int = 238, x_unit: str = "", y_unit: str = "", lag: int = 0,
+            *, absolute_x: bool = False) -> str:
     """Signed axes show how each measurement differs from its own recent average."""
     points = [(d, a, b) for d, a, b in points if math.isfinite(a) and math.isfinite(b)]
     if len(points) < 3:
         return '<p class="empty">Not enough paired observations yet.</p>'
     xs, ys = [p[1] for p in points], [p[2] for p in points]
-    x_ticks = _ticks(*_scale(xs + [0], 0.05))
+    x_ticks = _ticks(*_scale(xs if absolute_x else xs + [0], 0.05))
     x0, x1 = x_ticks[0], x_ticks[-1]
     y_values = ys + [0]
     fit_values = None
@@ -417,7 +441,7 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
         g.append(f'<line x1="{x(v):.2f}" x2="{x(v):.2f}" y1="{top}" y2="{bottom}" '
                  f'class="{"zero" if v == 0 else "grid"}"/>'
                  f'<text x="{x(v):.2f}" y="{bottom + 17}" class="tick" text-anchor="middle">'
-                 f'{signed(v)}</text>')
+                 f'{_tick_number(v) if absolute_x else signed(v)}</text>')
     g.append(f'<line x1="{left}" x2="{right}" y1="{y(0):.2f}" y2="{y(0):.2f}" class="zero"/>')
     g += _axes(left, right, top, bottom, h, x_label, y_label)
     if fit_values is not None:
@@ -426,10 +450,12 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
     for d, a, b in points:
         second = (date.fromisoformat(d) + timedelta(days=lag)).isoformat() if lag else d
         when = f"{d} → {second}" if lag else d
-        value = f"{xl}: {a:+.2f} {x_unit} · {yl}: {b:+.2f} {y_unit}"
+        x_value = f"{a:g}/{x_unit.split('–')[-1]}" if absolute_x else f"{a:+.2f} {x_unit}"
+        value = f"{xl}: {x_value} · {yl}: {b:+.2f} {y_unit}"
         g.append(_point(x(a), y(b), when, value, "pt"))
     return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label,
-                  "Hover or tap a dot · difference from your usual")
+                  "Hover or tap a dot to read a paired day" if absolute_x
+                  else "Hover or tap a dot · difference from your usual")
 
 
 def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: float,
@@ -790,6 +816,29 @@ def _status_label(st: Any) -> str:
     return st.replace("_", " ").title()
 
 
+def _readiness_benchmark(b: dict, run_ids: set[int]) -> str:
+    if not b["available"]:
+        return _card("Do readiness scores line up with your runs?",
+                     f'<p class="empty">{_e(b["reason"])}</p>', wide=True)
+    rho = b["spearman_rho"]
+    points = [(p["date"], p["readiness_score"], p["hr_vs_matches_bpm"]) for p in b["pairs"]]
+    chart = both(scatter, points, "Garmin readiness", "Heart rate vs matched runs", None,
+                 x_unit="0–100", y_unit="bpm", absolute_x=True)
+    note = (f'{b["paired_days"]} paired days · rank correlation {rho:+.2f}. '
+            "Below zero means higher scores tended to accompany lower heart rates on similar runs."
+            if rho else f'{b["paired_days"]} paired days · no rank association in these records.')
+    rows = []
+    for p in reversed(b["pairs"]):
+        aid = p["activity_id"]
+        rows.append(_record_link(p["date"], f'{p["readiness_score"]:g}/100 · '
+                                 f'{p["hr_vs_matches_bpm"]:+g} bpm · {p["matched_runs"]} matches',
+                                 f"#run-{aid}" if aid in run_ids else None))
+    return _card("Do readiness scores line up with your runs?",
+                 f'<details><summary>See paired runs</summary>{chart}'
+                 f'<ul class="record-list">{"".join(rows)}</ul></details>'
+                 f'<p class="sub">{_e(b["interpretation"])}</p>', _e(note), wide=True)
+
+
 def page_training(d: dict[str, Any]) -> str:
     fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " load units", nd=1,
                y_label="Smoothed training load")
@@ -811,6 +860,7 @@ def page_training(d: dict[str, Any]) -> str:
         week_card = _card("Training and recovery this week", f'<ul class="rows">{rows}</ul>',
                           f'{_short(week["from"])}–{_short(week["to"])} · recorded data', wide=True)
     body = (week_card
+            + _readiness_benchmark(d["readiness_benchmark"], {r["activity_id"] for r in d["runs"]})
             + _card("Training load trend", fit, "42-day smoothed load. Tracks training exposure, "
                   "not a direct fitness test.", wide=True)
             + _card("Load per week", wl, "Weeks start on Monday. Latest week may be partial."
@@ -862,8 +912,8 @@ def page_running(d: dict[str, Any]) -> str:
                y_label="Cadence (steps/min)")
     body = (f'<nav class="card tiles wide">{lst or "<p class=empty>No runs with detail yet.</p>"}'
             f'</nav>'
-            + _card("Aerobic fitness on your usual run", _tests(d["tests"]),
-                    "Same-distance steady runs: speed per heartbeat over time", wide=True)
+            + _card("Steady run efficiency over time", _tests(d["tests"]),
+                    "Similar-distance outdoor runs · grade-adjusted speed per heartbeat", wide=True)
             + _card("Marathon shape", mshape, "Endurance readiness (Runalyze method)")
             + _card("Race time estimates", races, "Recorded efforts, endurance and max HR affect accuracy.")
             + _card("Cadence over your runs", cad, "Steps per minute. Rises with pace, so "
@@ -909,7 +959,13 @@ def page_run(r: dict[str, Any]) -> str:
              + _row("Power (wrist)", f'{_f(r.get("power_w"))}<small> W</small>')
              + _row("Running effectiveness", _f(r.get("running_effectiveness"), 2),
                     "speed per W/kg; compare only with yourself"))
-    body = (_card("What to work on", f'<ol class="work">{work}</ol>', "From this run's data",
+    comparison = r["comparable_effort"]
+    headline = _e(run_evidence.headline(comparison))
+    check = run_evidence.next_check(comparison)
+    count = f'<p class="sub">{_e(check)}</p>' if check else ""
+    href = f'#run-{r["activity_id"]}-compare' if comparison["matches"] else ""
+    body = (_card("Heart rate on similar runs", count, headline, wide=True, href=href)
+            + _card("What to work on", f'<ol class="work">{work}</ol>', "From this run's data",
                   wide=True)
             + _card("Form", rows + '<p class="legend"><i class="mk"></i>this run <i class='
                     '"mk2"></i>your usual at this pace · colours = Garmin rating</p>',
@@ -921,7 +977,44 @@ def page_run(r: dict[str, Any]) -> str:
         body += _card("Run timeline", "", "Explore effort, form and elevation",
                       href=f'#run-{r["activity_id"]}-trace', wide=True)
     return _page(f'run-{r["activity_id"]}', _run_label(r),
-                 f'Compared with {r["comparison_runs"]} earlier runs.', body, back="#running")
+                 "Pacing, effort and running form.", body, back="#running")
+
+
+def page_run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
+    c = r["comparable_effort"]
+    aid = r["activity_id"]
+    current = {**c["this_run"], "start_local": r["start_local"], "days_before": 0}
+    records = [*reversed(c["matches"]), current]
+    labels = [row["start_local"].replace("T", " ")[:19] for row in records]
+    labels = [f'{label} · #{row["activity_id"]}' if labels.count(label) > 1 else label
+              for label, row in zip(labels, records, strict=True)]
+    elapsed = {label: -row["days_before"] for label, row in zip(labels, records, strict=True)}
+    rows = []
+    for row, label in zip(reversed(records), reversed(labels), strict=True):
+        k = row["activity_id"]
+        pace = loads._hms(row["pace_s_per_km"])
+        subtitle = (f"{row['avg_hr_bpm']:g} bpm · {pace}/km · "
+                    f"{loads._hms(row['moving_s'])} moving · {row['climb_m_per_km']:g} m climb/km")
+        rows.append(_record_link("This run" if k == aid else label[:16], subtitle,
+                                 f"#run-{k}" if k != aid and k in run_ids else None))
+    chart = ""
+    if c["available"]:
+        chart = both(line_chart, [(label, row["avg_hr_bpm"])
+                                  for label, row in zip(labels, records, strict=True)], " bpm",
+                     nd=1, band=c["observed_hr_range_bpm"], band_label="Earlier observed span",
+                     reference=c["median_hr_bpm"], connect_points=False, elapsed=elapsed,
+                     x_label="Run date", y_label="Moving heart rate (bpm)",
+                     details={labels[-1]: "This run"})
+        chart += (f'<p class="sub">Dashed line · median {c["median_hr_bpm"]:g} bpm. '
+                  "Shading · observed span of earlier matches.</p>")
+    method = (f'Up to {c["maximum_matches"]} earlier runs in {c["lookback_days"]} days. '
+              f'Same outdoor run type, pace within {c["pace_window_s_per_km"]} s/km, '
+              f'moving time within {c["duration_window_pct"]}% and climb within '
+              f'{c["climb_window_m_per_km"]} m/km. Route and conditions can still differ.')
+    body = (_card("Matched efforts", chart + f'<ul class="record-list">{"".join(rows)}</ul>',
+                  _e(method), wide=True))
+    return _page(f"run-{aid}-compare", "Heart rate on similar runs",
+                 _e(run_evidence.headline(c)), body, back=f"#run-{aid}")
 
 
 def page_run_pacing(r: dict[str, Any]) -> str:
@@ -958,7 +1051,46 @@ def page_run_pacing(r: dict[str, Any]) -> str:
     return _page(f"run-{aid}-pacing", "Pacing and effort", _e(_run_label(r)), body, back=f"#run-{aid}")
 
 
-def _paired_chart(stream: list[dict[str, Any]], a: tuple, b: tuple, interval: int, w: int = W) -> str:
+def _condition_readout(window: dict | None) -> str:
+    if not window:
+        return ""
+    items = []
+    if "aqi" in window:
+        items.append(f'AQI {window["aqi"]:g} ({conditions.AQI_STANDARDS[window["aqi_standard"]]})')
+    for key, unit in (("temperature_c", " °C"), ("humidity_pct", "% humidity"),
+                      ("wind_m_s", " m/s wind"), ("precipitation_mm", " mm precipitation")):
+        if key in window:
+            items.append(f"{window[key]:g}{unit}")
+    return " · ".join([*items, f'{window["source"]} ({window["kind"]})'])
+
+
+def _conditions_card(context: dict) -> str:
+    rows = []
+    snapshot = context["garmin_snapshot"]
+    if snapshot:
+        temp = _f(snapshot.get("temperature_c"), 1, " °C")
+        humidity = (f'{snapshot["humidity_pct"]:g}% humidity' if "humidity_pct" in snapshot else "")
+        value = " · ".join(v for v in (temp if "temperature_c" in snapshot else "", humidity,
+                                      snapshot.get("description")) if v)
+        rows.append(_row(snapshot["source"], _e(value), snapshot.get("reference_time", "")))
+    windows = []
+    for window in context["windows"]:
+        start = window["start_utc"].replace("T", " ").removesuffix("+00:00")
+        end = window["end_utc"].replace("T", " ").removesuffix("+00:00")
+        windows.append(_row("Conditions window", _e(_condition_readout(window)), f"{start} to {end} UTC"))
+    if not rows and not windows:
+        return ""
+    note = ("Timed readings appear on the chart where their source window covers a sample."
+            if context["windows"] else "Garmin’s saved snapshot for this activity.")
+    body = f'<ul class="rows">{"".join(rows)}</ul>' if rows else ""
+    if windows:
+        body += (f'<details><summary>{len(windows)} timed source windows</summary>'
+                 f'<ul class="rows">{"".join(windows)}</ul></details>')
+    return _card("Outdoor conditions", body, note, wide=True)
+
+
+def _paired_chart(stream: list[dict[str, Any]], a: tuple, b: tuple, interval: int, w: int = W,
+                  *, context_by_second: dict[int, dict] | None = None) -> str:
     akey, alabel, afmt = a
     bkey, blabel, bfmt = b
     paired = [(p["t_s"], p[akey], p[bkey]) for p in stream
@@ -987,7 +1119,9 @@ def _paired_chart(stream: list[dict[str, Any]], a: tuple, b: tuple, interval: in
         g.append(f'<path class="{layer}" d="{path}"/>')
     for i, ((t, v1, v2), (_, p1, _)) in enumerate(zip(paired, standard, strict=True)):
         starts_segment = i == 0 or t - paired[i - 1][0] > 2 * interval
-        g.append(_point(x(t), y(p1), loads._hms(t), f"{alabel}: {afmt(v1)}",
+        context = _condition_readout((context_by_second or {}).get(t))
+        value = " · ".join(v for v in (f"{alabel}: {afmt(v1)}", context) if v)
+        g.append(_point(x(t), y(p1), loads._hms(t), value,
                         cls="context-dot" if starts_segment else "hit",
                         extra=f"{blabel}: {bfmt(v2)}"))
     labels = [loads._hms(t) for t, _, _ in paired]
@@ -996,22 +1130,27 @@ def _paired_chart(stream: list[dict[str, Any]], a: tuple, b: tuple, interval: in
                f'data-overlay-control aria-pressed="false">Overlay {_e(blabel.lower())}</button>')
     return _chart("line", g, w, h, (left, right, top, bottom),
                   "Elapsed time", "Change from run median (%)", "Tap or hover to read actual values",
-                  controls=control)
+                  controls=control, readout_below=bool(context_by_second))
 
 
 def page_run_trace(r: dict[str, Any]) -> str:
     trace = r["trace"]
     stream = trace.get("stream") or []
     interval = trace.get("every_s", 10)
+    context = r["conditions"]
+    near_sample = conditions.for_samples(trace.get("start_utc"), stream, context)
     speed_hr = both(_paired_chart, stream, ("speed_m_s", "Speed", lambda v: _f(v, 2, " m/s")),
-                    ("hr", "Heart rate", lambda v: _f(v, unit=" bpm")), interval)
+                    ("hr", "Heart rate", lambda v: _f(v, unit=" bpm")), interval,
+                    context_by_second=near_sample)
     cadence_step = both(_paired_chart, stream,
                         ("cadence_spm", "Cadence", lambda v: _f(v, unit=" steps/min")),
                         ("step_length_m", "Step length", lambda v: _f(v, 2, " m")), interval)
     elevation = both(line_chart, [(loads._hms(pt["t_s"]), pt["altitude_m"]) for pt in stream],
                      " m", x_label="Elapsed time", y_label="Elevation (m)",
-                     elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream})
+                     elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream},
+                     details={loads._hms(t): _condition_readout(w) for t, w in near_sample.items()})
     body = (_card("Speed and heart rate", speed_hr, "Blue: speed · dashed: heart rate", wide=True)
+            + _conditions_card(context)
             + _card("Cadence and step length", cadence_step, "Blue: cadence · dashed: step length", wide=True)
             + _card("Recorded elevation", elevation, wide=True))
     aid = r["activity_id"]
@@ -1488,9 +1627,12 @@ def render(d: dict[str, Any]) -> str:
         freshness = "No Garmin measurements are available yet."
     else:
         pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
-                 page_running(d), *(page for r in d["runs"]
-                                    for page in (page_run(r), page_run_pacing(r), page_run_trace(r))), page_body(d), page_months(d),
-                 page_patterns(d), page_history_week(d)]
+                 page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
+        run_ids = {r["activity_id"] for r in d["runs"]}
+        for r in d["runs"]:
+            pages.extend((page_run(r), page_run_pacing(r), page_run_trace(r)))
+            if r["comparable_effort"]["matches"]:
+                pages.append(page_run_compare(r, run_ids))
         calendar = d["calendar"]
         pages.extend(page_history_month(d, month) for month in
                      sorted({calendar["current_month"], *calendar["by_month"]}))

@@ -16,6 +16,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.17.0] - 2026-11-23
+
+- Compare a run’s moving heart rate with three to eight of your own earlier efforts matched
+  by outdoor activity type, pace, moving duration and climbing. The comparison page shows
+  exact inputs, the observed range and median, and links to available run pages.
+- Benchmark timestamped Garmin readiness against subsequent similar efforts in Training
+  and MCP. Report sample coverage, paired runs and a descriptive rank correlation when at
+  least 20 dates qualify. Garmin and project readiness scores keep their existing formulas.
+- Show Garmin’s saved weather and optional local weather/AQI windows on the run timeline.
+  Timed context uses its source interval and AQI standard. The importer runs locally.
+- Stop reporting a heat/heart-rate slope from wrist temperature. Prevent pace-form
+  extrapolation and target-run comparisons against later same-day runs, and require three
+  recorded values for each pace-matched form reference. Replace universal cadence and
+  bounce prescriptions with measured personal comparisons. Require comparable runs on
+  three dates for the descriptive steady-run trend.
+
 ## [0.16.0] - 2026-11-23
 
 - Add personal ranges, seven-day averages, prior-week changes and short context for resting

@@ -149,3 +149,19 @@ The test opened week, day, year, a prior month and a day in that month. An appro
 asset requests, or overlapping sections in the checked states. Linux WebKit rechecked
 the main chart gestures, theme persistence and local file opening. The 124 Python tests
 and MCP smoke checks cover data, coverage, charts and the updated tool responses.
+
+## v0.17.0 matched runs and conditions
+
+- Synthetic screenshots show the [phone comparison](screenshots/matched-runs/phone-comparison.png),
+  [phone conditions cursor](screenshots/matched-runs/phone-conditions.png) and
+  [laptop comparison in dark mode](screenshots/matched-runs/laptop-dark-comparison.png).
+- Chromium exercised 260 combinations of page, width (320–1280 px) and theme.
+  WebKit exercised 26 at phone width. The flows opened the run and its evidence through
+  links and checked tap, hover, keyboard, matched-run readings, the heart-rate overlay,
+  two AQI windows and an uncovered gap. The timed chart stays in place during selection.
+  The check detected no horizontal page overflow, broken internal anchors or outside
+  requests. These fixtures contain synthetic readings. Physical iPhone Files and a live
+  private hosting session still need verification.
+- MCP stdio advertised 44 tools. A populated fixture returned the same effort evidence
+  through both run tools and returned 27 readiness pairs. Empty data returned
+  insufficient coverage and still built a usable HTML file.

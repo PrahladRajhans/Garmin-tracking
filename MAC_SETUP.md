@@ -120,3 +120,13 @@ is the alternative when Files does not support the interactions.
 The history panel includes up to 12 completed months plus the current month. A private
 hosted upload would include the same recorded day summaries and recent workout traces
 shown locally. Verify Access and consent before publishing a real archive snapshot.
+
+### Check the matched-run release locally
+
+After the scheduled update, ask the local Claude assistant to open the latest private
+dashboard and inspect **Running → a run → Heart rate on similar runs** and **Training**.
+Have it compare selected run summaries against Garmin Connect and run the read-only
+archive timing command above. If the iCloud folder is missing, the local assistant can
+run `open ~/.garmin-mcp/dashboard/index.html` and check whether iCloud Drive is enabled
+for the same macOS account running sync. For optional local weather/AQI import, follow
+the CSV requirements in README. No environmental account is needed.

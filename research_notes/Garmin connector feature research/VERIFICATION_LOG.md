@@ -18,3 +18,14 @@ Note: WebFetch could not resolve www8.garmin.com or support.garmin.com; verifica
 | Garmin HR-zone upper bounds are exclusive (HR < bound) | verified | recomputed zone times match Garmin's FIT time_in_zone 0.0–1.0 % on runs |
 | Banister, VDOT, Riegel, Swain, Minetti constants | pinned | unit tests (tests/test_loads.py); VDOT matches Daniels' table (5K 19:57 ≈ 50) |
 | running_and_sport_metrics.md was written from memory (no page fetches) | caution | constants used in code are pinned by tests above; others stay unverified |
+
+## v0.17.0 run evidence and conditions
+
+- Tested the prior-only matched-run median and sample span against deterministic moving HR
+  values. Tested rejection of future runs, materially different efforts and missing ascent/HR.
+- Tested that the readiness benchmark excludes post-run snapshots and reports sample
+  coverage. The synthetic coefficient validates the calculation, with live coverage and
+  prospective usefulness pending.
+- Checked the unofficial weather shape and unit conventions against two independent
+  source implementations and verified conversion from 77 °F to 25 °C. Real Garmin
+  payload coverage remains to be checked on the Mac. [Source details](owner_reference_review_2026-11.md#implemented-in-v0170)
