@@ -16,6 +16,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.18.0] - 2026-11-24
+
+- Add a conservative seven-day starting plan to Today and the daily brief. Use recent
+  run frequency and duration, recovery and status tags. With sparse running, offer one
+  short easy walk if the athlete feels well.
+- Add an optional, evidence-linked knee-aware cadence experiment for suitable steady
+  runs and put the next action first. Base the target on the athlete’s recorded cadence
+  and compare at the same easy pace.
+- Calibrate Recovery without a colour or strain target until three of four signals qualify.
+- Show completed-sync time and code version. Check Git ancestry before writing an
+  installation marker, so a divergent checkout can keep syncing on installed code.
+- Surface only qualifying statistical findings. Keep 30 detailed day pages and older
+  summaries by month. Keep sparse comparisons available in MCP and off the dashboard.
+
 ## [0.17.0] - 2026-11-23
 
 - Compare a run’s moving heart rate with three to eight of your own earlier efforts matched

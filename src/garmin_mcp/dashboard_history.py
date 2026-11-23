@@ -65,6 +65,8 @@ def collect(conn: sqlite3.Connection, end: str, zone: tzinfo) -> dict[str, Any]:
     span = (last - date.fromisoformat(start)).days + 1
     for activity in insights.recent_activities(conn, days=span, end=end)["activities"]:
         days.setdefault(activity["start"][:10], {}).setdefault("activities", []).append(activity)
+    detail_start = (last - timedelta(days=29)).isoformat()
+    detail_days = sorted(day for day in days if day >= detail_start)
     week_start = (last - timedelta(days=6)).isoformat()
     for day, pulse in _heart_rate_by_hour(conn, week_start, end, zone).items():
         days.setdefault(day, {})["hourly_hr"] = pulse
@@ -73,4 +75,5 @@ def collect(conn: sqlite3.Connection, end: str, zone: tzinfo) -> dict[str, Any]:
         by_month.setdefault(day[:7], []).append(day)
     return {"days": days, "months": months, "by_month": by_month,
             "week": [day for day in sorted(days, reverse=True) if week_start <= day],
-            "current_month": first_month.isoformat()[:7], "week_start": week_start}
+            "current_month": first_month.isoformat()[:7], "week_start": week_start,
+            "detail_days": detail_days, "detail_start": detail_start}

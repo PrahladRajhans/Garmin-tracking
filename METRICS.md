@@ -389,3 +389,29 @@ time zone for the latest seven days.
   efficiency or coaching. The earlier wrist-temperature heat slope was withdrawn.
 
 [Source methods, unit evidence and scope](research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md#implemented-in-v0170).
+
+## Coaching focus and readiness coverage (v0.18.0)
+
+- **Recovery coverage.** At least three of four personal z-score components must qualify
+  to show our composite and colour or set a strain target. Components remain visible in
+  MCP and Garmin’s score stays separate. The threshold is a product coverage policy, with
+  no claim about its predictive accuracy. The historical agreement figures above predate
+  this gate. High readings support the session already planned. An illness pattern or Garmin Low/Poor can still suggest an easy day or rest.
+- **Seven-day coaching start.** Use the four complete seven-day blocks preceding the
+  requested date. Count distinct run days and the shorter recorded duration on multiple-run
+  days. Exclude workouts under five minutes and tagged sick, injured or break days.
+  If the median count is below one or the last two blocks have no eligible run, offer an
+  optional 10-minute easy walk as a general starting point. Otherwise use the floored
+  median run-day count, capped at three. Duration is the smaller of 45 minutes, the
+  median recorded session duration and the median weekly minutes divided by the plan’s
+  count, rounded down to whole minutes. Calibration, below-usual recovery or Garmin Low
+  brings the first easy outing down to one session of at most 20 minutes. Tagged days
+  pause the plan. Illness signals, well-below-usual recovery or Garmin Poor suggest
+  resting and reassessing. The plan does not schedule or upload workouts.
+- **Optional cadence trial.** With a knee note, a steady outdoor run, and positive cadence
+  readings in at least 80% of the run’s moving FIT samples, offer a one-minute trial at
+  the measured cadence × 1.05 (rounded to the nearest step/min). Keep the same comfortable
+  easy pace. The display rule does not override tagged days. The one-minute duration is a
+  conservative trial design. Lab studies measure per-step mechanics; they do not establish
+  that this trial will change knee symptoms or long-term injury risk.
+  [Heiderscheit et al. (2011)](https://pubmed.ncbi.nlm.nih.gov/20581720/)

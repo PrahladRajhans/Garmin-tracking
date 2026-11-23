@@ -105,3 +105,21 @@ def test_invalid_athlete_overrides_are_rejected():
     assert athlete.validate_setting("timezone", "Asia/Kolkata") is None
     assert athlete.validate_setting("hr_max_override", 188) is None
     assert athlete.validate_setting("weekly_run_km_target", 0) is None
+
+
+def test_week_plan_uses_recent_run_volume_and_pauses_for_status(conn):
+    from garmin_mcp import db, training_plan
+
+    day = date(2026, 11, 23)
+    readiness = {"ours": {"state": "normal"}, "garmin": None, "illness_flag": {"raised": False}}
+    assert "10-minute walk" in training_plan.week(conn, day.isoformat(), readiness)["plan"]
+    for i in (1, 3, 8, 10, 15, 17, 22, 24):
+        prior = (day - timedelta(days=i)).isoformat()
+        db.upsert_activity(conn, {"activityId": i, "activityType": {"typeKey": "running"},
+                                 "startTimeLocal": f"{prior} 08:00:00", "duration": 1800})
+    week = training_plan.week(conn, day.isoformat(), readiness)
+    assert (week["sessions"], week["minutes"], week["history_run_days_by_week"]) == (2, 30, [2]*4)
+    readiness["ours"]["state"] = "calibrating"
+    assert "20-minute outing" in training_plan.week(conn, day.isoformat(), readiness)["plan"]
+    readiness["activity_status"] = "injured"
+    assert "Pause" in training_plan.week(conn, day.isoformat(), readiness)["plan"]

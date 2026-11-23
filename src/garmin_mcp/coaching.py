@@ -173,7 +173,9 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
             ef2, h2 = second
             decoupling = (ef1 - ef2) / ef1 * 100
             drift = h2 - h1
-    cad = _mean([r["cadence"] for r in mov if r["cadence"]])
+    cadence_samples = [cadence for r in mov if isinstance(cadence := r["cadence"], (int, float))
+                       and math.isfinite(cadence) and cadence > 0]
+    cad = _mean(cadence_samples)
     step = _mean([r["step_length"] for r in mov if r["step_length"]])
     vo = _mean([r["vertical_oscillation"] for r in mov if r["vertical_oscillation"]])
     splits, split_delta = _elapsed_splits(rows)
@@ -186,6 +188,7 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
         "efficiency_factor": _r(ef, 3), "decoupling_pct": _r(decoupling),
         "hr_drift_bpm": _r(drift),
         "cadence_spm": _r(cad * 2) if cad else None,
+        "cadence_coverage_pct": _r(100 * len(cadence_samples) / len(mov)),
         "step_length_m": _r(step / 1000, 3) if step else None,
         "ground_contact_ms": _r(_mean([r["stance_time"] for r in mov if r["stance_time"]])),
         "vertical_oscillation_cm": _r(vo / 10, 2) if vo else None,
@@ -235,6 +238,8 @@ def matched_pace_norms(hist: list[tuple[int, str, dict[str, Any]]], speed: float
 
 
 def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
+    from garmin_mcp.running import knee_cadence_experiment
+
     a = conn.execute("SELECT name, type, start_time_local, distance_m, aerobic_te, anaerobic_te, "
                      "summary FROM activities WHERE activity_id=?", (aid,)).fetchone()
     if not a:
@@ -270,6 +275,9 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
                         (aid,)).fetchone() if _has(conn, "activity_load") else None
     summary = json.loads(a[6] or "{}")
     facts = _facts(m, comparison, effort, summary)
+    cue = knee_cadence_experiment(conn, a[1], m)
+    if cue:
+        facts.insert(0, cue["suggestion"])
     return {
         "id": aid, "name": a[0], "date": day, "distance_km": _r((a[3] or 0) / 1000, 2),
         "pace": _pace(m["avg_speed"]), "graded_pace": _pace(m["graded_speed"]),
@@ -287,6 +295,7 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
         "comparable_effort": effort,
         "conditions": conditions.for_activity(conn, aid),
         "facts_for_recap": facts,
+        "cadence_experiment": cue,
         "narrate_as": "Activity recap: pacing, heart rate on similar runs, form at this pace, "
                       "and one thing to check next time.",
     }

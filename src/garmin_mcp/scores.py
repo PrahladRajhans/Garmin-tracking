@@ -6,7 +6,8 @@ nearest equivalent, and sense-checked against it (see `sense_checks`).
 Recovery % (0-100)
     = 100 * Phi(composite_z), where composite_z is our transparent readiness (recovery.py:
     mean of signed, clipped z-scores of HRV, resting HR, sleep, respiration vs your baselines)
-    and Phi is the standard normal CDF. 50 % = a normal day for you. Bands (Whoop-style):
+    and Phi is the standard normal CDF. Needs at least three signals. 50 % = a normal day
+    for you. Bands (Whoop-style):
     >= 67 green "recovered", 34-66 yellow "moderate", <= 33 red "low".
 Sleep % (0-100+)
     = last night's sleep / sleep need * 100 (Whoop's "sleep performance" concept). Need =
@@ -79,7 +80,8 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
         "day": day,
         "recovery": {"pct": rec, "band": color, "label": label,
                      "calibrating": z is None,
-                     "signals_used": sum(c["z"] is not None for c in r["ours"]["components"]),
+                     "signals_used": r["ours"]["signals_used"],
+                     "minimum_signals": r["ours"]["minimum_signals"],
                      "signals_total": len(r["ours"]["components"]),
                      "drivers_down": r["ours"]["holding_back"], "drivers_up": r["ours"]["helping"],
                      "garmin_readiness": garmin.get("score"),

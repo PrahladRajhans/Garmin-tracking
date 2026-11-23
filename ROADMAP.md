@@ -63,6 +63,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.15.1 | Smaller chart cursor, smoother scrub and scroll, environmental feasibility note | Checked in browser, no environmental data collection |
 | 0.16.0 | Personal signal context, date drill-downs and two run overlay trials | Browser and synthetic data checks |
 | 0.17.0 | Matched effort evidence, readiness benchmark, saved weather and optional local timed conditions | Synthetic checks completed; archive, device and hosting checks pending |
+| 0.18.0 | Week-ahead coaching, calibration gate and lighter daily history | First action and underlying evidence verified on synthetic records; Mac scheduled rollout pending |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -114,7 +115,7 @@ until the owner dataset is checked again.
 | 1 | Daily briefing, personal signals and History | Verify dated raw readings, resting pulse trend/range, overnight breathing and Pulse Ox, and coverage at each time scale |
 | 1a | Optional run overlay trial | Check cadence/step length and speed/HR on comparable real workouts. Seek feedback before broader rollout |
 | 2 | Verify daily guidance and run comparisons on the Mac archive | Compare with dated Garmin records and inspect missing nights, unusual runs and completed syncs |
-| 3 | Weekly coaching priorities and training response | v0.17.0 ships matched efforts and a descriptive readiness benchmark. Validate coverage, repeat on later weeks and check weather/terrain before predictive use |
+| 3 | Weekly coaching priorities and training response | v0.18.0 offers a conservative weekly start and optional cadence trial. Next, record what was tried and how it felt, and compare later efforts on similar terrain and pace before interpreting results |
 | 3a | Finer workout detail across sports | Expand older activity traces and sport-specific comparisons after real-data review. Test route matching from full paths before claiming the same route |
 | 4 | Feedback from iPhone and laptop use | Check Files preview and Safari, adjust the most-used interactions, verify private phone delivery |
 

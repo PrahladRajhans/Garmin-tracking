@@ -157,3 +157,18 @@ def test_explicit_database_path_does_not_create_default_directory(tmp_path, monk
     monkeypatch.setenv("GARMIN_DATA_DIR", str(default_dir))
     assert db_path() == explicit
     assert not default_dir.exists()
+
+
+def test_knee_experiment_uses_recorded_cadence_and_requires_coverage(conn):
+    from garmin_mcp import athlete
+
+    seed(conn, 1, CLOCK)
+    assert running.running_breakdown(conn, 1)["cadence_experiment"] is None
+    athlete.set_value(conn, "injuries_or_limits", "right knee a little weak")
+    run = running.running_breakdown(conn, 1)
+    cue = run["cadence_experiment"]
+    assert cue["recorded_steps_per_min"] == 168 and cue["trial_steps_per_min"] == 176
+    assert "same easy pace" in run["work_on"][0]
+    assert coaching.run_analysis(conn, 1)["cadence_experiment"] == cue
+    conn.execute("UPDATE fit_records SET cadence=NULL WHERE rowid % 2 = 0")
+    assert running.running_breakdown(conn, 1)["cadence_experiment"] is None

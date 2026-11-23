@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from typing import Any
 
 BASELINE_DAYS = 60
+MIN_READINESS_SIGNALS = 3
 MIN_BASELINE_NIGHTS = 21
 SWC_FACTOR = 0.5
 SLEEP_NORM_DAYS = 28
@@ -213,7 +214,8 @@ def readiness(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     for c in components:
         c["contribution"] = round(c["sign"] * max(-3, min(3, c["z"])), 2) \
             if c["z"] is not None else None
-    score = round(statistics.fmean(c["contribution"] for c in used), 2) if used else None
+    score = (round(statistics.fmean(c["contribution"] for c in used), 2)
+             if len(used) >= MIN_READINESS_SIGNALS else None)
     if score is None:
         state = "calibrating"
     elif score >= 0.5:
@@ -231,6 +233,7 @@ def readiness(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     return {
         "day": day,
         "ours": {"composite_z": score, "state": state, "components": components,
+                 "signals_used": len(used), "minimum_signals": MIN_READINESS_SIGNALS,
                  "holding_back": [c["name"] for c in drivers if c["contribution"] < -0.5],
                  "helping": [c["name"] for c in drivers[::-1] if c["contribution"] > 0.5],
                  "method": "mean of signed, clipped z-scores vs your own baselines "
@@ -264,6 +267,8 @@ def suggestion(r: dict[str, Any]) -> dict[str, str]:
     garmin_level = (r["garmin"] or {}).get("level")
     garmin_note = f"Garmin readiness {garmin_level}" if garmin_level else "Garmin readiness unavailable"
     state = r["ours"]["state"]
+    summary = (garmin_note if state == "calibrating" else
+               f"our readiness is {state}; {garmin_note}")
     status = r.get("activity_status")
     if status:
         return {"suggest": "training advice paused",
@@ -271,17 +276,17 @@ def suggestion(r: dict[str, Any]) -> dict[str, str]:
     if r["illness_flag"]["raised"]:
         return {"suggest": "rest or very easy movement",
                 "why": "illness/strain pattern on two consecutive days"}
-    if state == "well below usual" or garmin_level in ("POOR",):
+    if state == "well below usual" or garmin_level == "POOR":
         return {"suggest": "rest or easy recovery session",
-                "why": f"our readiness is {state}; {garmin_note}"}
+                "why": summary}
     if state == "below usual" or garmin_level == "LOW":
         return {"suggest": "easy aerobic only, skip intensity",
-                "why": f"our readiness is {state}; {garmin_note}"}
+                "why": summary}
     if state == "calibrating":
         return {"suggest": "not enough recovery data for a training suggestion",
-                "why": "Personal baselines are still calibrating; " + garmin_note}
+                "why": "Need at least three of four recovery signals; " + garmin_note}
     if state == "fresher than usual" and garmin_level in ("HIGH", "PRIME"):
-        return {"suggest": "good day for a key session (intervals, tempo or long run)",
-                "why": "both our readiness and Garmin's are high"}
+        return {"suggest": "follow your planned session if you feel well",
+                "why": "both readiness readings are high; keep the effort you planned"}
     return {"suggest": "planned training is fine",
-            "why": f"our readiness is {state}; {garmin_note}"}
+            "why": summary}

@@ -137,3 +137,31 @@ def test_new_health_files_are_owner_only_on_posix(conn, tmp_path):
     path.chmod(0o640)
     dashboard._atomic_write(path, "updated")
     assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_dashboard_keeps_older_summaries_and_hides_sparse_research_cards(conn, tmp_path):
+    for day in ("2026-11-23", "2026-10-25", "2026-10-24"):
+        db.put_daily(conn, "ex_daily_summary", day, "export",
+                     {"calendarDate": day, "totalSteps": 8000, "restingHeartRate": 46})
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync','2026-10-24T03:00:00+00:00')")
+    conn.commit()
+    rebuild(conn)
+    html = dashboard.build(conn, tmp_path).read_text()
+    assert 'id="day-2026-10-25"' in html and 'id="day-2026-10-24"' not in html
+    assert "Sat, 24 Oct 2026" in html and "46 bpm resting" in html
+    assert "Do readiness scores line up with your runs?" not in html
+    assert "Last complete sync 24 Oct 2026" in html and "Code v" in html
+
+
+
+def test_patterns_draw_only_qualifying_pairs():
+    pair = {"x": "trimp", "y": "hrv", "lag_days": 1, "r": 0.45, "r_ci95": [0.1, 0.7],
+            "n": 31, "slope": 0.08, "points": [("2026-11-01", 0, 0), ("2026-11-02", 1, 2),
+                                            ("2026-11-03", -1, -0.1)],
+            "statement": "For you, 50 TRIMP more training load is associated with an HRV change"}
+    html = dashboard.page_patterns({"explore": {"pairs": [
+        {**pair, "notable": True}, {**pair, "x": "bedtime_h", "notable": False}],
+        "eligible": 2, "notable": 1}})
+    assert html.count('data-chart="scatter"') == 2  # phone and desktop drawings of one chart
+    assert "1 had enough data but showed no clear pattern." in html
+    assert "TRIMP" not in html and "Bedtime" not in html

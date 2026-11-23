@@ -81,3 +81,25 @@ def test_resting_hr_baseline_requires_21_prior_values():
     assert recovery._metric_z(series, END.isoformat()) is None
     series[(END - timedelta(days=21)).isoformat()] = 48.
     assert recovery._metric_z(series, END.isoformat()) is not None
+
+
+def test_recovery_score_and_strain_target_need_three_signals(conn):
+    from garmin_mcp import scores
+
+    _make(conn, sick_last=1)
+    day = END.isoformat()
+    conn.execute("UPDATE sleep SET avg_respiration=NULL WHERE day=?", (day,))
+    assert scores.daily_scores(conn, day)["recovery"]["pct"] is not None
+    conn.execute("DELETE FROM daily WHERE day=?", (day,))
+    s = scores.daily_scores(conn, day)
+    assert s["recovery"]["signals_used"] == 2
+    assert s["recovery"]["calibrating"] and s["recovery"]["pct"] is None
+    assert s["recovery"]["band"] is None and s["strain"]["target_range"] is None
+    assert "not enough recovery data" in recovery.suggestion(recovery.readiness(conn, day))["suggest"]
+
+
+
+def test_high_readiness_does_not_add_a_hard_session():
+    r = {"ours": {"state": "fresher than usual"}, "garmin": {"level": "HIGH"},
+         "illness_flag": {"raised": False}}
+    assert recovery.suggestion(r)["suggest"] == "follow your planned session if you feel well"

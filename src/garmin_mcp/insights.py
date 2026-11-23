@@ -347,7 +347,7 @@ def trend(conn: sqlite3.Connection, metric: str, days: int = 30,
 # --------------------------------------------------------------------------- daily brief
 def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, Any]:
     """Morning-report style brief: the facts Claude narrates (Athlete-Intelligence style)."""
-    from garmin_mcp import recovery
+    from garmin_mcp import recovery, training_plan
 
     day = day or _latest_day(conn) or date.today().isoformat()
     r = recovery.readiness(conn, day)
@@ -356,6 +356,7 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, A
     return {
         "day": day,
         "suggestion": recovery.suggestion(r),
+        "week_ahead": training_plan.week(conn, day, r),
         "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state",
                                                           "holding_back", "helping")},
                       "garmin": r["garmin"]},
