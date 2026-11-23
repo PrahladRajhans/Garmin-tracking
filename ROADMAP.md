@@ -42,9 +42,9 @@ compute: activity recaps, daily brief, weekly review.
 | 0.2.0 | Phase 1: SQLite sync engine, FIT parsing, official + unofficial sources | done |
 | 0.3.0 | Phase 2: export importer, tidy tables, health snapshot, DB-backed tools | done |
 | 0.3.1 | Data-quality pass: unit fixes + `garmin-mcp-verify` | done |
-| 0.4.0 | Phase 3: recovery & readiness + daily brief | done |
-| 0.5.0 | Phase 4: training load & performance + weekly review | **next** |
-| 0.6.0 | Phase 5: workout coaching + activity recap + fitness age levers | |
+| 0.4.0 | Phase 3: recovery & readiness + daily brief | done (merged to main) |
+| 0.5.0 | Phase 4: training load & performance + weekly review | done |
+| 0.6.0 | Phase 5: workout coaching (running first) + activity recap + fitness age levers | **next** |
 | 0.7.0 | Phase 6: memory, goals, provenance | |
 | 0.8.0 | Phase 7: workouts to the watch | |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
@@ -68,7 +68,7 @@ pass on Garmin labels (`VERIFICATION_LOG.md`).
 | 3.6 | Verify the formula constants used here (HRV SWC multiplier) against primary sources | FINDINGS open questions |
 Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 
-### Phase 4: Training load & performance → v0.5.0
+### Phase 4: Training load & performance → v0.5.0 ✅ done (4.1–4.11)
 | ID | Item | Backlog/source |
 |---|---|---|
 | 4.1 | Thresholds store (HRmax, RHR, LTHR, threshold pace) with dates; seeded from Garmin zones/LT | R14 |
@@ -79,7 +79,9 @@ Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 | 4.6 | Pace-duration curve, critical speed | R21, R22 |
 | 4.7 | Race prediction (VDOT, Riegel, CS) next to Garmin's | R23 |
 | 4.8 | Weekly review (Athlete Intelligence style) | — |
-| 4.9 | Verify TRIMP constants and VDOT/Riegel against primary sources | FINDINGS |
+| 4.9 | Verify TRIMP constants and VDOT/Riegel against primary sources (pinned by tests) | FINDINGS |
+| 4.10 | Swim (lengths, SWOLF) and strength (sets, reps) analytics | your request |
+| 4.11 | Sense checks vs Garmin values and physics, in `garmin-mcp-verify` | your request |
 
 ### Phase 5: Workout coaching → v0.6.0
 | ID | Item | Backlog/source |
@@ -91,6 +93,8 @@ Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 | 5.5 | Heat effect on HR (weather/FIT temperature) | R29 |
 | 5.6 | Metric glossary: meaning, healthy range, how to improve | goal: coaching |
 | 5.7 | Fitness age: Garmin's value + levers (VO2max, RHR, vigorous minutes, BMI); verify the norm formula | goal: fitness age |
+| 5.8 | Running deep-dive: form at matched pace, cadence/stride strategy, GCT/VO/vertical ratio trends, power vs pace, HR drift; deeper swim/strength insights | your request; research in running_and_sport_metrics.md |
+| 5.9 | Active Intelligence / Athlete Intelligence-style features beyond the recap (later) | research note §4 |
 
 ### Phase 6: Memory, goals, provenance → v0.7.0
 | ID | Item | Backlog/source |
@@ -124,7 +128,7 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | Run the one-message Mac setup (D.1) | whenever convenient; nothing else blocks on it |
 | Rotate the Personal API key (it was pasted in chat) | deferred by you |
 | Optional: watch setting "Log HRV" for beat-to-beat data in activities | your choice |
-| Merge PR #1 into `main` | I'll ask at v0.4.0 |
+| ~~Merge PR #1 into `main`~~ | done at v0.4.0 |
 
 ## Side-quest rule
 Research or fixes outside the current phase are done only when they feed an item above; each is
