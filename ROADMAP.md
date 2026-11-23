@@ -51,7 +51,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.10.0 | Phase 9: dashboard | done |
 | 0.11.0 | Phase 10a: daily scores (Recovery %, Sleep %, Strain), bedtime; self-update; CI | done |
 | 0.12.0 | Phase 11: dashboard v2 (multi-page) + Phase 12: sleep breakdown, HR dip, activity status, pace of ageing, marathon shape, shifts, monthly report, running breakdown; sync gate | done |
-| 0.13.0 | Phase 13: correlations explorer, standardised test tracking, race readiness when a race is chosen | planned |
+| 0.13.0 | Phase 13: correlations explorer, test-run tracking, recovery weighting study | done |
+| 0.14.0 | Phase 14: race readiness/taper (once a race is set), VO2max norm bar (needs a citable table), phone check | waiting on inputs |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -171,8 +172,11 @@ Full plan: `DASHBOARD_PLAN.md`. Steps 11.2–11.7: wireframe of hero + Today + W
 ### Phase 12: Remaining parity and Level-3 items → v0.12.0 ✅ done
 ✅ 10.2 sleep breakdown + heart-rate dip · ✅ 10.5 activity status · ✅ 10.6 pace of ageing (own fitness age: deferred, Garmin's is used) · ✅ 10.7 marathon shape and changepoints (shift detection) · ✅ 10.9 monthly report · ✅ running breakdown (form bands, pace-matched form, what to work on).
 
-### Phase 13 → v0.13.0
-Correlations explorer page · standardised test tracking (8.11) · 8.12 race readiness/taper (when a race is chosen) · VO2max range bar by age (needs a citable norm table).
+### Phase 13 → v0.13.0 ✅ done
+✅ Correlations explorer (Patterns page + `explore_relationships`) · ✅ test-run tracking 8.11 (`test_runs`) · ✅ recovery weighting study (`recovery_weight_study`; equal weights kept, evidence in CHANGELOG 0.13.0).
+
+### Phase 14 → v0.14.0 (waiting on inputs)
+8.12 race readiness/taper: needs a goal race · VO2max range bar by age and sex: needs a citable norm table (ACSM / Cooper Institute), never invented · phone check of the iCloud dashboard: needs the user · re-run `recovery_weight_study` and `test_runs` after ~3 months of new data.
 
 ### Deployment track (runs alongside, needs you once)
 | ID | Item | Target |
@@ -201,7 +205,7 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | Area | Items | State |
 |---|---|---|
 | Dashboard | Phase 11 v2 | ✅ done |
-| Parity / Level 3 | Phase 12 | ✅ done; Phase 13 next |
+| Parity / Level 3 | Phases 12–13 | ✅ done; Phase 14 waits on inputs |
 | Deployment | #1 above, then v1.0.0 | waiting on #1 |
 | Research | Whoop details snippet-only (site blocks bots); HRV4Training rule page empty; fitness-age norm formula unverified | accepted, flagged |
 | Optional sources | R32 intervals.icu, R33 Apple Health, R34 multi-device dedupe | only if you ask |

@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-23
+
+Phase 13: correlations explorer, test-run tracking, recovery weighting study. 43 tools.
+
+### Added
+- **Patterns page is now an explorer:**
+  - Every tested pair is ranked by strength, each with a scatter of baseline-adjusted days (0 = your usual), the fitted line, and a "how sure" meter from the 95 % CI and false-discovery control.
+  - Exact r, CI and n are behind "Details".
+  - Code: `engine.pair_points`, `engine.explore`, `dashboard.scatter`, `dashboard._sure`. Tool: `explore_relationships`.
+- **Test-run tracking** (roadmap 8.11): `running.test_runs` and tool `test_runs`.
+  - Steady runs within ±10 % of your usual distance, or named "test"/"calibration".
+  - Efficiency factor trend (Theil-Sen, % per 90 days).
+  - Card on the Running page.
+- **Recovery weighting study:** `scores.weight_study` and tool `recovery_weight_study`. Each Recovery % signal is checked against next-night HRV and against Garmin readiness, and alternative weightings are compared. The weights change only if a variant wins on both by > 0.05 r.
+
+### Findings (real data, 180 days)
+- **Every signal earns its place:**
+  - HRV 7-day → next-night HRV r = 0.42.
+  - Breathing → next-night HRV r = 0.31.
+  - Resting HR → next-night HRV r = 0.26.
+  - Sleep → next-night HRV r = 0.07, but → Garmin readiness r = 0.47.
+- **Equal weights kept.** Current composite: r = 0.36 with next-night HRV and 0.36 with Garmin. "Without breathing" is better on Garmin (0.41) but worse on HRV (0.33). "HRV + RHR" is the reverse.
+- **Why ours and Garmin's disagree:** Garmin leans on sleep, ours weighs physiology. Documented in HANDOVER §9.
+- **Test runs:** 3 comparable ~5.2 km runs, efficiency +1.8 % per 90 days (too few runs to trust yet; labelled).
+- **Strongest patterns:**
+  - Sleep → Garmin readiness r = 0.50 ("very sure").
+  - Daytime stress → next-night HRV r = −0.26.
+  - Later bedtime → shorter sleep r = −0.25.
+
 ### Added
 - `HANDOVER.md`: goal, story, why, a reference table for every calculation (code → formula → source → METRICS section), dashboard references, exact differences from Garmin and other apps, known issues, and the ordered list of what's left, so another person or AI can continue.
 

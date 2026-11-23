@@ -78,7 +78,8 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
         "runs": runs, "form": running.form_trends(conn, 40),
-        "patterns": engine.relationships(conn, end, 365)["notable"][:6],
+        "explore": engine.explore(conn, end, 365, 8),
+        "tests": running.test_runs(conn),
         "feed": engine.insight_feed(conn, end)["insights"],
     }
 
@@ -244,6 +245,40 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
     g.append(f'<text x="{L}" y="{h - 4}" class="tick">{_short(items[0][0])}</text>'
              f'<text x="{w - R}" y="{h - 4}" class="tick" text-anchor="end">'
              f'{_short(items[-1][0])}</text>')
+    return f'<svg class="chart" viewBox="0 0 {w} {h}" role="img">{"".join(g)}</svg>'
+
+
+def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
+            w: int = W, h: int = 200) -> str:
+    """Baseline-adjusted x vs y (0 = your usual), with the fitted line. One mark per day."""
+    if len(points) < 3:
+        return '<p class="empty">Not enough data yet.</p>'
+    xs, ys = [p[1] for p in points], [p[2] for p in points]
+    x0, x1 = _scale(xs, 0.05)
+    y0, y1 = _scale(ys, 0.05)
+    L, R_, T, B = 34, 8, 8, 30
+    pw, ph = w - L - R_, h - T - B
+
+    def X(v: float) -> float:
+        return L + pw * (v - x0) / (x1 - x0)
+
+    def Y(v: float) -> float:
+        return T + ph * (1 - (v - y0) / (y1 - y0))
+
+    g = []
+    if x0 < 0 < x1:
+        g.append(f'<line x1="{X(0):.1f}" x2="{X(0):.1f}" y1="{T}" y2="{T + ph}" class="grid"/>')
+    if y0 < 0 < y1:
+        g.append(f'<line x1="{L}" x2="{w - R_}" y1="{Y(0):.1f}" y2="{Y(0):.1f}" class="grid"/>')
+    for d, a, b in points:
+        g.append(f'<circle cx="{X(a):.1f}" cy="{Y(b):.1f}" r="3" class="pt"><title>{_e(d)}: '
+                 f'{a:+.2f}, {b:+.2f}</title></circle>')
+    if slope is not None:
+        mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+        g.append(f'<line x1="{X(x0):.1f}" y1="{Y(my + slope * (x0 - mx)):.1f}" x2="{X(x1):.1f}" '
+                 f'y2="{Y(my + slope * (x1 - mx)):.1f}" class="fit"/>')
+    g.append(f'<text x="{w - R_}" y="{h - 6}" class="tick" text-anchor="end">{_e(xl)} → '
+             f'(vs usual)</text><text x="{L}" y="{T + 10}" class="tick">↑ {_e(yl)}</text>')
     return f'<svg class="chart" viewBox="0 0 {w} {h}" role="img">{"".join(g)}</svg>'
 
 
@@ -495,11 +530,27 @@ def page_running(d: dict[str, Any]) -> str:
     cad = both(line_chart, [(s["date"], s["cadence_spm"]) for s in fs], " spm", h=120)
     body = (f'<nav class="card tiles wide">{lst or "<p class=empty>No runs with detail yet.</p>"}'
             f'</nav>'
+            + _card("Aerobic fitness on your usual run", _tests(d["tests"]),
+                    "Same-distance steady runs: speed per heartbeat over time", wide=True)
             + _card("Marathon shape", mshape, "Endurance readiness (Runalyze method)")
             + _card("Race time estimates", table, "Three methods side by side; Garmin in grey")
             + _card("Cadence over your runs", cad, "Steps per minute. Rises with pace, so "
                     "compare runs on each run's page.", wide=True))
     return _page("running", "Running", "Tap a run for a coach-style breakdown.", body)
+
+
+def _tests(t: dict[str, Any]) -> str:
+    if not t.get("runs"):
+        return f'<p class="empty">{_e(t.get("reason"))}</p>'
+    chart = both(line_chart, [(r["date"], r["ef"]) for r in t["runs"]], "", nd=2, h=130)
+    head = ""
+    if t.get("available"):
+        ch = t["ef_change_per_90d_pct"]
+        head = (f'<div class="big">{ch:+.1f}<small>% per 90 days</small></div><p class="sub">'
+                f'{len(t["runs"])} runs of about {t["reference_km"]} km. {_e(t["meaning"])}</p>')
+    else:
+        head = f'<p class="sub">{_e(t.get("reason"))}</p>'
+    return head + chart
 
 
 def page_run(r: dict[str, Any]) -> str:
@@ -571,23 +622,35 @@ def page_body(d: dict[str, Any]) -> str:
     return _page("body", "Body & long term", "Slow signals that change over months.", body)
 
 
+def _sure(r: dict[str, Any]) -> tuple[float, str]:
+    lo, hi = r.get("r_ci95") or (0, 0)
+    if not r.get("notable"):
+        return 0.2, "not sure: could be chance"
+    if min(abs(lo), abs(hi)) >= 0.3 and lo * hi > 0:
+        return 1.0, "very sure"
+    if min(abs(lo), abs(hi)) >= 0.1 and lo * hi > 0:
+        return 0.7, "fairly sure"
+    return 0.45, "early sign"
+
+
 def page_patterns(d: dict[str, Any]) -> str:
-    names = {"sleep_h": "sleep length", "garmin_readiness": "Garmin readiness",
-             "avg_stress": "daytime stress", "hrv": "HRV", "bedtime_h": "bedtime",
-             "resting_hr": "resting HR", "steps": "steps"}
-    items = ""
-    for p in d["patterns"]:
-        r = abs(p.get("r") or 0)
-        sure = "very sure" if r >= 0.4 and p.get("n", 0) >= 100 else (
-            "fairly sure" if r >= 0.25 else "early sign")
-        items += (f'<li class="pat"><p class="say">{_e(names.get(p["x"], p["x"]).capitalize())}'
-                  f' → {_e(names.get(p["y"], p["y"]))}</p>{meter(min(1, r * 2), sure)}'
-                  f'<details><summary>Details</summary><p class="sub">{_e(p["statement"])}'
-                  f'</p></details></li>')
-    body = _card("What moves what, for you", f'<ul class="pats">{items}</ul>' if items else
-                 '<p class="empty">No reliable patterns yet.</p>',
-                 "Found in your own history. Associations, not proof of cause.", wide=True)
-    return _page("patterns", "Patterns", "Checked with false-discovery control.", body)
+    lab = engine.LABELS
+    cards = ""
+    for p in d["explore"]["pairs"]:
+        x, y = lab.get(p["x"], p["x"]), lab.get(p["y"], p["y"])
+        frac, sure = _sure(p)
+        when = "same day" if p["lag_days"] == 0 else "next day"
+        body = (f'{meter(frac, sure)}'
+                f'{both(scatter, p["points"], x, y, p.get("slope"))}'
+                f'<details><summary>Details</summary><p class="sub">'
+                f'{_e(p.get("statement") or "")} r = {p["r"]:+.2f} (95 % CI '
+                f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}), {p["n"]} days.</p>'
+                f'</details>')
+        cards += _card(f"{x} → {y} ({when})", body, wide=True)
+    lede = (f'{d["explore"]["tested"]} pairs tested in your last year. Each dot is a day, both '
+            'values shown against your usual (0 = normal day). The orange line is the trend.')
+    return _page("patterns", "Patterns", lede, cards or _card(
+        "Patterns", '<p class="empty">Not enough data yet.</p>'))
 
 
 # =============================================================================== render
@@ -675,7 +738,8 @@ border-top:1px solid var(--grid)}
 .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .ln.s1{stroke:var(--s1)}.ln.s2{stroke:var(--s2)}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
-.hit{fill:transparent}.band{fill:var(--band)}
+.hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.45}
+.fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
 .bar.s1{fill:var(--s1)}.bar.good{fill:var(--good)}.bar.warn{fill:var(--warn)}
 .bar.bad{fill:var(--bad)}.bar.muted{fill:var(--muted)}
 .gauge{position:relative;height:20px;margin:8px 0 6px}

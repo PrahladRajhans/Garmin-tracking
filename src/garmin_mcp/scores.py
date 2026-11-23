@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import statistics
 from datetime import date, timedelta
 from typing import Any
 
@@ -171,3 +172,69 @@ def sense_checks(conn: sqlite3.Connection, end: str, days: int = 180) -> list[di
                        "detail": f"green {share_green:.0%}, red {share_red:.0%} of {len(rec)} days",
                        "tolerance": "green 5-60 %, red 3-50 % (a z-based score should spread)"})
     return checks
+
+
+def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[str, Any]:
+    """Does each readiness signal carry information, and would other weights do better?
+
+    For every day: the four clipped component scores (HRV 7-day, resting HR, sleep, breathing).
+    Outcomes, each checked separately:
+      - next night's HRV (ln, vs the previous 60 nights, z) - physiology one day ahead;
+      - Garmin readiness the same day - Garmin's own view, for comparison only.
+    Composites compared: equal weights (current), without breathing, HRV + RHR only.
+    Rule: weights change only if a variant beats the current one on BOTH outcomes by > 0.05 r.
+    """
+    from garmin_mcp.engine import _pearson
+
+    e = date.fromisoformat(end)
+    hrv = dict(conn.execute("SELECT day, COALESCE(h.last_night_avg, s.hrv) FROM health_status s "
+                            "LEFT JOIN hrv h USING(day) WHERE day <= ?", (end,)).fetchall())
+    garmin = dict(conn.execute("SELECT day, score FROM readiness WHERE day <= ?", (end,)))
+
+    def hrv_z(d: str) -> float | None:
+        v = hrv.get(d)
+        if not v:
+            return None
+        dd = date.fromisoformat(d)
+        prior = [math.log(hrv[x]) for x in ((dd - timedelta(days=k)).isoformat()
+                                            for k in range(1, 61)) if hrv.get(x)]
+        if len(prior) < 21:
+            return None
+        sd = statistics.pstdev(prior)
+        return (math.log(v) - statistics.fmean(prior)) / sd if sd else None
+
+    names = ["HRV (7-day vs normal)", "Resting HR (today vs 60-day)",
+             "Sleep (last night vs 28-day)", "Respiration (last night vs 60-day)"]
+    rows = []
+    for k in range(days, 0, -1):
+        d = (e - timedelta(days=k)).isoformat()
+        r = recovery.readiness(conn, d)
+        comp = {c["name"]: c["contribution"] for c in r["ours"]["components"]}
+        nxt = hrv_z((date.fromisoformat(d) + timedelta(days=1)).isoformat())
+        rows.append((comp, nxt, garmin.get(d)))
+
+    def corr(f: Any, idx: int) -> dict[str, Any]:
+        pts = [(f(c), o[idx - 1]) for c, *o in rows]
+        pts = [(a, b) for a, b in pts if a is not None and b is not None]
+        r = _pearson([a for a, _ in pts], [b for _, b in pts]) if len(pts) >= 30 else None
+        return {"r": round(r, 3) if r is not None else None, "n": len(pts)}
+
+    def mean_of(keys: list[str]) -> Any:
+        def f(c: dict[str, float | None]) -> float | None:
+            v = [c[k] for k in keys if c.get(k) is not None]
+            return statistics.fmean(v) if v else None
+        return f
+
+    signals = {n: {"next_night_hrv": corr(lambda c, n=n: c.get(n), 1),
+                   "garmin_readiness": corr(lambda c, n=n: c.get(n), 2)} for n in names}
+    variants = {"equal weights (current)": names, "without breathing": names[:3],
+                "HRV + resting HR": names[:2]}
+    comp = {v: {"next_night_hrv": corr(mean_of(k), 1), "garmin_readiness": corr(mean_of(k), 2)}
+            for v, k in variants.items()}
+    base = comp["equal weights (current)"]
+    better = [v for v, c in comp.items() if v != "equal weights (current)" and all(
+        (c[o]["r"] or -1) > (base[o]["r"] or -1) + 0.05 for o in c)]
+    return {"window_days": days, "signals": signals, "composites": comp,
+            "decision": f"switch to: {better[0]}" if better else
+                        "keep equal weights (no variant better on both outcomes by > 0.05 r)",
+            "method": weight_study.__doc__.strip().splitlines()[0]}

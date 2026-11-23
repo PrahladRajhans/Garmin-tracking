@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.12.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.13.0, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -112,6 +112,9 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
 | Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
 | Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; Garmin baseline bands or 60-day ± 1 SD | Fitbit "in your range" | M § v0.9.0 |
+| Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, plus per-day points; "how sure" from CI and FDR (`dashboard._sure`) | — | M § v0.13.0 |
+| Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
+| Recovery weighting study | `scores.weight_study` | Each signal and composite vs next-night ln-HRV z and vs Garmin readiness; change weights only if better on both by > 0.05 r | — | M § v0.13.0 |
 | Goal verdict | `goals.goal_check` | Median of prediction methods vs target | — | M § v0.6.0 |
 
 **Sense checks on real data** (M § Sense checks; `CHANGELOG.md` per version):
@@ -157,9 +160,11 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 
 ## 9. Known issues and open questions
 1. **Max HR is uncertain** (188 vs 209). It moves zones, TRIMP, effective VO2max and race predictions. Fix: user's hard-effort test, then `update_athlete_setting("hr_max_override", value)`.
-2. **Recovery % disagrees with Garmin readiness on some days** (overall r = 0.35; on 22 Nov ours was 34 %, Garmin's 90).
-   - Ours penalises breathing rate and resting HR. Garmin weights sleep history and recovery time.
-   - Next: evaluate a re-weighted composite against next-day HRV, not against Garmin's score.
+2. **Recovery % disagrees with Garmin readiness on some days** (overall r = 0.36; on 22 Nov ours was 34 %, Garmin's 90). *Studied in v0.13 (`recovery_weight_study`):*
+   - Sleep drives Garmin's score (r = 0.47) but barely predicts next-night HRV (0.07).
+   - Breathing and resting HR predict next-night HRV (0.31, 0.26).
+   - No reweighting wins on both outcomes, so equal weights stay. The disagreement is a difference in what each score measures, not a bug.
+   - Re-run the study after about 3 months of new data.
 3. **Effective VO2max sense check is flagged** (about 40 vs Garmin's 51.4). Mostly the max HR question.
 4. **Wrist running power** reads higher than Stryd, so running effectiveness (0.71) is only for tracking yourself over time.
 5. **Little running data** (about 1 km/week lately, 19 runs with FIT data). Half and marathon predictions are unreliable and Marathon shape is about 1 %. This is accurate, not a bug.
@@ -172,11 +177,12 @@ In order. Each item says where it goes and what "done" means.
 
 | # | Item | Where | Done when |
 |---|---|---|---|
-| 1 | **Correlations explorer page**: choose any two metrics and see the scatter, r with CI, and "how sure" | `engine.relationship` already computes it; add a `page_explore` in `dashboard.py` for the most useful pairs (still no JS) | A page lists top pairs with a scatter each; test in `tests/test_dashboard.py` |
-| 2 | **Standardised test tracking** (8.11): detect repeated test runs (e.g. the same 5 km route, or the calibration workout) and track efficiency at matched HR | New `running.test_runs`; uses `coaching.run_metrics` | Tool `test_tracking` + Running page card |
+| ✅ | Correlations explorer, test-run tracking, recovery weighting study | Done in v0.13.0 | See CHANGELOG 0.13.0 |
+| 1 | **Add more pairs to the explorer** if useful: e.g. alcohol/travel tags → HRV is already in `tag_impact`; respiration → HRV | `engine.PAIRS` | New pairs pass the same FDR rule |
+| 2 | **Test runs with more data**: add route matching (start/end GPS within 200 m) once the FIT session start position is parsed | `fit.py` (session `start_position_lat/long`), `running.test_runs` | Runs on the same route are grouped |
 | 3 | **Race readiness and taper** (8.12): once a goal race is set | `goals.py` + `health.marathon_shape` + fitness/form | Only when the user sets a race |
 | 4 | **VO2max range bar by age and sex** (10.8) | Body page | Needs a citable norm table (e.g. ACSM or Cooper Institute); do not invent values |
-| 5 | **Recovery % re-weighting study** (issue 2) | `scores.py`, `recovery.py` | Composite weights chosen by predicting next-day HRV, documented in M |
+| 5 | **Re-run the recovery weighting study** every ~3 months (`recovery_weight_study`) | `scores.weight_study` | Weights change only by its rule |
 | 6 | **Max HR test → recalculate** | `athlete` setting | User runs the test; check that the effective VO2max flag clears |
 | 7 | **Interactive dashboard on phone**: test the iCloud flow; optional private Artifact snapshot (opt-in only) | `dashboard.build` | User confirms it opens on the phone |
 | 8 | **v1.0.0**: everything running unattended on the Mac for 2 weeks with no sync errors | `sync_log`, `garmin-mcp-verify` | `ROADMAP.md` D.1 closed |

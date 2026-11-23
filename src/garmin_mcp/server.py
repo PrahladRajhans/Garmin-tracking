@@ -510,6 +510,37 @@ def running_form_history(runs: int = 60) -> dict[str, Any]:
     return _with_db(lambda c: running.form_trends(c, max(5, min(runs, 200))))
 
 
+# ----------------------------------------------------------------- Phase 13
+@mcp.tool()
+def explore_relationships(days: int = 365, top: int = 8) -> dict[str, Any]:
+    """Every tested pair (sleep, stress, bedtime, load -> HRV, readiness, sleep) ranked by
+    strength, with r, 95 % CI, FDR-controlled 'notable' flag and the per-day points
+    (baseline-adjusted) for plotting."""
+    from garmin_mcp import engine
+
+    return _with_db(lambda c: engine.explore(c, _end(c, None), max(60, min(days, 730)),
+                                              max(1, min(top, 14))))
+
+
+@mcp.tool()
+def test_runs() -> dict[str, Any]:
+    """Standardised test tracking: your comparable steady runs (same usual distance, or named
+    'test'/'calibration') and the trend in efficiency (speed per heartbeat)."""
+    from garmin_mcp import running
+
+    return _with_db(running.test_runs)
+
+
+@mcp.tool()
+def recovery_weight_study(days: int = 180) -> dict[str, Any]:
+    """Checks whether each Recovery % signal predicts next-night HRV and tracks Garmin
+    readiness, and whether other weightings would do better. Weights change only if a variant
+    wins on both."""
+    from garmin_mcp import scores
+
+    return _with_db(lambda c: scores.weight_study(c, _end(c, None), max(60, min(days, 365))))
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the
