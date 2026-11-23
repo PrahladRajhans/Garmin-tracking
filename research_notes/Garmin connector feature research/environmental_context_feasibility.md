@@ -60,6 +60,24 @@ app. The next research task is to verify local station availability, interval an
 alignment, and agreement across independent products before introducing automatic fetching.
 The pilot does not change analytics scores or estimate a weather effect. See [method and units](../../METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
 
+## Paired outdoor run evidence
+
+The optional retrieval in v0.21.0 uses Open-Meteo weather and air-quality fields. The
+matched-run evidence now accepts model estimates as their own source. The Training card
+shows matched-day medians for moving heart rate and, when following sleep can be linked by
+recorded time, sleep duration, nightly HRV, and next-day resting heart rate. These comparisons
+can reveal when differences recur in records with similar pace, duration, climb, start area,
+and time of day. They do not estimate personal exposure during sleep or explain causality.
+
+The open-air AQI feed is regional model context. It uses the US AQI standard and pollutant
+averaging windows described in its documentation. A rounded request location does not make
+its air-quality grid more precise. The indoor comparison still requires a bedroom sensor.
+The system makes no additional provider requests for these comparisons. [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api) · [AirNow AQI basics](https://www.airnow.gov/aqi/aqi-basics/)
+
+Open-Meteo precipitation is the preceding hour’s accumulation. The timeline now assigns new
+readings to that hour and hides previously fetched rain with ambiguous timing until refreshed.
+The new comparisons use temperature, humidity and AQI. [Open-Meteo Weather API hourly fields](https://open-meteo.com/en/docs#hourly-parameter-definition)
+
 ## 24 November · Workout and bedroom pilot
 
 Comparable run output uses independent ambient observations and preserves the reporting

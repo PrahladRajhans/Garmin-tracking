@@ -662,6 +662,16 @@ def ai_narrator(enable: bool | None = None, model: str | None = None) -> dict[st
 
 
 @mcp.tool()
+def outdoor_conditions_patterns(end: str | None = None) -> dict[str, Any]:
+    """Compare weather and AQI on similar outdoor runs and show paired running heart rate,
+    following sleep, nightly HRV and next-day resting heart rate when coverage is adequate.
+    This reads already saved local conditions and does not make network requests."""
+    from garmin_mcp import environment_review
+
+    return _with_db(lambda c: environment_review.outdoor_patterns(c, _end(c, end)))
+
+
+@mcp.tool()
 def weather_retrieval(enable: bool | None = None, fetch_now: bool = False) -> dict[str, Any]:
     """Opt-in weather and air quality for outdoor runs from Open-Meteo (free, no account).
     Off by default. enable=True/False turns it on or off; fetch_now fills the last 14 days.

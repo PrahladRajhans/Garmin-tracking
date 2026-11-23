@@ -26,6 +26,8 @@ FIELDS = {
     "aqi": (0, 500),
 }
 DETAIL_KIND = "local_conditions_v1"
+OPEN_METEO_SOURCE = "Open-Meteo model, location rounded to ~1 km"
+ALIGNED_RAIN = "preceding_hour"
 BEDROOM_DATASET = "local_bedroom_v1"
 BEDROOM_FIELDS = {"temperature_c": FIELDS["temperature_c"], "humidity_pct": FIELDS["humidity_pct"],
                   "pm25_ug_m3": (0, math.inf)}
@@ -73,8 +75,13 @@ def for_activity(conn: sqlite3.Connection, aid: int) -> dict:
                 snapshot["description"] = label
         if snapshot:
             snapshot.update(source="Garmin saved weather", reference_time=_text(weather.get("issueDate")))
-    return {"garmin_snapshot": snapshot or None,
-            "windows": _payload(conn, aid, DETAIL_KIND) or []}
+    windows = _payload(conn, aid, DETAIL_KIND) or []
+    for window in windows:
+        if (window.get("source") == OPEN_METEO_SOURCE and window.get("kind") == "model"
+                and window.get("precipitation_alignment") != ALIGNED_RAIN):
+            # Older fetches assigned rain to the hour after the API's accumulation.
+            window.pop("precipitation_mm", None)
+    return {"garmin_snapshot": snapshot or None, "windows": windows}
 
 
 def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:

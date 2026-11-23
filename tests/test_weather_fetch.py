@@ -27,7 +27,7 @@ def fake_get(calls):
                            "temperature_2m": [14.0, 15.5, 16.0],
                            "relative_humidity_2m": [80, 70, 999],
                            "wind_speed_10m": [1.0, 2.0, 3.0],
-                           "precipitation": [0, 0, 0]}}
+                           "precipitation": [0, 1, 4]}}
     return get
 
 
@@ -56,11 +56,25 @@ def test_fetch_rounds_location_and_stores_overlapping_hours(conn):
     first, second = windows
     assert first["aqi"] == 151 and first["aqi_standard"] == "US-EPA"
     assert first["kind"] == "model" and first["temperature_c"] == 15.5
+    assert first["precipitation_mm"] == 4  # the 02:00 total belongs to 01:00–02:00
+    assert "precipitation_mm" not in second  # no 03:00 total in this response
     assert "humidity_pct" not in second  # out-of-range value dropped, not stored
     # a second sync doesn't refetch a run that already has windows
     calls.clear()
     assert weather_fetch.fill_recent(conn, today=date(2026, 11, 21),
                                      get=fake_get(calls))["runs_checked"] == 0
+
+
+def test_legacy_rain_is_hidden_without_losing_other_recorded_weather(conn):
+    db.put_activity_detail(conn, 1, conditions.DETAIL_KIND, [
+        {"source": weather_fetch.SOURCE, "kind": "model", "precipitation_mm": 3, "aqi": 100},
+    ])
+    db.put_activity_detail(conn, 2, conditions.DETAIL_KIND, [
+        {"source": "Local rain gauge", "kind": "observation", "precipitation_mm": 3},
+    ])
+    old, gauge = [conditions.for_activity(conn, aid)["windows"][0] for aid in (1, 2)]
+    assert old["aqi"] == 100 and "precipitation_mm" not in old
+    assert gauge["precipitation_mm"] == 3
 
 
 def test_rate_limit_never_breaks_sync(conn):

@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+- Show modelled weather and US EPA AQI separately from observations on comparable-run pages.
+- Add local paired comparisons for outdoor conditions, moving heart rate, following sleep,
+  nightly HRV and next-day resting heart rate. Training exposes the pairs and their coverage,
+  and `outdoor_conditions_patterns` returns the evidence through MCP.
+- Align new Open-Meteo rain totals to the hour they describe. Hide older misaligned rain
+  values from timed overlays while retaining the other saved weather fields.
+
 ## [0.22.0] - 2026-11-24
 
 ### Added

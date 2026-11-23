@@ -19,6 +19,11 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
   the weekly plan above the fold in both themes. Remaining checks on the owner's Mac and iPhone
   include actual model latency, the five-second impression with real data, the private link and
   the product review's 600 KB target.
+- **Outdoor conditions:** `environment_review.outdoor_patterns` reuses stored outdoor
+  condition windows and local matched effort, and joins Garmin sleep/HRV/resting HR only after
+  checking the following sleep interval. Review the Training card and its paired evidence,
+  plus `tests/test_environment_review.py`. On the owner's Mac, check how many contrasts
+  survive the coverage rules before drawing conclusions about personal recovery.
 
 ## 1. The goal
 

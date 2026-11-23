@@ -211,6 +211,28 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   Unavailable Ollama, a timeout or an unfinished response leaves the existing dashboard text
   available and can be retried on a later complete sync.
 
+## Outdoor conditions and following recovery
+
+- Reuse the outdoor run matching rules for run type, pace, moving time and ascent.
+  Compare time-weighted condition medians only when a single source covers at least 80%
+  of each FIT interval. Observation and model windows stay separate. AQI also requires
+  the same standard. The Garmin weather snapshot stays separate.
+- Training takes up to 60 days with one recorded outdoor workout from the last 180 days.
+  Within the same conditions source, reading type and AQI standard, pair runs within 42 days,
+  the same two-decimal start-location cell, and within 3 hours of local time of day.
+  Each day can appear once per exposure/source group. The required contrast is 3 °C, 15
+  relative-humidity percentage points, or 20 AQI points. These are comparison cutoffs.
+- An outcome uses 6 or more separate pairs spanning at least 14 days. Report the median
+  of the within-pair changes (higher minus lower condition value). Follow-up health
+  requires a valid Garmin night on the next local wake date, with its sleep start within
+  24 hours after the run. Each outcome uses only pairs with two readings. Skip days tagged
+  sick, injured or on a break. Date/time matching does not require that the later night's
+  building shares the run location.
+- These comparisons describe associations in the owner's records. Indoor air, route, effort,
+  fitness change, correlated weather variables and other factors can still differ. Outdoor
+  readings describe the area and may use averaged or modelled values. No values are used
+  to adjust scores or prescribe training. [Environmental evidence and limits](research_notes/Garmin%20connector%20feature%20research/environmental_context_feasibility.md)
+
 ## Implemented in v0.13.0 (Phase 13): exact rules
 | Metric | Rule | Result on your data |
 |---|---|---|

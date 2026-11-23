@@ -116,6 +116,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "night": health.sleep_breakdown(conn, night) if night else None,
         "night_summary": night_summary,
         "bedroom_conditions": environment_review.bedroom(conn, end),
+        "outdoor_patterns": environment_review.outdoor_patterns(conn, end, read_metrics=read_run),
         "sleep": conn.execute("SELECT day, sleep_s/3600.0, sleep_start FROM sleep WHERE day "
                               "BETWEEN ? AND ? AND sleep_s >= 3*3600 ORDER BY day",
                               (lo(30), end)).fetchall(),
@@ -892,6 +893,44 @@ def _readiness_benchmark(b: dict, run_ids: set[int]) -> str:
                  f'<p class="sub">{_e(b["interpretation"])}</p>', _e(note), wide=True)
 
 
+def _outdoor_patterns_card(review: dict) -> str:
+    if not review.get("sampled_runs"):
+        return ""
+    patterns = review["patterns"]
+    if not patterns:
+        return _card("Weather, air quality and training",
+                     "<p>There aren’t enough comparable outdoor runs for a personal pattern yet.</p>",
+                     f'{review["sampled_runs"]} single-workout days with saved conditions.'
+                     f' At least {review["minimum_pairs"]} separate pairs are needed.', wide=True)
+    sections = []
+    for item in patterns:
+        standard = conditions.AQI_STANDARDS.get(item["standard"], "")
+        name = item["label"] + (f" ({standard})" if standard else "")
+        kind = "Model estimates" if item["kind"] == "model" else "Observations"
+        rows = "".join(
+            _row(stat["label"], f'{stat["median_delta"]:+g} {_e(stat["unit"])}',
+                 f'{stat["pairs"]} separate pairs') for stat in item["outcomes"])
+        pairs = []
+        visible_outcomes = {outcome["key"] for outcome in item["outcomes"]}
+        for pair in item["pairs"]:
+            lo, hi = pair["lower"], pair["higher"]
+            evidence = " · ".join(f'{label} {hi["outcomes"][key] - lo["outcomes"][key]:+g} {unit}'
+                                  for key, (label, unit) in environment_review.OUTCOMES.items()
+                                  if key in visible_outcomes and key in hi["outcomes"]
+                                  and key in lo["outcomes"])
+            pairs.append(_record_link(f'{hi["day"]} vs {lo["day"]}',
+                                      f'{hi["exposure"]:g} vs {lo["exposure"]:g} {item["unit"]}'
+                                      + (f" · {evidence}" if evidence else "")))
+        sections.append(f'<h4>{_e(name)}</h4><ul class="rows">{rows}</ul>'
+                        f'<details><summary>See the pairs</summary><p class="sub">{kind} · '
+                        f'{_e(item["source"])}</p><ul class="record-list">{"".join(pairs)}</ul>'
+                        '</details>')
+    return _card("Weather, air quality and training", "".join(sections)
+                 + '<p class="sub">Median difference on the days with higher readings. '
+                 'Other conditions can vary too. Outdoor readings describe the run area.</p>',
+                 "Paired outdoor runs at similar effort, location and time of day.", wide=True)
+
+
 def page_training(d: dict[str, Any]) -> str:
     fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " points", nd=1,
                y_label="Smoothed training load (points)")
@@ -913,6 +952,7 @@ def page_training(d: dict[str, Any]) -> str:
         week_card = _card("Training and recovery this week", f'<ul class="rows">{rows}</ul>',
                           f'{_short(week["from"])}–{_short(week["to"])} · recorded data', wide=True)
     body = (week_card
+            + _outdoor_patterns_card(d.get("outdoor_patterns", {}))
             + _readiness_benchmark(d["readiness_benchmark"], {r["activity_id"] for r in d["runs"]})
             + _card("Training load trend", fit, "42-day smoothed load. Tracks training exposure, "
                   "not a direct fitness test.", wide=True)
@@ -1100,7 +1140,10 @@ def _run_conditions_comparison(records: list[dict]) -> str:
         right = f'{_f(item["earlier_value"], 1, unit)} · {_f(item["earlier_hr_bpm"], 1)} bpm'
         standard = conditions.AQI_STANDARDS.get(current["standard"], "")
         label = item["label"] + (f" ({standard})" if standard else "")
-        note = f'Earlier median {right} across {len(item["earlier_runs"])} runs · {current["source"]}'
+        kind = "Model estimate" if current.get("kind") == "model" else "Observation"
+        change = current["hr_bpm"] - item["earlier_hr_bpm"]
+        note = (f'Earlier median {right} across {len(item["earlier_runs"])} runs. '
+                f'Heart-rate difference {change:+.1f} bpm. {kind} · {current["source"]}')
         rows.append(_row(label, _e(left), note))
     return _card("Conditions on similar runs", f'<ul class="rows">{"".join(rows)}</ul>',
                  "This run and earlier efforts, with weather readings covering most of each run.",
