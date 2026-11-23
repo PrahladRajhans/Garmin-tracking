@@ -5,6 +5,7 @@ account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask que
 health and training data without a paid connector.
 
 > **Status:** early scaffold (v0.1.0). Read-only, 4 tools. See [CHANGELOG.md](CHANGELOG.md).
+> **Plan:** see [ROADMAP.md](ROADMAP.md) for decisions and phased build order.
 
 ## How it works
 
