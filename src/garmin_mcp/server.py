@@ -7,7 +7,9 @@ from typing import Any
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 
+from garmin_mcp import db
 from garmin_mcp.client import get_client, parse_date
+from garmin_mcp.config import db_path
 
 load_dotenv()
 
@@ -37,6 +39,24 @@ def get_recent_activities(limit: int = 10) -> list[dict[str, Any]]:
     """Most recent activities (newest first). limit: 1-100."""
     limit = max(1, min(limit, 100))
     return get_client().get_activities(0, limit)
+
+
+@mcp.tool()
+def refresh_data(days: int = 3) -> dict[str, Any]:
+    """Sync the last `days` days (1-30) from Garmin into the local database. Use when data looks stale."""
+    from garmin_mcp.sync import run_sync
+
+    return run_sync(days=max(1, min(days, 30)))
+
+
+@mcp.tool()
+def data_coverage() -> dict[str, Any]:
+    """What is stored locally: date range per dataset, activity counts, last sync and its errors."""
+    conn = db.connect(db_path())
+    try:
+        return db.coverage(conn)
+    finally:
+        conn.close()
 
 
 def main() -> None:
