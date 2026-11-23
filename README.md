@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.13.1: Phases 1–13 done. 43 tools, a multi-page dashboard, and optional private Cloudflare publishing (off by default; account setup and phone verification still required). Updates install themselves on every sync.
+> **Status:** v0.13.2: 43 tools, a script-free dashboard, safer sync/update recovery, and optional private Cloudflare publishing (off by default; account setup and phone verification still required).
 
 ## What this is, in one minute
 
@@ -256,6 +256,16 @@ redirects **without uploading**. A disabled or failed check exits with status 1.
 `GARMIN_DASHBOARD_PUBLISH` stops future uploads; existing cloud copies remain protected by Access.
 
 ## Development
+
+The sync gate uses the last fully completed, error-free run of all requested sources. Failed
+or interrupted runs retry on the next scheduled execution. Endpoint success alone does not delay
+a retry. Dates use `GARMIN_TZ` or the saved athlete timezone. Official activity pagination has a
+request limit and rejects repeated pages, reporting a failure instead of silently truncating history.
+
+Self-update fast-forwards only. If dependency installation fails after an update, the CLI stops
+before syncing and keeps a `pending-install-*.json` marker in the data directory. The next run
+retries installation even when no newer commit exists. See [docs/OPERATIONS.md](docs/OPERATIONS.md)
+for the Mac/cloud boundary, backups and recovery. CI covers PRs and `chatgpt/**` topic branches.
 
 ```bash
 pip install -e '.[dev]'

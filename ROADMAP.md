@@ -64,6 +64,22 @@ pass on Garmin labels (`VERIFICATION_LOG.md`).
 
 ## Phases ahead (in order)
 
+### Reliability, evidence and usability review (owner request, 23 November)
+
+This review extends A–D without changing the exclusions or adding unverified scores.
+
+| Order | Front | Changes to implement and validate | Status |
+|---|---|---|---|
+| 1 | Operations | Record completed syncs instead of individual successful requests; use athlete-local dates; guard pagination/chunk loops; stop/retry safely after dependency-install failures; run CI on topic branches | implemented in v0.13.2; validation/rollout in progress |
+| 2 | Accuracy | Align sleep fallback targets and baseline sufficiency; interpret UTC explicitly; remove unsupported heart-rate health cutoffs and overconfident run/recovery advice | queued |
+| 3 | UI/UX | Honest empty states, elapsed-date charts, readable contrast, keyboard focus, touch targets, accessible chart values; test phone/tablet/desktop and dark mode | queued |
+| 4 | Evidence and rollout | Source-backed research ledger, realistic synthetic regression checks, synced documentation, PR/CI/merge and actual Mac/phone checks | network access restored; PR #8 merged after both CI jobs passed; live device checks remain pending |
+
+Deferred research: retrieve primary VO2max tables, re-check statistical calibration and formula
+sources against full papers, benchmark competitor workflows with actual captures. Do not invent
+norms, alter recovery weights, label correlations causal, or expose a cloud MCP endpoint before
+an authentication/authorization and private-data deployment design has been verified.
+
 ### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
 | ID | Item | Backlog/source |
 |---|---|---|
@@ -215,7 +231,7 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | 5 | Optional: weights in strength sessions; watch "Log HRV"; Garmin Connect max HR setting once #2 is known | open |
 | 6 | Rotate the Personal API key | deferred by you |
 | 7 | Cloudflare account, free-plan confirmation, exact-email Access apps and locally saved token | needed only to activate A; no secrets in chat |
-| 8 | Apply the saved cloud network additions for GitHub API and source research | needed to open/verify a PR, check CI and merge; current Git transport read access is working |
+| 8 | Cloud network access for GitHub API and source research | ✅ enabled by owner; API access verified and PR #8 merged after CI |
 
 ## What's left (full backlog, 2026-11-23)
 | Area | Items | State |
