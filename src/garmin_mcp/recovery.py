@@ -8,7 +8,7 @@ Methods (see METRICS.md §Recovery and VERIFICATION_LOG.md):
   42-day EWMA). Needs >= 21 nights, matching Garmin's ~3 weeks before HRV status appears.
 - RHR / respiration: today's value vs 60-day mean and SD (z-score).
 - Sleep: last night vs 28-day personal norm; 7-day debt vs need (Garmin sleep need when
-  available, else 7 h, the AASM adult minimum); bedtime consistency = SD of sleep start.
+  available, else an 8 h planning fallback); bedtime consistency = SD of sleep start.
 - Readiness (ours): mean of signed z-scores of the available components, each shown. This is a
   transparent heuristic; no validated composite exists. Garmin's readiness is shown beside it.
 - Illness/strain flag: >= 2 of {HRV z < -1, RHR z > +1, respiration z > +1} on each of the last
@@ -27,7 +27,8 @@ BASELINE_DAYS = 60
 MIN_BASELINE_NIGHTS = 21
 SWC_FACTOR = 0.5
 SLEEP_NORM_DAYS = 28
-DEFAULT_SLEEP_NEED_H = 7.0
+DEFAULT_SLEEP_NEED_H = 8.0  # shared planning fallback, not a measured individual requirement
+MIN_SLEEP_BASELINE_NIGHTS = 14
 MIN_VALID_NIGHT_H = 3.0  # shorter records are treated as incomplete (watch off, nap only)
 
 
@@ -63,7 +64,7 @@ def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict
             if v / 3600 < MIN_VALID_NIGHT_H},
         "sleep_need_h": {d: v / 60 for d, v in _series(
             conn, "SELECT day, sleep_need_min FROM sleep WHERE day BETWEEN ? AND ?",
-            start, end).items()},
+            start, end).items() if v > 0},
     }
     # Days tagged sick / injured / break are left out of baselines (Bevel's activity status),
     # except the day being scored, so being ill doesn't redefine "normal".
@@ -124,26 +125,32 @@ def hrv_status(series: dict[str, float], day: str) -> dict[str, Any]:
 
 def sleep_status(series: dict[str, dict[str, float]], day: str) -> dict[str, Any]:
     sleep = series["sleep_h"]
-    norm = _stats([sleep[d] for d in _days_back(day, SLEEP_NORM_DAYS + 1)[:-1] if d in sleep])
+    prior = [sleep[d] for d in _days_back(day, SLEEP_NORM_DAYS + 1)[:-1] if d in sleep]
+    norm = _stats(prior) if len(prior) >= MIN_SLEEP_BASELINE_NIGHTS else None
     week = _days_back(day, 7)
     debt = 0.0
     nights = 0
+    inputs = []
     for d in week:
         if d in sleep:
             need = series["sleep_need_h"].get(d, DEFAULT_SLEEP_NEED_H)
             debt += max(0.0, need - sleep[d])
             nights += 1
+            inputs.append({"day": d, "sleep_h": round(sleep[d], 2), "need_h": need,
+                           "shortfall_h": round(max(0.0, need - sleep[d]), 2),
+                           "source": "Garmin sleep need" if d in series["sleep_need_h"]
+                           else "8 h planning fallback"})
     incomplete = [d for d in week if d in series["sleep_incomplete_h"]]
     return {
         "last_night_h": round(sleep[day], 2) if day in sleep else None,
         "incomplete_records_7d": incomplete,
         "norm_28d_h": round(norm[0], 2) if norm else None,
         "z": _z(sleep.get(day), norm),
-        "debt_7d_h": round(debt, 1), "valid_nights_7d": nights,
+        "debt_7d_h": round(debt, 1) if nights else None, "valid_nights_7d": nights,
+        "debt_inputs": inputs, "baseline_nights": len(prior),
         "debt_note": f"sum of shortfalls on valid nights (>= {MIN_VALID_NIGHT_H:.0f} h); missing "
                      "or incomplete nights are not counted",
-        "need_source": "Garmin sleep need" if series["sleep_need_h"] else
-                       f"{DEFAULT_SLEEP_NEED_H} h default (AASM adult minimum)",
+        "need_source": "Garmin sleep need where available; otherwise 8 h planning fallback",
     }
 
 
@@ -159,9 +166,9 @@ def bedtime_consistency(conn: sqlite3.Connection, day: str, nights: int = 14) ->
 
 
 def _metric_z(series: dict[str, float], day: str) -> float | None:
-    ref = _stats([series[d] for d in _days_back(day, BASELINE_DAYS + 1)[:-1] if d in series])
-    if ref is None or len([d for d in _days_back(day, BASELINE_DAYS) if d in series]) < \
-            MIN_BASELINE_NIGHTS:
+    prior = [series[d] for d in _days_back(day, BASELINE_DAYS + 1)[:-1] if d in series]
+    ref = _stats(prior)
+    if ref is None or len(prior) < MIN_BASELINE_NIGHTS:
         return None
     return _z(series.get(day), ref)
 
@@ -249,6 +256,7 @@ def recovery_trend(conn: sqlite3.Connection, end: str, days: int = 28) -> dict[s
 def suggestion(r: dict[str, Any]) -> dict[str, str]:
     """Rule-based training suggestion; every branch states its reason."""
     garmin_level = (r["garmin"] or {}).get("level")
+    garmin_note = f"Garmin readiness {garmin_level}" if garmin_level else "Garmin readiness unavailable"
     state = r["ours"]["state"]
     status = r.get("activity_status")
     if status:
@@ -259,12 +267,15 @@ def suggestion(r: dict[str, Any]) -> dict[str, str]:
                 "why": "illness/strain pattern on two consecutive days"}
     if state == "well below usual" or garmin_level in ("POOR",):
         return {"suggest": "rest or easy recovery session",
-                "why": f"our readiness is {state}; Garmin readiness {garmin_level}"}
+                "why": f"our readiness is {state}; {garmin_note}"}
     if state == "below usual" or garmin_level == "LOW":
         return {"suggest": "easy aerobic only, skip intensity",
-                "why": f"our readiness is {state}; Garmin readiness {garmin_level}"}
+                "why": f"our readiness is {state}; {garmin_note}"}
+    if state == "calibrating":
+        return {"suggest": "not enough recovery data for a training suggestion",
+                "why": "Personal baselines are still calibrating; " + garmin_note}
     if state == "fresher than usual" and garmin_level in ("HIGH", "PRIME"):
         return {"suggest": "good day for a key session (intervals, tempo or long run)",
                 "why": "both our readiness and Garmin's are high"}
     return {"suggest": "planned training is fine",
-            "why": f"our readiness is {state}; Garmin readiness {garmin_level}"}
+            "why": f"our readiness is {state}; {garmin_note}"}

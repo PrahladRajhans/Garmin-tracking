@@ -53,6 +53,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.12.0 | Phase 11: dashboard v2 (multi-page) + Phase 12: sleep breakdown, HR dip, activity status, pace of ageing, marathon shape, shifts, monthly report, running breakdown; sync gate | done |
 | 0.13.0 | Phase 13: correlations explorer, test-run tracking, recovery weighting study | done |
 | 0.13.1 | Private hosting preparation (off by default), constant-signal crash fix, continuation review | implemented locally; live hosting and CI verification pending |
+| 0.13.2 | Sync completion/retry, local dates, updater recovery, loop guards | merged in PR #9 after both CI jobs passed |
+| 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | 102 local tests pass; CI/merge pending |
 | 0.14.0 | Phase 14: race readiness/taper (once a race is set), VO2max norm bar (needs a citable table), phone check | waiting on inputs |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
@@ -71,7 +73,7 @@ This review extends A–D without changing the exclusions or adding unverified s
 | Order | Front | Changes to implement and validate | Status |
 |---|---|---|---|
 | 1 | Operations | Record completed syncs instead of individual successful requests; use athlete-local dates; guard pagination/chunk loops; stop/retry safely after dependency-install failures; run CI on topic branches | implemented in v0.13.2; validation/rollout in progress |
-| 2 | Accuracy | Align sleep fallback targets and baseline sufficiency; interpret UTC explicitly; remove unsupported heart-rate health cutoffs and overconfident run/recovery advice | queued |
+| 2 | Accuracy | Align sleep fallback/baselines, UTC and advice; repair study sampling/zero handling; validate workout/override inputs | implemented v0.13.3, validation in progress; weights unchanged |
 | 3 | UI/UX | Honest empty states, elapsed-date charts, readable contrast, keyboard focus, touch targets, accessible chart values; test phone/tablet/desktop and dark mode | queued |
 | 4 | Evidence and rollout | Source-backed research ledger, realistic synthetic regression checks, synced documentation, PR/CI/merge and actual Mac/phone checks | network access restored; PR #8 merged after both CI jobs passed; live device checks remain pending |
 

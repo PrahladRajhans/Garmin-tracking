@@ -70,7 +70,7 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Nightly HRV input | Garmin overnight HRV (`hrv.last_night_avg`); history filled from export health status (`health_status.hrv`) |
 | HRV state | 7-day mean of ln HRV (≥4 of 7 nights) vs 60-day mean ± 0.5 SD (≥21 nights, else "calibrating") |
 | RHR / respiration z | today vs mean and SD of the previous 60 days (≥21 days) |
-| Sleep | valid nights only (≥3 h; shorter records are flagged as incomplete). z = last night vs previous 28 valid nights. Debt = Σ max(0, need − actual) over 7 valid nights; need = Garmin sleep need, else 7 h (AASM adult minimum). Bedtime consistency = SD of sleep start over 14 nights |
+| Sleep | valid nights only (≥3 h; shorter records flagged incomplete). z = last night vs valid nights in the prior 28 calendar days (≥14 required as of v0.13.3). Debt = Σ max(0, need − actual) over valid nights in the last 7 calendar days; need = Garmin sleep need, else 8 h planning fallback (unified v0.13.3). Bedtime consistency = SD of sleep start over 14 nights |
 | Our readiness | mean of signed z-scores clipped to ±3 (HRV +, sleep +, RHR −, respiration −). States: ≥0.5 fresher than usual · −0.5…0.5 normal · −1…−0.5 below usual · <−1 well below usual. Heuristic; Garmin readiness shown beside it |
 | Illness/strain flag | ≥2 of {HRV z<−1, RHR z>+1, respiration z>+1} on each of the last 2 days |
 | Suggestion | illness flag → rest/very easy · well below usual or Garmin POOR → rest/easy · below usual or Garmin LOW → easy aerobic only · fresher + Garmin HIGH/PRIME → key session · else planned training fine |
@@ -159,7 +159,7 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 ## Implemented in v0.12.0 (Phase 12): exact rules
 | Metric | Rule | Source / check |
 |---|---|---|
-| Heart-rate dip | (mean awake HR on the previous day, outside sleep start − 30 min) − sleep avg HR, ÷ awake mean. ≥ 10 % = healthy dip | Bevel; nocturnal "dipper" threshold from blood-pressure research, used here as a heuristic |
+| Heart-rate difference | (recorded awake mean on prior day − sleep avg HR) ÷ awake mean × 100. Known sleep windows excluded; stop 30 min before current sleep; require ≥60 positive daytime samples. UTC interpretation explicit. | Descriptive only. The prior BP-derived ≥10% healthy cutoff was removed in v0.13.3; not a recovery diagnosis |
 | Sleep breakdown | Garmin `sleepScores` parts with `qualifierKey` and optimal start/end, shown as-is | Garmin |
 | Activity status | Days tagged sick/injured/break/illness removed from every recovery baseline series (except the day scored); suggestion becomes "advice paused" | Bevel |
 | Pace of ageing | Theil-Sen slope of Garmin fitness age × 365 over 180 days; needs ≥ 30 values spanning ≥ 90 days. 1.0 = calendar pace | Whoop scale. Check: 30 days gave 3.1 from a 0.3-yr wobble → span rule added |
@@ -195,3 +195,21 @@ The age/sex VO2max bar remains pending: the primary norm table could not be retr
 the cloud network policy blocks the medical-reference sites tested. No norm values, percentiles,
 age interpolation, or replacement formulas have been added. Obtain and cite the exact primary
 table before implementing this item. Existing Garmin and effective VO2max calculations are unchanged.
+
+## v0.13.3: accuracy corrections
+
+- One shared 8-hour sleep planning fallback (`recovery.DEFAULT_SLEEP_NEED_H`) drives debt,
+  scores and bedtime when Garmin's value is absent/nonpositive. This is our configurable-code
+  design assumption, **not** the AASM minimum or a measured personal need. The primary
+  [AASM/SRS consensus](https://pmc.ncbi.nlm.nih.gov/articles/PMC4434546/) says adults should
+  sleep **7 or more hours** regularly; it does not justify treating 7 or 8 as this person's exact need.
+- Debt includes `debt_inputs` with each day's hours, target, shortfall and source; missing nights
+  are not imputed, and zero observed nights returns null debt. Sleep z needs ≥14 prior valid
+  nights; RHR/respiration need ≥21 prior values. These sufficiency thresholds are design rules.
+- Equal clipped readiness weights, TRIMP, HRmax policy, effective VO2max and FDR thresholds are
+  unchanged. No new weight study on real data has been performed. Composite variants now use
+  the same paired days per outcome; HRV-only days are retained and zero correlations are valid.
+- The heart-rate comparison no longer assigns health status. Daytime activity/sampling and wrist
+  measurement can influence it. Fitness-age slope is a trend in Garmin's score, not biological age.
+- See [accuracy review](research_notes/Garmin%20connector%20feature%20research/accuracy_review_2026-11.md)
+  for source access, limitations and the further verification queue.

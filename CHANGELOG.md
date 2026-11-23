@@ -9,6 +9,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.13.3] - 2026-11-23
+
+Accuracy and input-validation review (step 2).
+
+- Unified sleep score/debt/bedtime fallback at 8 hours, explicitly a planning assumption,
+  not AASM's adult minimum or a measured personal need. Debt returns its per-night inputs;
+  no valid nights means unavailable debt rather than zero. Sleep z-scores require 14 prior
+  valid nights; resting-HR/respiration z-scores correctly require 21 prior values.
+- Calibrating recovery no longer produces "planned training is fine". Missing Garmin
+  readiness is described as unavailable rather than "None". Illness/low-readiness rules remain.
+- Day/sleep HR comparison interprets normalized timestamps as UTC, excludes known sleep
+  windows and invalid negative samples, and removes the unsupported 10% health cutoff.
+  Run drift advice now acknowledges alternative causes. Fitness-age trend wording no longer
+  presents it as biological ageing.
+- Recovery-weight study retains HRV-only days, compares composites on matched days per outcome,
+  and treats zero correlation as zero. Weights and the >0.05 improvement-on-both-outcomes rule
+  remain unchanged; historical real-data figures have not been recomputed.
+- Malformed workouts return validation problems, including nonpositive/nonfinite time/distance,
+  bad targets, ambiguous targets, and excessive nesting/step counts. Invalid numeric, pace
+  and timezone athlete overrides are rejected before saving/rebuilding.
+- Primary AASM sleep consensus and Python datetime behavior were checked; the research ledger
+  distinguishes retrieved evidence, practitioner heuristics and pending full-paper validation.
+- Validation: 102 local tests and Ruff pass, including UTC window comparisons, baseline limits,
+  debt provenance, paired study days, zero correlations and malformed/cyclic workout inputs.
+
 ## [0.13.2] - 2026-11-23
 
 Operations and loop review (step 1 of the owner-requested review).

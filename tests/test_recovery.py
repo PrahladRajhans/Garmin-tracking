@@ -55,3 +55,29 @@ def test_incomplete_night_excluded(conn):
     conn.execute("UPDATE sleep SET sleep_s=840 WHERE day=?", (END.isoformat(),))
     s = recovery.readiness(conn, END.isoformat())["sleep"]
     assert s["last_night_h"] is None and END.isoformat() in s["incomplete_records_7d"]
+
+
+def test_sleep_fallback_is_shared_and_debt_inputs_are_traceable(conn):
+    from garmin_mcp import scores
+
+    _make(conn)
+    conn.execute("UPDATE sleep SET sleep_need_min=NULL, sleep_s=7*3600")
+    s = scores.daily_scores(conn, END.isoformat())["sleep"]
+    r = recovery.readiness(conn, END.isoformat())["sleep"]
+    assert s["need_h"] == 8 and s["pct"] == 88 and r["debt_7d_h"] == 7
+    assert len(r["debt_inputs"]) == 7
+    assert all(x["need_h"] == 8 and x["shortfall_h"] == 1 for x in r["debt_inputs"])
+
+
+def test_short_sleep_baseline_does_not_generate_reassuring_advice(conn):
+    _make(conn, days=10)
+    r = recovery.readiness(conn, END.isoformat())
+    assert r["ours"]["state"] == "calibrating" and r["sleep"]["z"] is None
+    assert "not enough recovery data" in recovery.suggestion(r)["suggest"]
+
+
+def test_resting_hr_baseline_requires_21_prior_values():
+    series = {(END - timedelta(days=i)).isoformat(): float(45 + i % 4) for i in range(21)}
+    assert recovery._metric_z(series, END.isoformat()) is None
+    series[(END - timedelta(days=21)).isoformat()] = 48.
+    assert recovery._metric_z(series, END.isoformat()) is not None
