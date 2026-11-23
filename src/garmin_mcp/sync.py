@@ -17,7 +17,7 @@ import sqlite3
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from garmin_mcp import db, fit
@@ -292,6 +292,8 @@ def main() -> None:
                         help="both (default): official API + unofficial extras")
     parser.add_argument("--delay", type=float, default=0.4, help="seconds between API calls")
     parser.add_argument("--coverage", action="store_true", help="print stored-data coverage only")
+    parser.add_argument("--force", action="store_true",
+                        help="always do a full sync (skip the twice-a-day gate)")
     parser.add_argument("--no-update", action="store_true",
                         help="skip the automatic code update from GitHub main")
     args = parser.parse_args()
@@ -304,7 +306,53 @@ def main() -> None:
         conn = db.connect(db_path())
         print(json.dumps(db.coverage(conn), indent=2))
         return
+    if not args.force and not args.since:
+        decision = gate()
+        print(json.dumps({"gate": decision}))
+        if not decision["sync"]:
+            return
     print(json.dumps(run_sync(args.days, args.since, args.source, args.delay), indent=2))
+
+
+FULL_SYNC_EVERY_H = 11.0
+
+
+def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
+    """Decide whether a scheduled run should do a full sync.
+
+    You sync your phone ~twice a day, so: full sync when the last successful one is >= 11 h old;
+    otherwise a single cheap probe (today's activity list) and a sync only if it shows an
+    activity we don't have yet. `refresh_data` and `--force` bypass this.
+    """
+    from datetime import UTC
+
+    now = now or datetime.now(UTC)
+    conn = db.connect(db_path())
+    try:
+        row = conn.execute("SELECT MAX(ts) FROM sync_log WHERE status='ok' AND "
+                           "dataset NOT LIKE 'probe%'").fetchone()
+        last = datetime.fromisoformat(row[0]) if row and row[0] else None
+        if last is None or (now - last).total_seconds() >= FULL_SYNC_EVERY_H * 3600:
+            return {"sync": True, "reason": "last full sync >= 11 h ago" if last else
+                    "no previous sync"}
+        try:
+            ids = (probe or _probe_today)()
+        except Exception as exc:  # noqa: BLE001 - probe failure: wait for the 11 h sync
+            return {"sync": False, "reason": f"probe failed ({type(exc).__name__}); waiting"}
+        known = {r[0] for r in conn.execute("SELECT activity_id FROM activities")}
+        new = [i for i in ids if i not in known]
+        return {"sync": bool(new), "reason": f"{len(new)} new activities" if new else
+                f"nothing new; last full sync {(now - last).total_seconds() / 3600:.1f} h ago"}
+    finally:
+        conn.close()
+
+
+def _probe_today() -> list[int]:
+    from datetime import date as _date
+
+    src = _personal_api()
+    day = _date.today().isoformat()
+    return [int(a["activityId"]) for a in src.list_activities(day, day) if "activityId" in a]
 
 
 if __name__ == "__main__":
