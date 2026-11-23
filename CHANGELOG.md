@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+- CI uses the Node 24 checkout and Python setup actions, pinned to their upstream release
+  commits. Workflow permissions are read-only and checkout credentials are not retained.
+
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
