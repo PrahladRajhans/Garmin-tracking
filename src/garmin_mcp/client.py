@@ -31,8 +31,19 @@ def get_client() -> Garmin:
     return _client
 
 
+def today() -> date:
+    """Today in GARMIN_TZ (IANA name, e.g. Asia/Kolkata) if set, else the computer's local date."""
+    tz = os.getenv("GARMIN_TZ")
+    if tz:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(tz)).date()
+    return date.today()
+
+
 def parse_date(value: str | None) -> str:
     """Validate a YYYY-MM-DD string; default to today."""
     if not value:
-        return date.today().isoformat()
+        return today().isoformat()
     return date.fromisoformat(value).isoformat()

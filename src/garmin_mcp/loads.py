@@ -169,7 +169,16 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
     hrmax = observed_max
     lthr = round(best20) if best20 else (garmin_lthr[0] if garmin_lthr else None)
     notes = []
-    if garmin_max and observed_max and garmin_max[0] - observed_max >= 8:
+    from garmin_mcp import athlete
+
+    overrides = {}
+    if (v := athlete.get(conn, "hr_max_override")) is not None:
+        hrmax, overrides["hr_max"] = float(v), "your setting"
+    if (v := athlete.get(conn, "lthr_override")) is not None:
+        lthr, overrides["lthr"] = float(v), "your setting"
+    tp = athlete.get(conn, "threshold_pace_override")
+    if garmin_max and observed_max and garmin_max[0] - observed_max >= 8 and \
+            "hr_max" not in overrides:
         notes.append(f"Garmin's max-HR setting ({garmin_max[0]:.0f}) is {garmin_max[0] - observed_max:.0f}"
                      f" bpm above the highest HR recorded in the last year ({observed_max:.0f}); "
                      "using the observed value. Override if you have tested a higher max.")
@@ -182,6 +191,8 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         "hr_max": hrmax, "hr_rest": round(rest, 1) if rest else None, "lthr": lthr,
         "garmin": {"hr_max_setting": garmin_max[0] if garmin_max else None,
                    "lthr": garmin_lthr[0] if garmin_lthr else None},
+        "observed_hr_max": observed_max, "overrides": overrides,
+        "threshold_speed_override": athlete.pace_to_speed(tp) if tp else None,
         "sources": {"hr_max": "highest activity max HR, last 365 days",
                     "hr_rest": "median daily resting HR, last 60 days",
                     "lthr": "best 20-min rolling HR on a run >= 25 min, last 365 days"},
@@ -381,7 +392,8 @@ def rebuild(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, Any]
     th = thresholds(conn, asof)
     asof = th["asof"]
     cs = critical_speed(pace_curve(conn, asof, 180)["curve"])
-    threshold_speed = cs["cs_m_s"] if cs and cs.get("maximal") else None  # no rTSS otherwise
+    threshold_speed = th.get("threshold_speed_override") or (
+        cs["cs_m_s"] if cs and cs.get("maximal") else None)  # no rTSS otherwise
     conn.execute("DROP TABLE IF EXISTS activity_load")
     conn.execute("CREATE TABLE activity_load (activity_id INTEGER PRIMARY KEY, day TEXT, type TEXT,"
                  " trimp REAL, trimp_from TEXT, rtss REAL, z1_s REAL, z2_s REAL, z3_s REAL,"
@@ -519,9 +531,12 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
     if th["lthr"] and th["hr_max"]:
         add("LTHR below HRmax", th["lthr"] < th["hr_max"],
             f"LTHR {th['lthr']} vs HRmax {th['hr_max']}", "LTHR < HRmax")
+    obs = th.get("observed_hr_max") or th["hr_max"]
     add("Garmin max-HR setting vs observed", th["garmin"]["hr_max_setting"] is None or
-        abs((th["garmin"]["hr_max_setting"] or 0) - (th["hr_max"] or 0)) < 8,
-        f"Garmin {th['garmin']['hr_max_setting']} vs observed {th['hr_max']}", "within 8 bpm")
+        abs((th["garmin"]["hr_max_setting"] or 0) - (obs or 0)) < 8,
+        f"Garmin {th['garmin']['hr_max_setting']} vs observed {obs}"
+        + (" (you set an override)" if "hr_max" in th.get("overrides", {}) else ""),
+        "within 8 bpm")
 
     # 6. Training load per run: our TRIMP vs Garmin load should correlate across runs.
     rows = conn.execute("SELECT trimp, garmin_load FROM activity_load WHERE type IN "
@@ -531,5 +546,12 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
     add("Per-run TRIMP vs Garmin training load", None if r is None else r > 0.6,
         f"r = {r:.2f} over {len(rows)} runs" if r is not None else "fewer than 10 runs",
         "r > 0.6")
+    # 7. Our stream-derived running form vs Garmin's own session averages.
+    from garmin_mcp import coaching
+
+    for k, v in coaching.session_unit_check(conn).items():
+        add(f"Running form unit check: {k}", v["median_abs_diff_pct"] <= 3,
+            f"median diff {v['median_abs_diff_pct']}% over {v['runs']} runs",
+            "within 3% of Garmin's FIT session average")
     return {"asof": asof, "all_ok": all(c["ok"] is not False for c in checks),
             "checks": checks, "threshold_notes": th["notes"]}

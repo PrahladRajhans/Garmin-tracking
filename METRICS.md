@@ -103,6 +103,21 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | LTHR < HRmax | — | 166 < 193 |
 | Garmin max-HR setting vs observed | within 8 bpm | **flag:** 209 vs 193 |
 
+## Implemented in v0.6.0 (Phase 5): exact rules
+| Item | Rule |
+|---|---|
+| Steady run | ≥ 20 min moving (speed > 1 m/s) and 1-min speed CV < 15 % |
+| Efficiency factor | Minetti-graded speed (m/min) ÷ average HR |
+| Decoupling (Pa:HR) | (EF 1st half − EF 2nd half) / EF 1st half × 100; < 5 % = Friel heuristic |
+| HR drift | average HR 2nd half − 1st half (steady runs) |
+| Cadence | FIT one-foot cadence × 2 (spm) |
+| Vertical ratio | vertical oscillation / step length × 100 (matches Garmin's session value) |
+| Matched-pace norm | median of runs within ±15 s/km (widened to ±30 if < 3 runs) in 180 days |
+| Form trends | monthly medians within your median pace ± 30 s/km |
+| Heat effect | regress HR on speed across runs, then the residual on watch temperature: slope in bpm/°C (≥ 8 runs); watch temperature reads high, so only the slope is used |
+| Fitness age | Garmin's value and Garmin's own levers (target, potential age) |
+| Goal verdict (v0.7.0) | gap = median prediction vs target: ≤ 0 on track · ≤ 3 % within reach · ≤ 8 % ambitious · > 8 % very ambitious (heuristic bands); cautions for > 10 % method spread or volume below the usual range |
+
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.
 

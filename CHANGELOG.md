@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23
+
+Phase 6: memory, goals, provenance (ROADMAP 6.1–6.4).
+
+### Added
+- `athlete.py`: settings, goals and notes, with explicit placeholders for inputs not yet given (tested max HR, LTHR, threshold pace, goal race, weekly km target, timezone, injuries). Overrides feed thresholds and all calculations. Tools `athlete_context`, `update_athlete_setting`, `add_athlete_note`.
+- `goals.py` + tool `goal_check`:
+  - Required pace and VDOT compared with predictions from several methods and Garmin's.
+  - Verdict based on the **median** prediction, never the most optimistic one.
+  - Cautions when methods disagree (> 10 %) or volume is below the usual range for the distance.
+- Provenance block on every tool result (data date, last sync, source priority, `garmin_*` convention).
+- `GARMIN_TZ` sets what "today" means.
+- `ROADMAP.md`: Phase 8 (insight engine, levels 1–3) and Phase 9 (dashboard) added from the new research note; inputs table with placeholders; table of problems caused by incomplete information.
+
+## [0.6.0] - 2026-11-23
+
+Phase 5: workout coaching (ROADMAP 5.1–5.8).
+
+### Added
+- `coaching.py` + tools `run_analysis`, `running_form_trends`, `activity_stream`, `sport_trends`, `metric_glossary`, `fitness_age`:
+  - 5.1 Efficiency factor (graded speed / HR) and aerobic decoupling (Pa:HR) for steady runs.
+  - 5.2 Running form (cadence, step length, ground contact, vertical oscillation/ratio, power) compared with your norm **at matched pace** (±15 s/km, widening to ±30); monthly trends within your usual pace band.
+  - 5.3 Facts for an activity recap (decoupling, splits, efficiency and form vs norm, heat, Garmin TE label).
+  - 5.4 Downsampled activity stream.
+  - 5.5 Personal heat effect: bpm per °C from your own runs.
+  - 5.6 Metric glossary (meaning, typical range, unit, how to improve).
+  - 5.7 Fitness age with Garmin's own levers and potential ages.
+  - 5.8 Swim and strength trends.
+- Sense check: our stream-derived running form vs Garmin's FIT session averages. Vertical ratio 0.22 %, ground contact 0.0 %, step length 0.03 %, cadence 1.2 % (median, 17 runs).
+- `research_notes/.../insights_and_dashboards.md`: insight levels 1–3 with statistical rules, what others do and how, dashboard design, 24-item backlog.
+- Tests (36 total).
+
+### Fixed
+- Goal verdict no longer picks the most optimistic prediction. Found while testing: a 50:00 10K looked "on track" despite a 26 % method spread and ~2 km/week volume.
+
 ## [0.5.0] - 2026-11-23
 
 Phase 4: training load & performance (ROADMAP 4.1–4.11).

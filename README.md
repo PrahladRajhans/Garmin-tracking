@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.5.0, Phase 4: training load, performance, weekly review, swim/strength analytics and self-checks, on full history in local tables. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.7.0: Phases 1–6 done (data, recovery, load & performance, running/swim/strength coaching, goals and memory). 24 tools. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -41,6 +41,16 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `performance(days=90)` | Pace curve, critical speed, effective VO2max, race predictions (several methods + Garmin's) |
 | `weekly_review(end?)` | Last 7 days vs previous 4 weeks: volume, load, intensity, form, recovery |
 | `sense_checks(end?)` | Self-checks of our calculations against Garmin's values and physics |
+| `run_analysis(activity_id)` | Run deep dive: splits, efficiency, decoupling, HR drift, running form vs your norm at the same pace, similar runs, heat effect, recap facts |
+| `running_form_trends(days=365)` | Monthly form and efficiency within your usual pace band |
+| `activity_stream(activity_id, every_s=10)` | Downsampled HR/pace/cadence/altitude/power series |
+| `sport_trends(sport='swim'\|'strength')` | Swim pace/SWOLF by stroke, or strength sessions/sets/reps |
+| `metric_glossary(metric?)` | Meaning, typical range, unit, how to improve |
+| `fitness_age()` | Garmin fitness age with its levers and targets |
+| `athlete_context()` | Profile, settings, goals, notes and open questions (inputs still needed) |
+| `update_athlete_setting(key, value)` | Save a stated input, e.g. tested max HR or goal race; recalculates |
+| `add_athlete_note(text, kind)` | Save a note, decision or preference |
+| `goal_check()` | Goal race vs current fitness (median of methods, cautions) |
 | `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
 | `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
 | `data_coverage()` | What is stored, date ranges, last sync and errors |
@@ -159,6 +169,7 @@ Optional environment variables (or a `.env` file, see `.env.example`):
 | `GARMIN_EMAIL` / `GARMIN_PASSWORD` | unset | Fallback login if no tokens exist (prefer the login script) |
 | `GARMIN_DATA_DIR` | `~/.garmin-mcp` | Database and FIT files |
 | `GARMIN_DB_PATH` | `$GARMIN_DATA_DIR/garmin.db` | SQLite file |
+| `GARMIN_TZ` | computer's local time | IANA timezone for "today", e.g. `Asia/Kolkata` |
 
 ## Development
 
@@ -185,6 +196,9 @@ src/garmin_mcp/
   insights.py # health snapshot, daily brief, trends, activity views
   recovery.py # Phase 3: HRV baseline, readiness, illness flag
   loads.py    # Phase 4: thresholds, TRIMP, CTL/ATL/TSB, pace curve, predictions, sense checks
+  coaching.py # Phase 5: run analysis, form at matched pace, glossary, fitness age
+  athlete.py  # Phase 6: settings, goals, notes, placeholders
+  goals.py    # Phase 6: goal reality check
   verify.py   # data-quality checks (garmin-mcp-verify)
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/

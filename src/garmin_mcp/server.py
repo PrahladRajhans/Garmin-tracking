@@ -27,10 +27,26 @@ mcp = MCPServer(
 )
 
 
+def _provenance(conn: sqlite3.Connection) -> dict[str, Any]:
+    try:
+        through = conn.execute("SELECT MAX(day) FROM daily").fetchone()[0]
+        last = conn.execute("SELECT MAX(ts) FROM sync_log WHERE status='ok'").fetchone()[0]
+    except sqlite3.OperationalError:
+        through = last = None
+    return {"data_through": through, "last_successful_sync": last,
+            "sources": "local database: Garmin Personal API > unofficial Garmin Connect > "
+                       "Garmin data export",
+            "convention": "garmin_* = Garmin's own values; other numbers are computed by this "
+                          "connector (formulas in METRICS.md)"}
+
+
 def _with_db(fn: Callable[[sqlite3.Connection], Any]) -> Any:
     conn = db.connect(db_path())
     try:
-        return fn(conn)
+        result = fn(conn)
+        if isinstance(result, dict) and "error" not in result:
+            result.setdefault("provenance", _provenance(conn))
+        return result
     finally:
         conn.close()
 
@@ -158,6 +174,124 @@ def sense_checks(end: str | None = None) -> dict[str, Any]:
 
     return _with_db(lambda c: loads.sense_checks(
         c, parse_date(end) if end else insights._latest_day(c) or parse_date(None)))
+
+
+# ----------------------------------------------------------------- Phase 5: coaching
+@mcp.tool()
+def run_analysis(activity_id: int) -> dict[str, Any]:
+    """Deep dive into one run: pacing and km splits, efficiency factor, aerobic decoupling, HR
+    drift, running form (cadence, step length, ground contact, vertical oscillation/ratio,
+    power) compared with YOUR norm at the same pace, similar past runs, personal heat effect,
+    Garmin training effect, and facts for an activity recap."""
+    from garmin_mcp import coaching
+
+    return _with_db(lambda c: coaching.run_analysis(c, activity_id))
+
+
+@mcp.tool()
+def running_form_trends(days: int = 365, end: str | None = None) -> dict[str, Any]:
+    """Monthly running-form and efficiency trends within your usual pace band (so changes
+    reflect form, not speed), plus efficiency/decoupling of steady runs."""
+    from garmin_mcp import coaching
+
+    return _with_db(lambda c: coaching.running_form_trends(
+        c, parse_date(end) if end else insights._latest_day(c) or parse_date(None),
+        max(60, min(days, 1100))))
+
+
+@mcp.tool()
+def activity_stream(activity_id: int, every_s: int = 10) -> dict[str, Any]:
+    """Downsampled time series of one activity (HR, pace, cadence, altitude, power, distance)."""
+    from garmin_mcp import coaching
+
+    return _with_db(lambda c: coaching.activity_stream(c, activity_id, max(1, min(every_s, 120))))
+
+
+@mcp.tool()
+def sport_trends(sport: str = "swim", days: int = 365, end: str | None = None) -> dict[str, Any]:
+    """Trends for 'swim' (pace/100 m, SWOLF by stroke) or 'strength' (sessions, sets, reps)."""
+    from garmin_mcp import coaching
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        e = parse_date(end) if end else insights._latest_day(c) or parse_date(None)
+        fn = coaching.strength_trends if sport.startswith("str") else coaching.swim_trends
+        return fn(c, e, max(30, min(days, 1100)))
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def metric_glossary(metric: str | None = None) -> dict[str, Any]:
+    """What a metric means, its typical range, unit and how to improve it. No argument lists all."""
+    from garmin_mcp.coaching import GLOSSARY
+
+    if metric:
+        key = metric.lower().replace(" ", "_")
+        return GLOSSARY.get(key) or {"error": f"unknown metric {metric!r}",
+                                     "available": sorted(GLOSSARY)}
+    return GLOSSARY
+
+
+@mcp.tool()
+def fitness_age() -> dict[str, Any]:
+    """Garmin fitness age vs your age, and the levers Garmin reports (vigorous days/minutes,
+    resting HR, BMI) with targets and the fitness age you would reach."""
+    from garmin_mcp import coaching
+
+    return _with_db(coaching.fitness_age)
+
+
+# ----------------------------------------------------------------- Phase 6: athlete context
+@mcp.tool()
+def athlete_context() -> dict[str, Any]:
+    """Profile, your saved settings and goals, recent notes, and OPEN QUESTIONS (inputs not yet
+    provided, e.g. tested max HR, goal race). Read before giving personalised advice."""
+    from garmin_mcp import athlete
+
+    return _with_db(athlete.context)
+
+
+@mcp.tool()
+def update_athlete_setting(key: str, value: str, note: str | None = None) -> dict[str, Any]:
+    """Save a setting the user stated, e.g. hr_max_override=198, goal_race='{"distance_km":10,
+    "date":"2027-03-01","target":"50:00"}', timezone='Asia/Kolkata'. Overrides apply to all
+    calculations after the next refresh_data/rebuild. Only save what the user said."""
+    import json as _json
+
+    from garmin_mcp import athlete
+    from garmin_mcp.normalize import rebuild
+
+    if key not in athlete.PLACEHOLDERS:
+        return {"error": f"unknown key {key!r}", "allowed": sorted(athlete.PLACEHOLDERS)}
+    try:
+        parsed: Any = _json.loads(value)
+    except ValueError:
+        parsed = value
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        athlete.set_value(c, key, parsed, note)
+        rebuild(c)
+        return {"saved": {key: parsed}, "recalculated": True}
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def add_athlete_note(text: str, kind: str = "note") -> dict[str, Any]:
+    """Store a coaching note, decision or preference the user stated (kind: note, decision,
+    preference, injury)."""
+    from garmin_mcp import athlete
+
+    return _with_db(lambda c: (athlete.add_note(c, kind, text), {"saved": True})[1])
+
+
+@mcp.tool()
+def goal_check() -> dict[str, Any]:
+    """Reality check of the saved goal race against current fitness: required pace vs predicted
+    times (several methods + Garmin), weeks available and volume. Asks for the goal if unset."""
+    from garmin_mcp import goals
+
+    return _with_db(goals.goal_check)
 
 
 @mcp.tool()
