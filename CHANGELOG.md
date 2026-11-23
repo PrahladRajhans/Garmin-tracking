@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+- `HANDOVER.md`: goal, story, why, a reference table for every calculation (code → formula → source → METRICS section), dashboard references, exact differences from Garmin and other apps, known issues, and the ordered list of what's left, so another person or AI can continue.
+
 ## [0.12.0] - 2026-11-23
 
 Phase 11 (dashboard v2) and Phase 12 (health and running analytics). 40 tools.

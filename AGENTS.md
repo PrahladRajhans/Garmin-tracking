@@ -1,6 +1,6 @@
 # Guide for AI assistants (Claude, ChatGPT, others)
 
-You are looking at a personal Garmin analytics project. Read this first, then `ARCHITECTURE.md`.
+You are looking at a personal Garmin analytics project. Read `HANDOVER.md` first (goal, references, what's left), then this file and `ARCHITECTURE.md`.
 
 ## Context
 - **One user:** male, 29, 76.5 kg, Garmin Forerunner 955 (wrist HR only, no chest strap), Asia/Kolkata time zone. Right knee a little weak. No goal race: general fitness, maybe a marathon later. Max HR not tested (policy: 188 from data; see `METRICS.md`).

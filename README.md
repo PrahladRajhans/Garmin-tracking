@@ -20,6 +20,7 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 
 | Start here | For |
 |---|---|
+| [HANDOVER.md](HANDOVER.md) | **Start here:** goal, story, every formula with file and source, how ours differs from Garmin and the apps, known issues, what's left |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |
 | [AGENTS.md](AGENTS.md) | Rules and context for AI assistants (Claude, ChatGPT) working on this repo |
 | [ROADMAP.md](ROADMAP.md) | The single plan: phases, versions, open items, what was dropped and why |

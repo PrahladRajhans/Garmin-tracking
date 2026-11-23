@@ -1,0 +1,203 @@
+# Handover: Garmin-tracking (state at v0.12.0, 2026-11-23)
+
+Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
+
+---
+
+## 1. The goal
+
+**Get every piece of Garmin Forerunner 955 data, with full history, into one private place, and turn it into insights that are correct, transparent and simple to read. Deliver them two ways: through Claude (MCP tools) and through a glanceable dashboard. Match or beat the paid connectors and wellness apps, for free.**
+
+## 2. The story
+
+1. **The problem.** The user wears a Forerunner 955 and wanted an AI to answer questions about their health and training.
+   - The options were paid: Fitness AI Connector and AthleteData, both cloud MCP connectors.
+   - Or they were closed apps: Whoop, Oura, Fitbit, Bevel, Strava Athlete Intelligence, Garmin Active Intelligence.
+   - None of them show *how* a number is calculated, and none let you check it.
+2. **Research first** (`research_notes/Garmin connector feature research/`).
+   - What each connector and app offers: `ai_connectors.md`, `fitbit_whoop_bevel.md`, `analytics_platforms.md`.
+   - Everything the FR955 records: `fr955_metrics.md`.
+   - How Garmin computes its own insights: `garmin_insights_reference.md`.
+   - Published formulas: `metric_formulas.md`, `running_and_sport_metrics.md`, `running_form_benchmarks.md`.
+   - Dashboard practice: `insights_and_dashboards.md`.
+   - Verification of Garmin labels: `VERIFICATION_LOG.md`.
+   - Summary and decisions: `FINDINGS.md`.
+3. **Data first, analytics second** (Phases 1–2).
+   - Pull from three sources: the official Personal API, the unofficial `garminconnect` library, and the account export for history.
+   - Store raw responses verbatim, then normalise into tidy tables.
+   - Audit units against Garmin, which found and fixed a string of bugs (`CHANGELOG.md` 0.3.1).
+4. **Transparent analytics** (Phases 3–8): recovery, training load, performance, run coaching, goals, workouts to the watch, and an insight engine with proper statistics.
+5. **Glanceable layer** (Phases 9–12): Whoop-style daily scores, a multi-page dashboard, sleep and running breakdowns, long-term signals.
+6. **Runs itself on the user's Mac.**
+   - launchd syncs every 3 hours behind a gate.
+   - The code updates itself from `main` on every sync.
+   - Settings come from `config/athlete.json`.
+
+## 3. Why build it rather than buy it
+| Reason | What it means in the code |
+|---|---|
+| **Transparency** | Every derived number has a written formula (`METRICS.md`) and its inputs are returned with it, e.g. `recovery.readiness` returns each component z-score |
+| **Correctness** | Numbers are sense-checked against Garmin's own values and physics (`loads.sense_checks`, `scores.sense_checks`, `garmin-mcp-verify` → `verify.py`) |
+| **Honesty about thin data** | `calibrating`, `signals_used`, `available: false` + `reason` instead of a guess |
+| **Privacy** | Data stays in SQLite on the Mac; nothing leaves unless the user opts in |
+| **Cost** | Free; uses the user's own Garmin access |
+| **Personal** | Baselines, ranges and "your usual at this pace" are from *your* history, not population averages |
+
+## 4. User context
+- Male, 29, 76.5 kg.
+- FR955, wrist heart rate only (no chest strap). Max HR not tested.
+- Asia/Kolkata time zone.
+- Right knee a little weak, so cadence advice is gentle (+5 %).
+- No goal race: general fitness, marathon some day.
+- Syncs the phone about twice a day, morning and night.
+- Wants plain language, no jargon on screen, and one consolidated plan (`ROADMAP.md`).
+- Settings are stored in `config/athlete.json`.
+
+## 5. Map of documents
+| Document | What it holds |
+|---|---|
+| `README.md` | Install, tools table, sync, dashboard, configuration |
+| `ARCHITECTURE.md` | Data flow diagram, module map, principles |
+| `AGENTS.md` | Rules for AI contributors (also in `CLAUDE.md`) |
+| `ROADMAP.md` | The single plan: phases, versions, needs from user, backlog, dropped items with reasons |
+| `METRICS.md` | Every formula, by version section, plus the sense-check table and HRmax policy |
+| `DASHBOARD_PLAN.md` | §1 platform decision, §2 what we copied from which app, §4 design rules, §6 UI map, §7 design system, §8 hosting |
+| `CHANGELOG.md` | What changed per version, with real-data findings |
+| `MAC_SETUP.md` | One-time Mac setup and launchd schedule |
+| `docs/screenshots/` | Current dashboard (phone light, desktop dark) |
+
+## 6. References: where every calculation lives
+Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
+
+### Recovery and sleep
+| What | Code | Formula / rule | Source | Spec |
+|---|---|---|---|---|
+| HRV status | `recovery.hrv_status` | 7-day mean of ln RMSSD vs 60-day mean ± 0.5 SD | Plews/Buchheit-style smallest worthwhile change | M § v0.4.0 |
+| Our readiness | `recovery.readiness` | Mean of signed z-scores clipped ±3: HRV +, sleep +, resting HR −, respiration − | Heuristic (documented) | M § v0.4.0 |
+| Illness flag | `recovery.illness_flag` | ≥ 2 of {HRV z < −1, RHR z > +1, resp z > +1} on 2 days | Heuristic | M § v0.4.0 |
+| Training suggestion | `recovery.suggestion` | Rule table; paused if the day is tagged sick/injured/break | — | M § v0.4.0, v0.12.0 |
+| Activity status | `health.status_days`, used in `recovery.load_series` | Tagged days are left out of baselines | Bevel | M § v0.12.0 |
+| Recovery % | `scores.daily_scores`, `scores.phi` | 100·Φ(readiness z); green ≥ 67, yellow 34–66, red ≤ 33 | Whoop bands | M § v0.11.0 |
+| Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need; < 3 h = incomplete | Whoop | M § v0.11.0 |
+| Sleep debt, bedtime | `recovery.sleep_status`, `scores.bedtime_suggestion` | Σ shortfall over 7 valid nights; bedtime = median wake − need − min(60, debt/7) | Garmin sleep coach / Whoop | M § v0.4.0, v0.11.0 |
+| Sleep breakdown | `health.sleep_breakdown` | Garmin `sleepScores` parts with ratings and optimal ranges | Garmin, Fitbit | M § v0.12.0 |
+| Heart-rate dip | `health.heart_rate_dip` | (awake mean − sleep mean) ÷ awake mean; ≥ 10 % healthy | Bevel; blood-pressure "dipper" threshold (heuristic) | M § v0.12.0 |
+
+### Load and fitness
+| What | Code | Formula / rule | Source | Spec |
+|---|---|---|---|---|
+| Strain 0–21 | `scores.strain_from_trimp` | min(21, 6.3·ln(1 + TRIMP/20)) | Whoop scale; our calibration | M § v0.11.0 |
+| TRIMP | `loads.banister_trimp` | Per second, men 0.64·e^(1.92x) | Banister 1991 | M § v0.5.0 |
+| Fitness / fatigue (CTL/ATL/TSB) | `loads.ewma`, `loads.rebuild` | λ = 1 − e^(−1/N), N = 42 / 7; TSB = yesterday's values | Banister / Coggan PMC | M § v0.5.0 |
+| HRmax, LTHR, resting HR | `loads.thresholds` | max(repeatable peak ±3 bpm, Tanaka 208 − 0.7·age); LTHR = best 20-min run HR | Tanaka 2001, Friel | M § HRmax policy |
+
+### Performance and running
+| What | Code | Formula / rule | Source | Spec |
+|---|---|---|---|---|
+| Effective VO2max | `loads.effective_vo2max` | Daniels VO2(speed) ÷ Swain %VO2max(%HRmax) | Daniels; Swain 1994; Runalyze | M § v0.5.0 |
+| Critical speed | `loads.critical_speed` | 2-parameter fit, 3–20 min efforts; flagged submaximal unless 50 ≤ D′ ≤ 400 m | Monod & Scherrer | M § v0.5.0 |
+| Race predictions | `loads.race_predictions` | Effective VO2max/VDOT, best-effort VDOT, Riegel 1.06, Garmin's, side by side | Daniels, Riegel | M § v0.5.0 |
+| Run metrics | `coaching.run_metrics` | Efficiency factor, decoupling, HR drift, cadence ×2, vertical ratio, km splits | Friel, TrainingPeaks | M § v0.6.0 |
+| Running form bands | `running.GAUGES`, `running.rate` | Garmin 5-colour bands (cadence, ground contact, vertical oscillation, vertical ratio) | Garmin manual (`running_form_benchmarks.md`) | M § v0.12.0 |
+| Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed over earlier runs | Moore 2016 | M § v0.12.0 |
+| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 %; split CV > 8 % | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
+| Running effectiveness | `running.running_breakdown` | speed ÷ (W/kg) | Coggan / WKO (Palladino) | M § v0.12.0 |
+| Marathon shape | `health.marathon_shape` | Runalyze: weekly target V^1.135, long-run target 12·ln(V/4) | Runalyze source code | M § v0.12.0 |
+
+### Long-term signals and patterns
+| What | Code | Formula / rule | Source | Spec |
+|---|---|---|---|---|
+| Pace of ageing | `health.pace_of_ageing` | Theil-Sen slope of fitness age × 365; needs ≥ 90-day span | Whoop scale | M § v0.12.0 |
+| Shifts | `health.detect_shift`, `health.shifts` | Best two-segment split ≥ 1 SD, ≥ 14 days each side | Simple changepoint | M § v0.12.0 |
+| Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
+| Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
+| Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; Garmin baseline bands or 60-day ± 1 SD | Fitbit "in your range" | M § v0.9.0 |
+| Goal verdict | `goals.goal_check` | Median of prediction methods vs target | — | M § v0.6.0 |
+
+**Sense checks on real data** (M § Sense checks; `CHANGELOG.md` per version):
+- Our acute load vs Garmin's: r = 0.81.
+- Per-run TRIMP vs Garmin load: r = 0.92.
+- Recovery % vs Garmin readiness: r = 0.35.
+- Sleep % vs Garmin sleep score: r = 0.85.
+- Running form vs Garmin session averages: within 0–1.2 %.
+- HR-zone time vs Garmin's: 0–1 % on runs.
+
+## 7. Dashboard references
+- **Code:** `dashboard.py`.
+  - `collect` gathers the data; the `page_*` functions build each page.
+  - Chart kit: `dial`, `line_chart`, `bar_chart`, `gauge`, `meter`, `both` (separate phone and desktop drawings).
+  - `CSS` holds the design tokens.
+- **Design:** `DASHBOARD_PLAN.md` §6 is the page map, §7 the type scale, spacing, shapes, icons, line weights and colour, §8 hosting.
+- **Colour:** palette and rules from the dataviz skill. Categorical blue `#2a78d6` and orange `#eb6834` (dark: `#3987e5`, `#d95926`) passed its validator in both modes. Status colours are reserved for state and always shown with a word.
+- **How it works:**
+  - No JavaScript; pages switch with CSS `:target` (`body:has(.page:target) #today:not(:target)`).
+  - Tooltips use SVG `<title>`.
+  - Rebuilt after every sync (`sync.py`) and copied to iCloud Drive.
+- **Tests:** `tests/test_dashboard.py`.
+
+## 8. What is different, and exactly how
+### Ours vs Garmin
+| Topic | Garmin | Ours | Where |
+|---|---|---|---|
+| Max HR | Model value about 209 | 188: repeatable observed peak or Tanaka; a 193 treadmill spike rejected | M § HRmax policy |
+| Readiness | Proprietary score | z-scores of 4 signals vs your baselines, all shown; Garmin's beside it | `recovery.readiness` |
+| VO2max | 51.4 (Firstbeat) | Effective VO2max about 40 at HRmax 188 (about 48 at 209) | M § Open question |
+| HR zones | Garmin settings | Our thresholds; upper bounds exclusive, matching Garmin's FIT zone times | M § v0.5.0 |
+| Load model | Acute and chronic load, proprietary | Banister TRIMP + exponential CTL/ATL | M § v0.5.0 |
+| Running form | Colour gauges vs everyone | Same gauges **plus** you vs your usual at the same pace | `running.py` |
+
+### Ours vs other methods and apps
+| Topic | Others | Ours | Where |
+|---|---|---|---|
+| CTL/ATL smoothing | TrainingPeaks λ = 1/N | λ = 1 − e^(−1/N) (true exponential); numbers differ slightly | M § v0.5.0 |
+| Recovery / strain | Whoop proprietary | Whoop *scale and bands* only; formulas are ours and published | M § v0.11.0 |
+| Readiness bands | Oura 85/70/60 | Dropped in favour of Whoop's 3 colours | `ROADMAP.md` dropped list |
+| Correlations | Whoop/Bevel show associations without uncertainty | Bootstrap CIs, false-discovery control, "how sure" meter | M § v0.9.0 |
+| Connectors | Fitness AI Connector, AthleteData: cloud, paid | Local, free, formulas visible | `research_notes/.../ai_connectors.md` |
+
+## 9. Known issues and open questions
+1. **Max HR is uncertain** (188 vs 209). It moves zones, TRIMP, effective VO2max and race predictions. Fix: user's hard-effort test, then `update_athlete_setting("hr_max_override", value)`.
+2. **Recovery % disagrees with Garmin readiness on some days** (overall r = 0.35; on 22 Nov ours was 34 %, Garmin's 90).
+   - Ours penalises breathing rate and resting HR. Garmin weights sleep history and recovery time.
+   - Next: evaluate a re-weighted composite against next-day HRV, not against Garmin's score.
+3. **Effective VO2max sense check is flagged** (about 40 vs Garmin's 51.4). Mostly the max HR question.
+4. **Wrist running power** reads higher than Stryd, so running effectiveness (0.71) is only for tracking yourself over time.
+5. **Little running data** (about 1 km/week lately, 19 runs with FIT data). Half and marathon predictions are unreliable and Marathon shape is about 1 %. This is accurate, not a bug.
+6. **Fitness-age history** covers about 30 days, so pace of ageing is hidden until it spans 90.
+7. **Garmin sleep part scores** (Duration, Awakenings, …) come as ratings only, without values, from the Personal API.
+8. **iCloud copy** (`dashboard.build`) has not been tested on the Mac. It writes to `~/Library/Mobile Documents/com~apple~CloudDocs/Garmin/`.
+
+## 10. What is left (pick up here)
+In order. Each item says where it goes and what "done" means.
+
+| # | Item | Where | Done when |
+|---|---|---|---|
+| 1 | **Correlations explorer page**: choose any two metrics and see the scatter, r with CI, and "how sure" | `engine.relationship` already computes it; add a `page_explore` in `dashboard.py` for the most useful pairs (still no JS) | A page lists top pairs with a scatter each; test in `tests/test_dashboard.py` |
+| 2 | **Standardised test tracking** (8.11): detect repeated test runs (e.g. the same 5 km route, or the calibration workout) and track efficiency at matched HR | New `running.test_runs`; uses `coaching.run_metrics` | Tool `test_tracking` + Running page card |
+| 3 | **Race readiness and taper** (8.12): once a goal race is set | `goals.py` + `health.marathon_shape` + fitness/form | Only when the user sets a race |
+| 4 | **VO2max range bar by age and sex** (10.8) | Body page | Needs a citable norm table (e.g. ACSM or Cooper Institute); do not invent values |
+| 5 | **Recovery % re-weighting study** (issue 2) | `scores.py`, `recovery.py` | Composite weights chosen by predicting next-day HRV, documented in M |
+| 6 | **Max HR test → recalculate** | `athlete` setting | User runs the test; check that the effective VO2max flag clears |
+| 7 | **Interactive dashboard on phone**: test the iCloud flow; optional private Artifact snapshot (opt-in only) | `dashboard.build` | User confirms it opens on the phone |
+| 8 | **v1.0.0**: everything running unattended on the Mac for 2 weeks with no sync errors | `sync_log`, `garmin-mcp-verify` | `ROADMAP.md` D.1 closed |
+| Later, only if the user asks | intervals.icu source (R32), Apple Health import (R33), multi-device dedupe (R34) | `sources/` | — |
+
+**Deliberately not building** (`ROADMAP.md`, "Explicitly not building" and the dropped-items table):
+- **Never building:**
+  - Skin temperature and ECG: the FR955 has no sensor.
+  - ACWR as an injury-risk score.
+  - Strava as a source.
+  - Our own Body Battery or stress score.
+  - A Grafana view.
+  - Oura readiness bands.
+  - A FIT workout encoder.
+- **Not building now:**
+  - Banister performance-model fit: needs more data.
+  - A separate Active Zone Minutes view: Garmin's intensity minutes already cover it.
+  - Our own fitness age: Garmin's is used.
+
+## 11. How to work on it
+- **Setup:** `pip install -e .[dev]` (Python ≥ 3.12). Then `pytest` and `ruff check .`. CI runs on 3.12 and 3.13.
+- **Commands:** `garmin-mcp` (server), `garmin-mcp-sync [--force]`, `garmin-mcp-import <zip>`, `garmin-mcp-verify`, `garmin-mcp-dashboard`.
+- **Rules:** `AGENTS.md`. Changelog entry every change, sense-check against real data, never commit credentials, plain language on screen.
+- **Data:** not in the repo. It lives in the user's data folder on the Mac (`config.data_dir()`).
