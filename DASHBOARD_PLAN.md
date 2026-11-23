@@ -1,6 +1,6 @@
 # Dashboard plan (v2, to be rebuilt from the ground up)
 
-Status: **plan approved for build in Phase 11.** The v0.10 dashboard was a working prototype: it proved the data pipeline, but it is too dense, uses jargon ("L1/L2", CTL/ATL), puts two scales on one chart (CTL with "Garmin load ÷ 10"), and has no visual hierarchy. v2 starts from what a person wants to know, in this order: *How am I today? → Why? → What should I do? → Am I improving?*
+Status: **built in v0.12 (Phase 11 + 12).** Sections 6-8 are the as-built UI map and design system. The v0.10 dashboard was a working prototype: it proved the data pipeline, but it is too dense, uses jargon ("L1/L2", CTL/ATL), puts two scales on one chart (CTL with "Garmin load ÷ 10"), and has no visual hierarchy. v2 starts from what a person wants to know, in this order: *How am I today? → Why? → What should I do? → Am I improving?*
 
 ## 1. Platform decision
 
@@ -65,3 +65,39 @@ Status: **plan approved for build in Phase 11.** The v0.10 dashboard was a worki
 | 11.5 | Patterns section with a "how sure" meter |
 | 11.6 | Headless-browser checks: no errors, no overflow at 390 / 768 / 1200 px, dark mode, print |
 | 11.7 | Optional: private Artifact snapshot for phone, opt-in only |
+
+## 6. UI map (as built: multi-page, one file)
+
+One self-contained `index.html`. Each "page" is a section addressed by a link (`#sleep`, `#run-123`); the browser shows one at a time with plain CSS (`:target`), so it needs no JavaScript or server, and works offline, from iCloud Drive or as a private Artifact. The browser Back button works between pages.
+
+```
+Today (home) ─┬─ Sleep ───────── last night breakdown, HR dip, 30 nights, bedtimes
+              ├─ Recovery ────── HRV vs your normal band, resting HR, detected shifts
+              ├─ Training ────── fitness trend, weekly load, intensity mix
+              ├─ Running ─────── run list ─── Run detail (per run): form gauges vs Garmin
+              │                  pace curve,                  and vs your usual at that pace,
+              │                  race predictions,            km splits, what to work on
+              │                  Marathon shape, form trends
+              ├─ Body ────────── fitness age + levers, pace of ageing, VO2max, month report
+              └─ Patterns ────── up to 6 findings with a "how sure" meter, full text on tap
+```
+
+Each page answers one question, top to bottom: **headline number → one sentence → one chart per idea → detail table**. Every hero row links to the page that explains it (tap Recovery dial → Recovery page).
+
+## 7. Design system (as built)
+
+| Element | Rule |
+|---|---|
+| Type | System sans (SF Pro on Apple). Scale 12 / 13 / 15 / 17 / 22 / 34 / 48 px. Body 15 px, line-height 1.5. Headings 1.25. Big numbers 1.05, letter-spacing −0.02 em, proportional figures. Small caps labels 12 px, +0.06 em, uppercase, muted ink. Tables use tabular figures. |
+| Spacing | 4 px base grid: 4 / 8 / 12 / 16 / 24 / 32 / 48. Card padding 20 (16 on phone). Gap between cards 16. Section gap 32. Side gutter 16 on phone, max width 1080. |
+| Shapes | Cards radius 16, hairline border, no shadows. Pills radius 999. Bars 4 px rounded data end, 2 px gap between bars. Dials 10 px stroke with round caps on a 270° track. |
+| Icons | Inline 16 px line icons, 1.75 px stroke, 8 px gap to the label, always paired with a word. |
+| Lines | Data lines 2 px; reference lines 1 px dashed; grid hairline 1 px at 3 ticks max; markers 8 px only on the latest point. |
+| Colour | Status (green/amber/red) only for recovery state and form ratings, always with a word. One series blue; a second series uses orange. Garmin values in grey with a "Garmin" label. Validated with the dataviz palette validator, light + dark. |
+| Representation | Dial = today's score; bullet/gauge bar = value against bands; line + band = trend against your normal; bars = amounts per day/week; dot strip = timing (bedtimes); table = exact values. Never two y-axes. |
+| Interaction | Native hover/long-press tooltips on every mark (SVG `<title>`). Links for drill-down. |
+
+## 8. Hosting and viewing live
+- **Mac:** `~/garmin-data/dashboard/index.html`, rebuilt after every sync (launchd). Bookmark it in Safari.
+- **Phone:** the same file is copied to `iCloud Drive/Garmin/dashboard.html` after each build (if iCloud Drive exists). Open it in the Files app, or Share → Open in Safari for working links.
+- **Anywhere (opt-in):** ask Claude to publish it as a private Artifact. Health data then leaves the Mac, so this is never automatic.

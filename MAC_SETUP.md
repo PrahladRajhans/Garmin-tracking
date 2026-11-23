@@ -39,7 +39,7 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
    {"mcpServers": {"garmin": {"command": "/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp"}}}
    ```
    Tell the user to restart the Claude desktop app.
-6. **Schedule sync every 3 hours** with a launchd agent
+6. **Schedule sync every 3 hours** (since v0.12 each run first checks a gate: full sync only if ≥ 11 h since the last one or a new activity exists, otherwise one cheap call) with a launchd agent
    `~/Library/LaunchAgents/com.garmin-mcp.sync.plist` running
    `/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp-sync --days 3`, StartInterval 10800,
    stdout/stderr to `~/.garmin-mcp/sync.log`; then `launchctl load` it.

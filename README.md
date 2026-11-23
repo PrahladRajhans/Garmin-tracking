@@ -4,7 +4,32 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.11.0: Phases 1–10a done (data, recovery, load, coaching, goals, workouts, insight engine, prototype dashboard, daily scores). 35 tools. Dashboard v2 planned in [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md). Updates install themselves on every sync.
+> **Status:** v0.12.0: Phases 1–12 done. 40 tools, a multi-page dashboard, and running/sleep/long-term analytics. Updates install themselves on every sync.
+
+## What this is, in one minute
+
+A personal alternative to paid Garmin AI connectors (Fitness AI Connector, AthleteData) and to
+Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
+
+1. **Collect:** a sync job pulls *all* Garmin data (official Personal API + unofficial library +
+   the one-time account export), with full history, into a local SQLite database.
+2. **Compute:** transparent analytics on top: recovery, sleep, strain, training load, race
+   predictions, running form, patterns in your own data. Every formula is in
+   [METRICS.md](METRICS.md), with sources, and checked against Garmin's own numbers.
+3. **Use:** ask Claude through the MCP tools, or open the dashboard (one HTML file, no server).
+
+| Start here | For |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |
+| [AGENTS.md](AGENTS.md) | Rules and context for AI assistants (Claude, ChatGPT) working on this repo |
+| [ROADMAP.md](ROADMAP.md) | The single plan: phases, versions, open items, what was dropped and why |
+| [METRICS.md](METRICS.md) | Every derived metric: formula, source, sense check |
+| [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md) | Dashboard UI map, design system, hosting |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, per version |
+| [MAC_SETUP.md](MAC_SETUP.md) | One-time setup on the Mac |
+| `research_notes/` | Competitor, Garmin and science research behind the decisions |
+
+![Today page on a phone](docs/screenshots/today-phone.png)
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -54,12 +79,17 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `workout_templates()` | Easy, tempo, VO2 intervals and calibration-test specs from your HR thresholds |
 | `create_workout(spec, upload=False, schedule_date?)` | Validate and build a structured workout; optional upload and schedule to Garmin Connect (Mac) |
 | `garmin_workouts(action='list'\|'delete', workout_id?)` | Workouts saved in Garmin Connect (Mac) |
+| `sleep_breakdown(day?)` | Garmin sleep score parts (stages, awakenings, restlessness, stress) with ratings and optimal ranges, plus the day-to-night heart-rate dip |
+| `long_term_health(day?)` | Pace of ageing, Marathon shape (Runalyze), lasting shifts in resting HR/HRV/sleep, sick/injured days |
+| `monthly_report(month?)` | Month vs previous month: sessions, hours, run km, sleep, resting HR, steps, HRV |
+| `running_breakdown(activity_id?)` | One run: form vs Garmin's colour bands and vs your usual at that pace, pacing, HR drift, running effectiveness, what to work on |
+| `running_form_history(runs=60)` | Per-run form series with your cadence/stride-vs-speed lines |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
 | `trends_and_patterns(days=90)` | Robust trends, weekday patterns, streaks, personal ranges, form % |
 | `records_and_calendar(days=365)` | Personal-best timeline, longest sessions, per-day calendar data |
-| `add_tag(day, tag)` / `tag_impact()` | Tag days (alcohol, travel, illness...) and see next-day effects |
+| `add_tag(day, tag)` / `tag_impact()` | Tag days (alcohol, travel, ...) and see next-day effects. Tags `sick`, `injured`, `break` also leave the day out of baselines and pause advice |
 | `build_dashboard()` | Rebuild the HTML dashboard (also rebuilt after every sync) |
 | `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
 | `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
@@ -107,8 +137,15 @@ After this, the server reuses the saved tokens; your password is not stored.
 
 ### Dashboard
 
-`garmin-mcp-dashboard` writes `~/.garmin-mcp/dashboard/index.html` (also rebuilt after every
-sync). Open it with `open ~/.garmin-mcp/dashboard/index.html`; it works on a phone too.
+`garmin-mcp-dashboard` writes `dashboard/index.html` in your data folder (rebuilt after every
+sync). It is one self-contained file with linked pages: Today → Sleep, Recovery, Training,
+Running (→ each run), Body, Patterns. No JavaScript, no internet needed.
+
+- **Mac:** open it in Safari and bookmark it; it refreshes after each sync.
+- **Phone:** each build is also copied to `iCloud Drive/Garmin/dashboard.html`. In the Files app, open it, then Share → Open in Safari so the page links work.
+- **Anywhere:** ask Claude to publish it as a private Artifact (opt-in, because health data leaves the Mac).
+
+Design and page map: [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md).
 
 ### Import your full history (one time)
 
@@ -145,6 +182,11 @@ In `--source garminconnect` mode (unofficial only):
 - **Per activity:** summary, splits, HR/power zones, weather, original FIT file (1 s records, laps, beat-to-beat HRV) saved in `~/.garmin-mcp/fit/`.
 
 Already-stored days are skipped except the last 2, which Garmin keeps updating. A failing endpoint is logged and skipped; the run stops early after 8 failures in a row (usually expired login).
+
+**Sync gate:** a scheduled run only does a full sync if ≥ 11 hours have passed since the last
+one, or if Garmin shows an activity today that isn't stored yet (one cheap call). So a job every
+3 hours costs almost nothing, but picks up your morning and night phone syncs. `--force` skips
+the gate.
 
 **Schedule it** (every 3 hours), for example on macOS/Linux with `crontab -e`:
 

@@ -42,3 +42,20 @@ def test_suggestions_target_cadence():
     form = {"cadence_spm": {"value": 160.0}}
     out = running.suggestions({}, form, None)
     assert "168 spm" in out[0]
+
+
+def test_status_tag_pauses_advice_and_leaves_baseline(conn):
+    from garmin_mcp import athlete, recovery
+
+    athlete.add_note(conn, "tag", "2026-11-10|sick")
+    assert health.status_days(conn) == {"2026-11-10": "sick"}
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    for d in ("2026-11-09", "2026-11-10", "2026-11-11"):
+        conn.execute("INSERT OR REPLACE INTO daily (day, resting_hr) VALUES (?, 50)", (d,))
+    s = recovery.load_series(conn, "2026-11-12", 10)
+    assert "2026-11-10" not in s["rhr"] and "2026-11-09" in s["rhr"]
+    r = {"garmin": None, "ours": {"state": "normal"}, "illness_flag": {"raised": False},
+         "activity_status": "sick"}
+    assert recovery.suggestion(r)["suggest"] == "training advice paused"

@@ -50,8 +50,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.9.0 | Phase 8: insight engine, levels 1–3 | done (core); see status per item |
 | 0.10.0 | Phase 9: dashboard | done |
 | 0.11.0 | Phase 10a: daily scores (Recovery %, Sleep %, Strain), bedtime; self-update; CI | done |
-| 0.12.0 | Phase 11: dashboard v2, rebuilt from the ground up (`DASHBOARD_PLAN.md`) | **next** |
-| 0.13.0 | Phase 12: remaining parity and Level-3 items (10.2, 10.5–10.9) | planned |
+| 0.12.0 | Phase 11: dashboard v2 (multi-page) + Phase 12: sleep breakdown, HR dip, activity status, pace of ageing, marathon shape, shifts, monthly report, running breakdown; sync gate | done |
+| 0.13.0 | Phase 13: correlations explorer, standardised test tracking, race readiness when a race is chosen | planned |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -165,11 +165,14 @@ verified page reads marked [R]). Each item keeps Garmin's values beside ours.
 | 10.9 | Interactive correlations explorer; monthly report page | Whoop, Fitbit |
 | 10.10 | ✅ partial: `calibrating` flag and signals used (2 of 4) on recovery; rest with the dashboard | Oura, Fitbit |
 
-### Phase 11: Dashboard v2 → v0.12.0
+### Phase 11: Dashboard v2 → v0.12.0 ✅ done (multi-page, no JS; UI map in `DASHBOARD_PLAN.md` §6)
 Full plan: `DASHBOARD_PLAN.md`. Steps 11.2–11.7: wireframe of hero + Today + Why → validated palette → tabs (Recovery, Sleep, Training, Running, Body) with table views → Patterns with a "how sure" meter → browser checks at 390/768/1200 px, dark mode → optional private phone snapshot.
 
-### Phase 12: Remaining parity and Level-3 items → v0.13.0
-10.2 sleep breakdown + heart-rate dip · 10.5 activity status (sick/injured) · 10.6 pace of ageing + own fitness age · 10.7 marathon shape, Banister fit, changepoints, test tracking · 10.8 VO2max range bar, Active Zone Minutes · 10.9 correlations explorer, monthly report · 8.12 race readiness/taper (when a race is chosen).
+### Phase 12: Remaining parity and Level-3 items → v0.12.0 ✅ done
+✅ 10.2 sleep breakdown + heart-rate dip · ✅ 10.5 activity status · ✅ 10.6 pace of ageing (own fitness age: deferred, Garmin's is used) · ✅ 10.7 marathon shape and changepoints (shift detection) · ✅ 10.9 monthly report · ✅ running breakdown (form bands, pace-matched form, what to work on).
+
+### Phase 13 → v0.13.0
+Correlations explorer page · standardised test tracking (8.11) · 8.12 race readiness/taper (when a race is chosen) · VO2max range bar by age (needs a citable norm table).
 
 ### Deployment track (runs alongside, needs you once)
 | ID | Item | Target |
@@ -187,7 +190,7 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 ## Needs from you
 | # | Input / action | State |
 |---|---|---|
-| 1 | **One last manual update** (Terminal): `cd ~/Garmin-tracking && git pull && .venv/bin/pip install -e .`, then quit and reopen the Claude desktop app. After this, updates and settings arrive automatically with every sync | open; the final manual step |
+| 1 | One last manual update (Terminal) | ✅ done by you; updates now arrive with every sync |
 | 2 | **Max HR test** (calibration workout, or 3 × 3-min hard hill repeats): the one open question that moves most numbers (zones, load, effective VO2max). Data says 188 (age formula + repeatable peak 177); Garmin's model implies ~209 | open, recommended |
 | 3 | Goal race | ✅ none yet (general fitness; marathon some day) |
 | 4 | Goals, knee, timezone | ✅ saved, applied automatically via `config/athlete.json` |
@@ -197,8 +200,8 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 ## What's left (full backlog, 2026-11-23)
 | Area | Items | State |
 |---|---|---|
-| Dashboard | Phase 11 (v2 rebuild) | next |
-| Parity / Level 3 | Phase 12 list above | planned |
+| Dashboard | Phase 11 v2 | ✅ done |
+| Parity / Level 3 | Phase 12 | ✅ done; Phase 13 next |
 | Deployment | #1 above, then v1.0.0 | waiting on #1 |
 | Research | Whoop details snippet-only (site blocks bots); HRV4Training rule page empty; fitness-age norm formula unverified | accepted, flagged |
 | Optional sources | R32 intervals.icu, R33 Apple Health, R34 multi-device dedupe | only if you ask |
@@ -212,6 +215,9 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | Remote hosting | Not needed; optional private phone snapshot instead |
 | Our own Body Battery/Stress, ACWR injury risk, Strava source, skin temp/ECG | Already excluded (no valid method / API terms / no sensor) |
 | Copy-paste setup in a second Claude chat | Replaced by self-update + settings file |
+| Banister impulse-response fit (8.9) | 19 runs is too little data for a 4-parameter fit; revisit after ~6 months of steady training |
+| Active Zone Minutes view (10.8) | Same information as Garmin intensity minutes, already shown |
+| Our own fitness age (10.6) | Garmin's fitness age with levers is shown; no citable open formula to beat it |
 
 ## Problems caused by incomplete information (and what fixes them)
 | Problem | Effect | Fix |
