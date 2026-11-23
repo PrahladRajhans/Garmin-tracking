@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.13.3, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.14.0, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -95,6 +95,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | What | Code | Formula / rule | Source | Spec |
 |---|---|---|---|---|
 | Effective VO2max | `loads.effective_vo2max` | Daniels VO2(speed) ÷ Swain %VO2max(%HRmax) | Daniels; Swain 1994; Runalyze | M § v0.5.0 |
+| VO2max reference bar | `norms.reference`, `norms.comparison`, `dashboard.vo2_reference` | Exact seven FRIEND percentile thresholds for recorded sex and age decade; separate estimate markers, no percentile interpolation | Kaminsky et al. 2015, primary Table 3 | M § v0.14.0 |
 | Critical speed | `loads.critical_speed` | 2-parameter fit, 3–20 min efforts; flagged submaximal unless 50 ≤ D′ ≤ 400 m | Monod & Scherrer | M § v0.5.0 |
 | Race predictions | `loads.race_predictions` | Effective VO2max/VDOT, best-effort VDOT, Riegel 1.06, Garmin's, side by side | Daniels, Riegel | M § v0.5.0 |
 | Run metrics | `coaching.run_metrics` | Efficiency factor, decoupling, HR drift, cadence ×2, vertical ratio, km splits | Friel, TrainingPeaks | M § v0.6.0 |
@@ -184,8 +185,8 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 10. **Fresh database:** the dashboard CLI still requires normalized, populated data. It fails
     on an empty database (missing tidy tables, then no latest day). This predates v0.13.1.
 11. **Review update:** network access is restored; PR #8 passed both CI jobs and was merged.
-    The primary FRIEND paper is now accessible and its table retrieved; implementation is the
-    next accuracy step. Local checks still do not establish Mac/iPhone/live Garmin health.
+    The primary FRIEND paper is now accessible and its Table 3 bar is implemented in v0.14.0.
+    Local checks still do not establish Mac/iPhone/live Garmin health.
 12. **Sync/update reliability (v0.13.2):** the gate uses `meta.last_full_sync` plus
     `sync_retry_required`; endpoint timestamps no longer imply completion. Dates are local.
     Pagination/chunk loops are guarded. Failed dependency installs stop sync and are retried
@@ -206,7 +207,7 @@ In order. Each item says where it goes and what "done" means.
 | 1 | **Add more pairs to the explorer** if useful: e.g. alcohol/travel tags → HRV is already in `tag_impact`; respiration → HRV | `engine.PAIRS` | New pairs pass the same FDR rule |
 | 2 | **Test runs with more data**: add route matching (start/end GPS within 200 m) once the FIT session start position is parsed | `fit.py` (session `start_position_lat/long`), `running.test_runs` | Runs on the same route are grouped |
 | 3 | **Race readiness and taper** (8.12): once a goal race is set | `goals.py` + `health.marathon_shape` + fitness/form | Only when the user sets a race |
-| 4 | **VO2max range bar by age and sex** (10.8) | Body page | Needs a citable norm table (e.g. ACSM or Cooper Institute); do not invent values |
+| ✅ 4 | **VO2max range bar by age and sex** (10.8) | Body page, v0.14.0 | Exact FRIEND 2015 Table 3 values, full citation, separate estimates and caveats; live profile/data verification remains on Mac |
 | 5 | **Re-run the recovery weighting study** every ~3 months (`recovery_weight_study`) | `scores.weight_study` | Weights change only by its rule |
 | 6 | **Max HR test → recalculate** | `athlete` setting | User runs the test; check that the effective VO2max flag clears |
 | 7 | **Dashboard on phone**: Cloudflare candidate implemented but inactive; iCloud and manual private Artifact remain alternatives | `dashboard.build`, `publish.py` | User confirms private access and working links on the phone |

@@ -52,10 +52,10 @@ compute: activity recaps, daily brief, weekly review.
 | 0.11.0 | Phase 10a: daily scores (Recovery %, Sleep %, Strain), bedtime; self-update; CI | done |
 | 0.12.0 | Phase 11: dashboard v2 (multi-page) + Phase 12: sleep breakdown, HR dip, activity status, pace of ageing, marathon shape, shifts, monthly report, running breakdown; sync gate | done |
 | 0.13.0 | Phase 13: correlations explorer, test-run tracking, recovery weighting study | done |
-| 0.13.1 | Private hosting preparation (off by default), constant-signal crash fix, continuation review | implemented locally; live hosting and CI verification pending |
+| 0.13.1 | Private hosting preparation (off by default), constant-signal crash fix, continuation review | merged PR #8 after CI; hosting activation/device checks pending |
 | 0.13.2 | Sync completion/retry, local dates, updater recovery, loop guards | merged in PR #9 after both CI jobs passed |
-| 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | 102 local tests pass; CI/merge pending |
-| 0.14.0 | Phase 14: race readiness/taper (once a race is set), VO2max norm bar (needs a citable table), phone check | waiting on inputs |
+| 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | merged PR #10 after both CI jobs passed |
+| 0.14.0 | Exact FRIEND VO2max reference bar, source transcription and tests | implemented; live profile check pending; race/taper and phone deployment still wait on inputs |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -194,15 +194,17 @@ Full plan: `DASHBOARD_PLAN.md`. Steps 11.2–11.7: wireframe of hero + Today + W
 ### Phase 13 → v0.13.0 ✅ done
 ✅ Correlations explorer (Patterns page + `explore_relationships`) · ✅ test-run tracking 8.11 (`test_runs`) · ✅ recovery weighting study (`recovery_weight_study`; equal weights kept, evidence in CHANGELOG 0.13.0).
 
-### Phase 14 → v0.14.0 (waiting on inputs)
-8.12 race readiness/taper: needs a goal race · VO2max range bar by age and sex: needs a citable norm table (ACSM / Cooper Institute), never invented · phone check of the iCloud dashboard: needs the user · re-run `recovery_weight_study` and `test_runs` after ~3 months of new data.
+### Phase 14 → v0.14.0 (reference bar implemented; device/user inputs remain)
+VO2max reference bar: exact FRIEND 2015 Table 3 implemented and tested. Race readiness/taper
+still needs a goal race; phone/iCloud checks need actual devices. Re-run the corrected recovery
+study on real data before using its conclusions; keep equal weights until the existing rule is met.
 
 Continuation order requested by the owner:
 
 | Item | State | Remaining evidence |
 |---|---|---|
 | A: private phone access | Optional Cloudflare Pages publisher implemented in v0.13.1; disabled | Confirm current Access free plan, configure account and two Access apps, save token locally, verify owner OTP/anonymous denial and next scheduled update on Mac/phone |
-| B: age/sex VO2max bar | Blocked on primary norm table access; no values invented | Retrieve the exact primary table and citation, then implement separate Garmin/effective markers with HRmax caveat, tests and version bump |
+| B: age/sex VO2max bar | Implemented v0.14.0 from primary FRIEND 2015 Table 3 | 84 code values checked against direct transcription; live Mac profile/data check remains |
 | C: dashboard design | Source screenshots inspected; current HTML unchanged; 48 synthetic browser states checked | Complete visual review of all pages with representative data, contrast/keyboard/table checks, then make small evidence-backed improvements |
 | D: docs with every change | Updated for v0.13.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
 

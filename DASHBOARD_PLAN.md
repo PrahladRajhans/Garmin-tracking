@@ -98,6 +98,10 @@ Each page answers one question, top to bottom: **headline number → one sentenc
 | Interaction | Native hover/long-press tooltips on every mark (SVG `<title>`). Links for drill-down. |
 
 ## 8. Hosting and viewing live
+Body-page addition (v0.14.0): VO₂max uses an exact FRIEND 2015 population reference with
+separate Garmin/effective markers, a table/source disclosure, and the HRmax caveat. Neutral
+reference bands avoid turning population ranks into health diagnoses. Missing age/sex remains explicit.
+
 - **Mac:** `$GARMIN_DATA_DIR/dashboard/index.html`, default `~/.garmin-mcp/dashboard/index.html`,
   rebuilt after each sync. Reload an open Safari tab to see the new file.
 - **iCloud:** `dashboard.build` copies the HTML to `iCloud Drive/Garmin/dashboard.html` only when

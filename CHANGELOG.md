@@ -9,6 +9,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.14.0] - 2026-11-23
+
+- Added the Body-page VO₂max reference bar from the retrieved primary FRIEND 2015 **Table 3**.
+  Separate grey Garmin and hollow blue effective markers, exact reference values, age/sex group,
+  source and untested-HRmax caveat. No exact personal percentile or physiological equivalence
+  of the estimates is claimed.
+- `norms.py` contains the 84 measured FRIEND values for published age decades 20–79 and sex
+  groups. Missing profile data/out-of-range ages are explicit; no assumptions or extrapolation.
+- Research notes contain the exact implemented table, full citation and all 24 numeric source
+  rows (including unused Cooper rows) extracted directly to CSV. All 84 code values are checked
+  against that transcription. Primary data came from 7,783 US treadmill CPX tests; it is not a
+  personal target or a claim of representativeness for an Indian user.
+- Validation: 106 local tests and Ruff pass. Age boundaries, missing profiles/data, separate
+  markers and caveats are covered. Race/taper, live phone deployment and further source review
+  remain pending; no new MCP tool or norm-based fitness-age estimate was added.
+
 ## [0.13.3] - 2026-11-23
 
 Accuracy and input-validation review (step 2).
