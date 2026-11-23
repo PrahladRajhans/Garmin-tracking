@@ -4,7 +4,7 @@ Decisions (2026-11-23):
 - **Runs on:** your laptop/desktop. Local sync job → SQLite → MCP server over stdio (Claude Desktop / Claude Code).
 - **Data:** official Garmin Personal API first. The unofficial `garminconnect` library is an isolated add-on for Garmin's advanced scores.
 - **Goals:** race training, recovery/readiness, health trends, a full health snapshot, workout-metric explanations with how to improve, fitness age and next steps, workouts sent to the watch.
-- **Sensors:** watch only. So no ground contact time balance, and probably no vertical oscillation or ground contact time either (verify in Phase 0). We do get cadence, stride length, wrist power, HR and GPS.
+- **Sensors:** watch only. **Verified on real FIT files:** the FR955 records vertical oscillation, ground contact time, stride length, cadence, wrist power, HR and GPS from the wrist. No ground contact time balance. Beat-to-beat HRV only if HRV logging is switched on in the watch settings.
 
 Design rules:
 1. Claude never calls Garmin live; every tool reads SQLite. Sync runs on a schedule or on `refresh`.
@@ -19,10 +19,43 @@ Design rules:
 | # | Task | Why | Needs you |
 |---|---|---|---|
 | 0.1 | ~~Apply for a Garmin Personal API key~~ **Done.** Endpoints confirmed via Garmin's official client: no readiness, training status, race predictor or endurance/hill score, so the unofficial add-on stays | Confirms the official path | done |
-| 0.2 | Run v0.1.0 login on your machine | Checks whether the unofficial library logs in today | ✅ run `python -m garmin_mcp.login` |
-| 0.3 | Export one recent run's FIT file | Shows which fields a watch-only FR955 records | ✅ download "Export Original" from Connect |
-| 0.4 | Request the Garmin account data export | Backfills history beyond the API's limits (takes days to arrive) | ✅ Garmin account → Data management |
-| 0.5 | Allow the blocked research sites | Lets me verify the unverified claims | ✅ environment settings |
+| 0.2 | ~~Unofficial login~~ **Done** on the Mac; 7-day sync, 0 errors | | done |
+| 0.3 | ~~One run's FIT file~~ **Done** via the API: running dynamics present | | done |
+| 0.4 | ~~Garmin account data export~~ **Done**: Feb 2024 → Nov 2026, 7,815 FIT files, downloaded into the dev session from Drive | | done |
+| 0.5 | ~~Allow research sites~~ **Done** | | done |
+
+## Status and audit (2026-11-23)
+
+### Where things run
+- **Development (this cloud session):** all coding, testing, research, importing your export and syncing via the official API. No Mac needed.
+- **Your Mac:** runs the finished connector for Claude Desktop. Mac setup is handled by a **local Claude Code session** (Claude desktop app → Code → Local → folder `Garmin-tracking`), which can run Terminal commands itself. The cloud session can't, because the Mac reports the Remote Control folder as "not available" to cloud sessions.
+
+### Audit: everything raised so far and its state
+| Item | State |
+|---|---|
+| README + CHANGELOG updated every change | ongoing ✅ |
+| Research: competitors, FR955 metrics, formulas, integrations | done ✅ |
+| Verify research claims marked unverified / snippet / [bg] (sites were blocked) | **open → step A** |
+| Confirm METRICS.md formulas against primary sources (⚠ items) | **open → step A** |
+| Import full history from the Garmin export | **open → step B** |
+| Backfill extras from the unofficial library (only 7 days on the Mac) | open → step F (Mac) |
+| Tidy (normalised) tables from raw payloads | open → step C (Phase 2) |
+| Move the 4 original tools onto the local database (design rule 1) | open → step C |
+| One-call health snapshot | open → step C |
+| Connect the MCP server to Claude Desktop on the Mac | open → step F |
+| Scheduled sync on the Mac | open → step F |
+| Rotate the Personal API key (it was pasted in chat) | deferred by you |
+| Beat-to-beat HRV during activities (watch setting "Log HRV") | optional, your choice |
+| Merge PR #1 into `main` | at the end of Phase 2 |
+| Phases 3–7 (readiness, load, coaching, memory, workouts) | after Phase 2 |
+
+### Next steps, in order
+- **A. Verify research and formulas.** Re-check every unverified claim against full pages now that the sites are open; correct the notes, report and METRICS.md.
+- **B. History importer:** `garmin-mcp-import <export folder>`. Loads the export (activities + FIT, sleep, health status, readiness, race predictions, endurance/hill, acute load, VO2max, acclimation, daily summaries, hydration, PRs, zones) into the same database. Tested on your real export here.
+- **C. Phase 2:** tidy tables (daily, sleep, HRV, readiness, load...) built from all three sources (export, official API, unofficial), with a defined priority when they overlap; health snapshot tool; existing tools moved to the local database.
+- **D.** Verify the numbers against Garmin Connect for a few sample days (I report them; you glance at your app).
+- **E.** Merge to `main`.
+- **F. Mac setup in one go** (done by a local Claude Code session using a script I write): pull, import your Downloads export, backfill extras, connect to Claude Desktop, schedule the sync.
 
 ## Phase 1: Data foundation (v0.2)
 - SQLite schema: activities, laps, FIT samples, daily summary, sleep, HRV, body, sync_log, thresholds (dated).
