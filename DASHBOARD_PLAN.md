@@ -170,3 +170,19 @@ See the latest [UI review](docs/UI_REVIEW.md#direct-interaction-review-v0150).
 In v0.15.1 the smaller chart marker and thinner guides keep the data visible. The cursor
 renders at most once per frame while moving and horizontal touch intent is detected before
 updating it. Vertical swipes use native scrolling. A tap still selects the release point.
+
+## Personal ranges, History and the run overlay trial (v0.16.0)
+
+Today remains a short entry point. Recovery cards show a reading line, dashed recent
+average and shaded personal range where supported. Each card names the observation
+count and comparison period, and gives a brief next check. Sleep and Training show
+the weekly average and a reference suited to that metric.
+
+History covers 12 complete calendar months plus the month to date and allows opening
+a recorded day from its month. Week shows the recent seven days. Day views include
+available readings, workouts and recent hourly pulse. Missing periods remain explicit.
+
+The recent run timeline has two separate optional overlays. Speed and heart rate,
+and cadence and step length, use relative change from each signal's median on their
+common elapsed-time axis. The readout shows actual sensor values with units. No route
+coordinates are included. The owner can try these pairs before a broader rollout.

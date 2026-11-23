@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.15.1, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.16.0, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -205,6 +205,11 @@ exploratory. Historical coefficients below are dated observations.
     on real data before using them to propose a weight change. Actual weights remain equal.
 
 ## 10. What is left (pick up here)
+
+The request audit in `docs/PROGRESS_AUDIT.md` tracks completed UI work and remaining
+validation. Use ROADMAP for order. Start by verifying the signal comparisons against
+the Mac archive and testing the two optional run overlays on real runs. Environmental
+context remains a research item.
 The next checks are the Mac archive, iPhone interaction, then private phone hosting. Code for the VO₂max bar,
 pacing and monthly drill-downs, and evidence-first Patterns is on the GitHub delivery track.
 The table below describes the rest of the work. ROADMAP owns ordering and status.

@@ -315,3 +315,32 @@ and keep absent training weeks blank. Today cites the sign and units of supporte
 trends, the number of readings, and the record date. Treat linked patterns as personal
 associations and load suggestions as coaching heuristics. Link validation needs both
 the Garmin record for the date and a consistent input history.
+
+## Personal comparison cards and paired telemetry (v0.16.0)
+
+`signal_context.collect` compares arithmetic averages of the most recent seven calendar
+days and the seven days before them. Each window needs at least four readings. Its
+personal reference is the mean ± one sample standard deviation from the 60 days ending
+before the current seven-day window, omitting explicitly tagged sick, injury or break
+days. Resting pulse needs 21 reference observations and the sleep metrics need 14.
+A constant series does not establish a range. Sleep duration, breathing and Pulse Ox
+use nights with at least three recorded hours. Pulse Ox accepts 0 < x ≤ 100 and caps
+the reference at the physical ceiling. Changes are shown in percentage points.
+HRV retains the separate established log RMSSD model and band. No forecasting or
+clinical thresholds were added. Coverage and personal reference are reported by
+`insight_feed`. Lasting shift detection uses the deduplicated nightly HRV source.
+
+Reference context: [MedlinePlus adult resting pulse](https://medlineplus.gov/ency/article/003399.htm),
+[FDA pulse oximeter limitations](https://www.fda.gov/medical-devices/products-and-medical-procedures/pulse-oximeters),
+[HRV measurement context](https://pmc.ncbi.nlm.nih.gov/articles/PMC5624990/) and
+[AASM adult sleep consensus](https://pmc.ncbi.nlm.nih.gov/articles/PMC4434546/). General adult
+guidance and a personal range describe different things. Wrist readings require attention
+to sensor, altitude and fit.
+
+For run overlays, use paired valid FIT samples on a common elapsed-time axis. Each line
+is 100 × (sample / median of that signal's paired samples − 1). A gap exceeding twice
+the sampling interval breaks the line. Actual values remain in the cursor readout. The
+FIT SDK gives step length in mm (÷ 1000 for m) and running cadence per foot (× 2 for
+steps/min). Overlay visibility and scaling do not establish correlation or causation.
+Hourly day pulse averages observed raw samples grouped by local hour in the configured
+time zone for the latest seven days.

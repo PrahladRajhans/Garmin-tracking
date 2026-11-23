@@ -511,11 +511,14 @@ def form_percent(conn: sqlite3.Connection, end: str) -> dict[str, Any] | None:
 
 # --------------------------------------------------------------------------- insight feed
 def insight_feed(conn: sqlite3.Connection, end: str | None = None, *,
-                 include_relationships: bool = True) -> dict[str, Any]:
+                 include_relationships: bool = True,
+                 signals: dict[str, Any] | None = None) -> dict[str, Any]:
     """Ranked insights across levels for the brief and dashboard."""
-    from garmin_mcp import recovery
+    from garmin_mcp import recovery, signal_context
 
     end = end or conn.execute("SELECT MAX(day) FROM daily").fetchone()[0]
+    if signals is None:
+        signals = signal_context.collect(conn, end, with_history=False)
     items: list[dict[str, Any]] = []
     r = recovery.readiness(conn, end)
     advice = recovery.suggestion(r)
@@ -530,6 +533,12 @@ def insight_feed(conn: sqlite3.Connection, end: str | None = None, *,
                                 "training, Plews/Kiviniemi style)." if hrv["state"] ==
                                 "below normal" else "Above baseline alone does not establish readiness for hard training.",
                       "priority": 2})
+    for key, signal in signals.items():
+        state = signal["state"]
+        if state in ("above", "below"):
+            items.append({"level": 1, "kind": "signal_shift", "metric": key,
+                          "title": f'{signal["label"]} is {state} your usual range',
+                          "detail": signal_context.describe(key, state), "priority": 2})
     pr = personal_ranges(conn, end)
     if pr["outside_range"] >= 2:
         items.append({"level": 2, "kind": "vitals", "title": f"{pr['outside_range']} vitals "
@@ -560,5 +569,8 @@ def insight_feed(conn: sqlite3.Connection, end: str | None = None, *,
                           "detail": n["statement"], "priority": 4})
     items.sort(key=lambda i: i["priority"])
     return {"day": end, "insights": items,
+            "personal_signals": {key: {**{k: v for k, v in value.items() if k != "days"},
+                                       "interpretation": signal_context.describe(key, value["state"])}
+                                 for key, value in signals.items()},
             "rules": "Level 1 = what happened, 2 = associations in your own data, 3 = what to "
                      "do; statistics in engine.py docstring"}

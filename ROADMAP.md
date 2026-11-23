@@ -61,6 +61,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.14.3 | Monthly coverage drill-down, pattern evidence, mobile navigation, archive comparison command | Implemented and checked with synthetic data |
 | 0.15.0 | Direct chart controls, visible findings, training/sleep context and theme switch | Implemented with phone and laptop browser checks |
 | 0.15.1 | Smaller chart cursor, smoother scrub and scroll, environmental feasibility note | Checked in browser, no environmental data collection |
+| 0.16.0 | Personal signal context, date drill-downs and two run overlay trials | Browser and synthetic data checks |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -109,12 +110,15 @@ until the owner dataset is checked again.
 
 | Order | Deliverable | Evidence needed |
 |---|---|---|
-| 1 | Chart interaction and daily briefing | Mouse, touch, keyboard and scroll checks. Guidance, drivers and trends visible with observation counts |
+| 1 | Daily briefing, personal signals and History | Verify dated raw readings, resting pulse trend/range, overnight breathing and Pulse Ox, and coverage at each time scale |
+| 1a | Optional run overlay trial | Check cadence/step length and speed/HR on comparable real workouts. Seek feedback before broader rollout |
 | 2 | Verify daily guidance and run comparisons on the Mac archive | Compare with dated Garmin records and inspect missing nights, unusual runs and completed syncs |
 | 3 | Weekly coaching priorities and training response | Use comparable runs and later time periods to check whether a pattern repeats. Require coverage and holdout evidence before making predictive recommendations |
 | 4 | Feedback from iPhone and laptop use | Check Files preview and Safari, adjust the most-used interactions, verify private phone delivery |
 
-Competitor benchmarks guide which questions to answer. Proprietary recovery algorithms
+[Request audit](docs/PROGRESS_AUDIT.md) and
+[owner reference review](research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md)
+record sources and checks. Competitor benchmarks guide which questions to answer. Proprietary recovery algorithms
 and device-only measurements are separate evidence. Report matched coverage and the
 limits of wrist HR, HRV, and training comparisons before expanding coaching claims.
 
