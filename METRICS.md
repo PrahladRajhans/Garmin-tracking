@@ -75,6 +75,49 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Illness/strain flag | ≥2 of {HRV z<−1, RHR z>+1, respiration z>+1} on each of the last 2 days |
 | Suggestion | illness flag → rest/very easy · well below usual or Garmin POOR → rest/easy · below usual or Garmin LOW → easy aerobic only · fresher + Garmin HIGH/PRIME → key session · else planned training fine |
 
+## Implemented in v0.5.0 (Phase 4): exact rules
+| Item | Rule |
+|---|---|
+| Sex | watch profile in FIT (`user_profile.gender`) |
+| HRmax | highest activity max HR in the last 365 days (Garmin's auto-updated setting shown beside it and flagged when ≥ 8 bpm apart) |
+| Resting HR | median daily resting HR, last 60 days (Garmin's zone setting of 55 is not used) |
+| LTHR | best 20-min rolling HR on a run ≥ 25 min in 365 days (Friel-style estimate; lower bound without a hard 20–30 min effort). Garmin's LTHR shown beside it |
+| TRIMP | Banister per 1 s sample, men 0.64·e^(1.92x), women 0.86·e^(1.67x); gaps capped at 10 s; average-HR fallback without a stream |
+| CTL / ATL / TSB | exponential, λ = 1 − e^(−1/N), N = 42 / 7 (design choice; TrainingPeaks uses 1/N). TSB = yesterday's CTL − ATL. Ramp = CTL − CTL 7 days ago |
+| Monotony / strain | Foster: mean/SD of 7 daily loads; strain = weekly load × monotony |
+| rTSS | hours × IF² × 100 with Minetti-graded speed / critical speed; **only computed when CS comes from maximal efforts** |
+| Intensity zones | Seiler 3-zone from LTHR (design choice): Z1 < 0.90·LTHR, Z2 0.90–1.00, Z3 ≥ LTHR; Treff PI = log10(Z1/Z2·Z3·100), only when Z1 > Z3 > Z2 |
+| Pace curve | best distance per window (1–120 min) from the FIT distance stream; outdoor runs only (treadmill speed is wrist-estimated) |
+| Critical speed | 2-parameter linear fit on 3–20 min best efforts; flagged submaximal unless 50 ≤ D′ ≤ 400 m and r² > 0.95 |
+| Effective VO2max | median over runs ≥ 20 min at ≥ 70 % HRmax of Daniels VO2(speed) ÷ Swain %VO2max (%HRmax = 0.6463·%VO2max + 37.182; Swain 1994) |
+| Race predictions | effective-VO2max (VDOT tables), best-effort VDOT, best-effort Riegel 1.06, CS (5K/10K, only if maximal), and Garmin's, side by side; volume warning below 30 km/week (8-week average) |
+
+## Sense checks (run by `garmin-mcp-verify` and the `sense_checks` tool)
+| Check | Tolerance | Latest result on your data |
+|---|---|---|
+| Our ATL vs Garmin acute load | r > 0.7 | r = 0.81 (366 days) |
+| Per-run TRIMP vs Garmin training load | r > 0.6 | r = 0.92 (19 runs) |
+| Effective VO2max vs Garmin VO2max | within 10 | 42.0 vs 51.4 |
+| Cadence × stride = speed (unit check) | within 5 % | −0.3 % |
+| HR-zone time vs Garmin's FIT zone times | ≤ 5 % | 4.3 % all sports; 0–1 % on runs |
+| LTHR < HRmax | — | 166 < 193 |
+| Garmin max-HR setting vs observed | within 8 bpm | **flag:** 209 vs 193 |
+
+## Implemented in v0.6.0 (Phase 5): exact rules
+| Item | Rule |
+|---|---|
+| Steady run | ≥ 20 min moving (speed > 1 m/s) and 1-min speed CV < 15 % |
+| Efficiency factor | Minetti-graded speed (m/min) ÷ average HR |
+| Decoupling (Pa:HR) | (EF 1st half − EF 2nd half) / EF 1st half × 100; < 5 % = Friel heuristic |
+| HR drift | average HR 2nd half − 1st half (steady runs) |
+| Cadence | FIT one-foot cadence × 2 (spm) |
+| Vertical ratio | vertical oscillation / step length × 100 (matches Garmin's session value) |
+| Matched-pace norm | median of runs within ±15 s/km (widened to ±30 if < 3 runs) in 180 days |
+| Form trends | monthly medians within your median pace ± 30 s/km |
+| Heat effect | regress HR on speed across runs, then the residual on watch temperature: slope in bpm/°C (≥ 8 runs); watch temperature reads high, so only the slope is used |
+| Fitness age | Garmin's value and Garmin's own levers (target, potential age) |
+| Goal verdict (v0.7.0) | gap = median prediction vs target: ≤ 0 on track · ≤ 3 % within reach · ≤ 8 % ambitious · > 8 % very ambitious (heuristic bands); cautions for > 10 % method spread or volume below the usual range |
+
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.
 

@@ -72,6 +72,30 @@ CREATE TABLE IF NOT EXISTS fit_hrv (
     PRIMARY KEY (activity_id, seq)
 );
 
+CREATE TABLE IF NOT EXISTS fit_lengths (
+    activity_id INTEGER NOT NULL, seq INTEGER NOT NULL, length_type TEXT, stroke TEXT,
+    time_s REAL, strokes REAL, cadence REAL,
+    PRIMARY KEY (activity_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS fit_sets (
+    activity_id INTEGER NOT NULL, seq INTEGER NOT NULL, set_type TEXT, category TEXT,
+    repetitions REAL, weight_kg REAL, duration_s REAL,
+    PRIMARY KEY (activity_id, seq)
+);
+
+-- Garmin's own per-activity time in HR/power zones and the thresholds it used.
+CREATE TABLE IF NOT EXISTS fit_zones (
+    activity_id INTEGER PRIMARY KEY, hr_zone_s TEXT, hr_zone_bounds TEXT, power_zone_s TEXT,
+    hr_calc_type TEXT, max_hr REAL, resting_hr REAL, threshold_hr REAL
+);
+
+-- Watch profile at the time of the activity (sex, weight, resting HR setting).
+CREATE TABLE IF NOT EXISTS fit_profile (
+    activity_id INTEGER PRIMARY KEY, gender TEXT, weight_kg REAL, height_m REAL,
+    resting_hr REAL
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL, ts TEXT NOT NULL, source TEXT, dataset TEXT, key TEXT,

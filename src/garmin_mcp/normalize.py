@@ -464,6 +464,14 @@ def rebuild(conn: sqlite3.Connection) -> dict[str, int]:
         )
         counts[table] = len(rows)
     conn.commit()
+    try:  # Phase 4 tables depend on the tidy tables above
+        from garmin_mcp import loads
+
+        lr = loads.rebuild(conn)
+        counts["activity_load"] = lr["activities"]
+        counts["fitness"] = lr["fitness_days"]
+    except Exception as exc:  # noqa: BLE001 - never block the core tables
+        counts["loads_error"] = f"{type(exc).__name__}: {exc}"[:200]
     return counts
 
 

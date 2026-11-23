@@ -291,7 +291,16 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
     details = {k: json.loads(v) for k, v in conn.execute(
         "SELECT kind, payload FROM activity_details WHERE activity_id=? AND kind IN "
         "('hr_zones','weather')", (activity_id,))}
+    try:
+        load = conn.execute("SELECT trimp, trimp_from, rtss, z1_s, z2_s, z3_s FROM activity_load "
+                            "WHERE activity_id=?", (activity_id,)).fetchone()
+    except sqlite3.OperationalError:  # load tables not built yet (fresh database)
+        load = None
     return {
+        "load": {"trimp": load[0], "trimp_from": load[1], "rtss": load[2],
+                 "seiler_zone_s": list(load[3:6])} if load else None,
+        "swim": swim_summary(conn, activity_id),
+        "strength": strength_summary(conn, activity_id),
         "id": activity_id, "name": a["name"], "type": a["type"], "start": a["start_time_local"],
         "duration": _hms(a["duration_s"]),
         "distance_km": _r(a["distance_m"] / 1000, 2) if a["distance_m"] else None,
@@ -353,4 +362,107 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, A
         "intensity_minutes_7d": snap["everyday_activity"]["intensity_minutes_7d"],
         "flags": snap["flags"],
         "narrate_as": "2-4 sentences: how recovered, why, what to do today, one thing to watch.",
+    }
+
+
+# --------------------------------------------------------------------------- sport detail
+def swim_summary(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any] | None:
+    """Pool swim: pace/100 m, strokes per length, SWOLF (time + strokes per length) by stroke."""
+    sess = conn.execute("SELECT payload FROM fit_sessions WHERE activity_id=?",
+                        (activity_id,)).fetchone()
+    pool = None
+    if sess:
+        s0 = (json.loads(sess[0]) or [{}])[0]
+        pool = s0.get("pool_length")
+    rows = conn.execute("SELECT stroke, time_s, strokes FROM fit_lengths WHERE activity_id=? "
+                        "AND length_type='active' AND time_s > 0", (activity_id,)).fetchall()
+    if not rows or not pool:
+        return None
+    by: dict[str, list[tuple[float, float]]] = {}
+    for stroke, t, n in rows:
+        by.setdefault(stroke, []).append((t, n or 0))
+    out = {}
+    for stroke, vals in by.items():
+        t_avg = sum(t for t, _ in vals) / len(vals)
+        n_avg = sum(n for _, n in vals) / len(vals)
+        out[stroke] = {"lengths": len(vals), "pace_per_100m": _hms(t_avg / pool * 100),
+                       "strokes_per_length": _r(n_avg), "swolf": _r(t_avg + n_avg)}
+    total_t = sum(t for _, t, _ in rows)
+    return {"pool_length_m": pool, "active_lengths": len(rows),
+            "distance_m": round(len(rows) * pool),
+            "pace_per_100m": _hms(total_t / (len(rows) * pool) * 100), "by_stroke": out,
+            "meaning": "SWOLF = seconds + strokes per length; lower is more efficient. Compare "
+                       "only within the same stroke and pool length."}
+
+
+def strength_summary(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any] | None:
+    rows = conn.execute("SELECT category, repetitions, weight_kg, duration_s FROM fit_sets "
+                        "WHERE activity_id=? AND set_type='active'", (activity_id,)).fetchall()
+    if not rows:
+        return None
+    by: dict[str, dict[str, float]] = {}
+    for cat, reps, w, dur in rows:
+        name = (cat or "unlabelled").split("/")[0]
+        e = by.setdefault(name, {"sets": 0, "reps": 0, "volume_kg": 0.0})
+        e["sets"] += 1
+        e["reps"] += reps or 0
+        e["volume_kg"] += (reps or 0) * (w or 0)
+    return {"sets": len(rows), "reps": sum(r[1] or 0 for r in rows),
+            "volume_kg": _r(sum((r[1] or 0) * (r[2] or 0) for r in rows)),
+            "by_exercise": by,
+            "note": "Exercise names and weights come from the watch's rep detection or your "
+                    "edits in Garmin Connect; unlabelled sets were not identified."}
+
+
+# --------------------------------------------------------------------------- weekly review
+def weekly_review(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
+    """Last 7 days vs the 4 weeks before: volume, load, intensity, form, recovery."""
+    from garmin_mcp import loads, recovery
+
+    end = end or _latest_day(conn) or date.today().isoformat()
+    e = date.fromisoformat(end)
+    start = (e - timedelta(days=6)).isoformat()
+    prev_start = (e - timedelta(days=34)).isoformat()
+    prev_end = (e - timedelta(days=7)).isoformat()
+
+    def agg(a: str, b: str) -> dict[str, Any]:
+        r = conn.execute(
+            "SELECT COUNT(*), SUM(a.duration_s), SUM(CASE WHEN a.type LIKE '%run%' THEN "
+            "a.distance_m END), SUM(l.trimp), SUM(l.garmin_load), SUM(l.z1_s), SUM(l.z2_s), "
+            "SUM(l.z3_s) FROM activities a JOIN activity_load l USING(activity_id) "
+            "WHERE l.day BETWEEN ? AND ?", (a, b)).fetchone()
+        return {"sessions": r[0], "hours": _r((r[1] or 0) / 3600, 2),
+                "run_km": _r((r[2] or 0) / 1000, 1), "trimp": _r(r[3] or 0.0),
+                "garmin_load": _r(r[4] or 0.0), "zone_s": [r[5] or 0, r[6] or 0, r[7] or 0]}
+
+    week, prev4 = agg(start, end), agg(prev_start, prev_end)
+    avg_prev = {k: _r(prev4[k] / 4, 1) for k in ("sessions", "hours", "run_km", "trimp")}
+    z = week["zone_s"]
+    tz = sum(z) or 1
+    fit = conn.execute("SELECT ctl, atl, tsb, ramp, monotony, strain FROM fitness WHERE day=?",
+                       (end,)).fetchone()
+    longest = conn.execute(
+        "SELECT name, distance_m, duration_s FROM activities WHERE type LIKE '%run%' AND "
+        "substr(start_time_local,1,10) BETWEEN ? AND ? ORDER BY distance_m DESC LIMIT 1",
+        (start, end)).fetchone()
+    trend = recovery.recovery_trend(conn, end, 7)["days"]
+    sleep_vals = [d["sleep_h"] for d in trend if d["sleep_h"]]
+    change = (week["trimp"] / avg_prev["trimp"] - 1) * 100 if avg_prev["trimp"] else None
+    return {
+        "week": {"from": start, "to": end, **week,
+                 "intensity_pct": [round(100 * x / tz) for x in z],
+                 "polarization_index": loads.polarization_index(*z)},
+        "previous_4wk_weekly_avg": avg_prev,
+        "load_change_pct": _r(change, 0) if change is not None else None,
+        "fitness": dict(zip(("ctl", "atl", "tsb", "ramp", "monotony", "strain"), fit))
+        if fit else None,
+        "longest_run": {"name": longest[0], "km": _r(longest[1] / 1000, 2),
+                        "duration": _hms(longest[2])} if longest and longest[1] else None,
+        "recovery": {"avg_sleep_h": _r(sum(sleep_vals) / len(sleep_vals), 2)
+                     if sleep_vals else None,
+                     "readiness_states": [d["state"] for d in trend],
+                     "illness_flag_days": sum(1 for d in trend if d["illness_flag"])},
+        "by_type": recent_activities(conn, days=7, end=end)["summary"]["by_type"],
+        "narrate_as": "Weekly recap: volume and load vs usual, intensity balance, form, "
+                      "recovery, one focus for next week.",
     }

@@ -166,6 +166,17 @@ def main() -> None:
     print(json.dumps({k: result[k] for k in ("ok", "problems", "known_upstream_differences")},
                      indent=2))
     print("fill rates:", json.dumps(result["fill"], indent=1))
+    from garmin_mcp import loads
+
+    day = conn.execute("SELECT MAX(day) FROM daily").fetchone()[0]
+    sc = loads.sense_checks(conn, day) if day else {"checks": [], "threshold_notes": []}
+    print("sense checks (ours vs Garmin / physics):")
+    for c in sc["checks"]:
+        mark = "ok  " if c["ok"] else ("n/a " if c["ok"] is None else "FLAG")
+        print(f"  [{mark}] {c['check']}: {c['detail']} (tolerance: {c['tolerance']})")
+    for note in sc["threshold_notes"]:
+        print(f"  note: {note}")
+    # Mapping/unit problems fail the run; sense-check flags are findings to review.
     raise SystemExit(0 if result["ok"] else 1)
 
 
