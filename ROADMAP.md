@@ -1,105 +1,131 @@
-# Roadmap
+# Roadmap: the single main plan
 
-Decisions (2026-11-23):
-- **Runs on:** your laptop/desktop. Local sync job → SQLite → MCP server over stdio (Claude Desktop / Claude Code).
-- **Data:** official Garmin Personal API first. The unofficial `garminconnect` library is an isolated add-on for Garmin's advanced scores.
-- **Goals:** race training, recovery/readiness, health trends, a full health snapshot, workout-metric explanations with how to improve, fitness age and next steps, workouts sent to the watch.
-- **Sensors:** watch only. **Verified on real FIT files:** the FR955 records vertical oscillation, ground contact time, stride length, cadence, wrist power, HR and GPS from the wrist. No ground contact time balance. Beat-to-beat HRV only if HRV logging is switched on in the watch settings.
+**This file is the one plan.** Every other planning document is reference material that feeds
+into it, and every item there is mapped to a phase here:
+- `reports/Garmin connector feature research.md`: 34-feature backlog, referenced as **R1–R34**.
+- `METRICS.md`: how each metric is calculated (Garmin vs science vs ours).
+- `research_notes/.../FINDINGS.md`: research index and open questions.
+- `MAC_SETUP.md`: deployment steps for the Mac.
+- `CHANGELOG.md`: what shipped, per version.
 
-Design rules:
-1. Claude never calls Garmin live; every tool reads SQLite. Sync runs on a schedule or on `refresh`.
-2. Keep Garmin's own scores and our open calculations in separate fields, never one series.
-3. Every derived number returns its inputs and a one-line "what this tells you".
-4. Few tools (target ≤ 25), each returning compact summaries rather than raw dumps.
-5. Each phase ships usable, tests green, and updates CHANGELOG + README.
+## Goal
+A free, private connector that gives Claude everything a Forerunner 955 records, plus
+transparent analysis on top. Five uses: race training · recovery/readiness · health trends and
+a full health snapshot · per-workout coaching (what each metric means, how to improve) ·
+fitness age with next steps. AI-written insights in the style of Strava's "Athlete Intelligence"
+and Garmin's "Active Intelligence" (Connect+) come from Claude narrating the numbers our tools
+compute: activity recaps, daily brief, weekly review.
 
----
+## Decisions (fixed unless you change them)
+- Runs on your Mac: sync → local SQLite → MCP server for Claude Desktop. Development and testing
+  happen in the cloud session.
+- Sources, in priority order: official Personal API > unofficial `garminconnect` (extras only)
+  > Garmin account export (history). Strava is excluded (API terms ban AI use).
+- Garmin's own scores and our calculations are stored and shown side by side, never blended.
+- Watch only, no chest strap. Wrist running dynamics are available (verified on FIT data;
+  firmware 15.09+). Lactate threshold may be missing without a strap → we estimate from runs.
+- Every derived number carries its inputs and a one-line meaning. No ACWR "injury risk".
+- Every change: tests + `garmin-mcp-verify` + CHANGELOG + README.
 
-## Phase 0: Verify before building (1 short session)
-| # | Task | Why | Needs you |
+## Data sources (all live in one database)
+| Source | What it provides | History | State |
 |---|---|---|---|
-| 0.1 | ~~Apply for a Garmin Personal API key~~ **Done.** Endpoints confirmed via Garmin's official client: no readiness, training status, race predictor or endurance/hill score, so the unofficial add-on stays | Confirms the official path | done |
-| 0.2 | ~~Unofficial login~~ **Done** on the Mac; 7-day sync, 0 errors | | done |
-| 0.3 | ~~One run's FIT file~~ **Done** via the API: running dynamics present | | done |
-| 0.4 | ~~Garmin account data export~~ **Done**: Feb 2024 → Nov 2026, 7,815 FIT files, downloaded into the dev session from Drive | | done |
-| 0.5 | ~~Allow research sites~~ **Done** | | done |
+| Official Personal API | Daily summary, sleep, HRV, all-day HR, SpO2, fitness age (daily); Body Battery, stress, steps, hydration, VO2max, weight, HRV and sleep summaries (28-day windows); activities + FIT | ~1 yr per endpoint | ✅ working; rate limit ~100 req/window handled |
+| Unofficial garminconnect | Training readiness/status, max metrics, respiration, intensity min, BB events, acclimation, floors, race predictions, endurance/hill score, lactate threshold, body comp; activity splits/zones/weather | full | ✅ working on the Mac (the cloud session has no login) |
+| Account export | Daily summaries, sleep, health status, readiness, training status, race predictions, endurance/hill, acute load, VO2max, acclimation, hydration, abnormal HR; profile, zones, PRs, workouts, gear; all activities + FIT | May 2024 → Nov 2026 | ✅ imported and cross-checked |
+| FIT files | 1 s HR, pace, cadence, power, altitude, temperature, GCT, vertical oscillation, step length, laps | per activity | ✅ parsed (116 activities) |
 
-## Status and audit (2026-11-23)
+## Versions
+| Version | Content | State |
+|---|---|---|
+| 0.1.0 | Scaffold, 4 live tools | done |
+| 0.2.0 | Phase 1: SQLite sync engine, FIT parsing, official + unofficial sources | done |
+| 0.3.0 | Phase 2: export importer, tidy tables, health snapshot, DB-backed tools | done |
+| 0.3.1 | Data-quality pass: unit fixes + `garmin-mcp-verify` | done |
+| 0.4.0 | Phase 3: recovery & readiness + daily brief | **in progress** |
+| 0.5.0 | Phase 4: training load & performance + weekly review | |
+| 0.6.0 | Phase 5: workout coaching + activity recap + fitness age levers | |
+| 0.7.0 | Phase 6: memory, goals, provenance | |
+| 0.8.0 | Phase 7: workouts to the watch | |
+| 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
-### Where things run
-- **Development (this cloud session):** all coding, testing, research, importing your export and syncing via the official API. No Mac needed.
-- **Your Mac:** runs the finished connector for Claude Desktop. Mac setup is handled by a **local Claude Code session** (Claude desktop app → Code → Local → folder `Garmin-tracking`), which can run Terminal commands itself. The cloud session can't, because the Mac reports the Remote Control folder as "not available" to cloud sessions.
+## Done (traceable to the backlog)
+R1–R6 ingest, store, FIT, sync, `refresh_data` · R8–R10 day/sleep/activity tools · R12 trends ·
+R13 coverage · R27 unofficial adapter · R28 export importer · health snapshot · cross-source
+verification · research (competitors, FR955 metrics, formulas, integrations) with a verification
+pass on Garmin labels (`VERIFICATION_LOG.md`).
 
-### Audit: everything raised so far and its state
-| Item | State |
+## Phases ahead (in order)
+
+### Phase 3: Recovery & readiness → v0.4.0
+| ID | Item | Backlog/source |
+|---|---|---|
+| 3.1 | HRV baseline: ln RMSSD, 7-day mean vs 60-day normal range (SWC band), CV trend | R17, METRICS §Recovery |
+| 3.2 | RHR, respiration, sleep baselines (z-scores) + sleep debt and bedtime consistency | METRICS §Recovery |
+| 3.3 | Transparent readiness: component z-scores, shown next to Garmin's readiness and factors | R18 |
+| 3.4 | Illness/strain flag: ≥2 of HRV↓, RHR↑, respiration↑ for ≥2 days | R25 (part) |
+| 3.5 | Daily brief ("morning report"): readiness, what's driving it, today's suggestion | Athlete Intelligence style |
+| 3.6 | Verify the formula constants used here (HRV SWC multiplier) against primary sources | FINDINGS open questions |
+Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
+
+### Phase 4: Training load & performance → v0.5.0
+| ID | Item | Backlog/source |
+|---|---|---|
+| 4.1 | Thresholds store (HRmax, RHR, LTHR, threshold pace) with dates; seeded from Garmin zones/LT | R14 |
+| 4.2 | Per-activity TRIMP (all sports) and rTSS (runs), next to Garmin load | R15 |
+| 4.3 | Fitness/fatigue/form (CTL/ATL/TSB) + ramp rate | R16 |
+| 4.4 | Intensity distribution (3 zones) + polarisation index, next to Garmin Load Focus | R19 |
+| 4.5 | Monotony/strain and week-over-week load change | R24 |
+| 4.6 | Pace-duration curve, critical speed | R21, R22 |
+| 4.7 | Race prediction (VDOT, Riegel, CS) next to Garmin's | R23 |
+| 4.8 | Weekly review (Athlete Intelligence style) | — |
+| 4.9 | Verify TRIMP constants and VDOT/Riegel against primary sources | FINDINGS |
+
+### Phase 5: Workout coaching → v0.6.0
+| ID | Item | Backlog/source |
+|---|---|---|
+| 5.1 | Efficiency factor + aerobic decoupling per steady run, with trend | R20 |
+| 5.2 | Running form trends (cadence, stride, GCT, vertical oscillation/ratio vs pace) | METRICS §Workout |
+| 5.3 | Activity recap: comparison with similar past sessions, pacing, HR drift, what it trained | Athlete Intelligence style |
+| 5.4 | Downsampled activity stream tool | R11 |
+| 5.5 | Heat effect on HR (weather/FIT temperature) | R29 |
+| 5.6 | Metric glossary: meaning, healthy range, how to improve | goal: coaching |
+| 5.7 | Fitness age: Garmin's value + levers (VO2max, RHR, vigorous minutes, BMI); verify the norm formula | goal: fitness age |
+
+### Phase 6: Memory, goals, provenance → v0.7.0
+| ID | Item | Backlog/source |
+|---|---|---|
+| 6.1 | Athlete context (goals, target race, preferences, notes) | R26 |
+| 6.2 | Goal reality check (target time vs current fitness) | AthleteData parity |
+| 6.3 | Provenance on every result (source, computed vs Garmin) | R30 |
+| 6.4 | Profile/timezone for "today" | R7 |
+
+### Phase 7: Workouts to the watch → v0.8.0
+| ID | Item | Backlog/source |
+|---|---|---|
+| 7.1 | Structured workout builder; push via unofficial upload; FIT-file fallback | R31 |
+
+### Deployment track (runs alongside, needs you once)
+| ID | Item | Target |
+|---|---|---|
+| D.1 | Mac setup via one local Claude Code session (`MAC_SETUP.md`): import export, 1-year backfill, Claude Desktop config, 3-hourly sync | v1.0.0 |
+
+### Later / optional (only if you ask)
+R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe · Grafana view ·
+remote hosting.
+
+### Explicitly not building
+Skin temperature/ECG (no FR955 sensor) · ACWR as injury risk · Strava as a source ·
+our own Body Battery/Stress (no valid open method; Garmin's are shown).
+
+## Needs from you
+| Item | When |
 |---|---|
-| README + CHANGELOG updated every change | ongoing ✅ |
-| Research: competitors, FR955 metrics, formulas, integrations | done ✅ |
-| Verify research claims marked unverified / snippet / [bg] (sites were blocked) | **partly done**: Garmin labels verified, wrist running dynamics confirmed (fw 15.09); see VERIFICATION_LOG.md. Remaining: formula constants, tiers |
-| Confirm METRICS.md formulas against primary sources (⚠ items) | **open → step A** |
-| Import full history from the Garmin export | **done** (`garmin-mcp-import`, tested on your real export) |
-| Backfill extras from the unofficial library (only 7 days on the Mac) | open → step F (Mac) |
-| Tidy (normalised) tables from raw payloads | **done** (v0.3.0) |
-| Move the 4 original tools onto the local database (design rule 1) | **done** |
-| One-call health snapshot | **done** |
-| Connect the MCP server to Claude Desktop on the Mac | open → step F |
-| Scheduled sync on the Mac | open → step F |
+| Run the one-message Mac setup (D.1) | whenever convenient; nothing else blocks on it |
 | Rotate the Personal API key (it was pasted in chat) | deferred by you |
-| Beat-to-beat HRV during activities (watch setting "Log HRV") | optional, your choice |
-| Merge PR #1 into `main` | at the end of Phase 2 |
-| Phases 3–7 (readiness, load, coaching, memory, workouts) | after Phase 2 |
+| Optional: watch setting "Log HRV" for beat-to-beat data in activities | your choice |
+| Merge PR #1 into `main` | I'll ask at v0.4.0 |
 
-### Next steps, in order
-- **A. Verify research and formulas.** Re-check every unverified claim against full pages now that the sites are open; correct the notes, report and METRICS.md.
-- **B. History importer:** `garmin-mcp-import <export folder>`. Loads the export (activities + FIT, sleep, health status, readiness, race predictions, endurance/hill, acute load, VO2max, acclimation, daily summaries, hydration, PRs, zones) into the same database. Tested on your real export here.
-- **C. Phase 2:** tidy tables (daily, sleep, HRV, readiness, load...) built from all three sources (export, official API, unofficial), with a defined priority when they overlap; health snapshot tool; existing tools moved to the local database.
-- **D.** ~~Verify numbers~~ **Done automatically**: official API vs export agree on every compared field (29/29 days).
-- **E.** Merge to `main`.
-- **F. Mac setup in one go** (done by a local Claude Code session using a script I write): pull, import your Downloads export, backfill extras, connect to Claude Desktop, schedule the sync.
-
-## Phase 1: Data foundation (v0.2)
-- SQLite schema: activities, laps, FIT samples, daily summary, sleep, HRV, body, sync_log, thresholds (dated).
-- Source adapters behind one interface: `personal_api` (primary), `garminconnect` (augment), `fit_file`, `export_zip`.
-- Sync command: incremental by date, retries with backoff, never re-downloads stored data, logs each run.
-- Scheduling: an OS scheduler (cron / launchd / Task Scheduler) runs the sync every 2–4 h, plus a `refresh` tool.
-- Backfill from the export ZIP and FIT files.
-- **Done when:** a year of activities and daily health is in SQLite, and a second sync run fetches only new data.
-
-## Phase 2: Core MCP tools and health snapshot (v0.3)
-Tools: `health_snapshot`, `daily_summary`, `sleep`, `hrv`, `activities`, `activity_detail` (laps, splits, zones, dynamics), `trends(metric, range)`, `data_coverage`, `refresh`.
-- `health_snapshot` = one call giving today plus the 7/28-day picture: sleep, HRV status, RHR, stress, Body Battery, load, VO2max, Garmin readiness and training status.
-- **Done when:** "How am I doing?" can be answered from one tool call.
-
-## Phase 3: Recovery and readiness (v0.4)
-- HRV: ln RMSSD, 7-day rolling mean vs a 60-day baseline band (Plews / HRV4Training).
-- RHR and sleep vs baseline. Our readiness score shows per-input z-scores next to Garmin's Training Readiness.
-- Anomaly flags (illness-like pattern: HRV down, RHR up, respiration up).
-- Tools: `readiness_today`, `recovery_trend`, `anomalies`.
-
-## Phase 4: Training load and race performance (v0.5)
-- Per-activity load: TRIMP (HR), rTSS (pace/GAP), and Garmin's load stored next to them.
-- Fitness/fatigue/form chart (CTL/ATL/TSB), ramp rate, monotony and strain, intensity distribution (Seiler 3-zone).
-- Pace-duration curve, critical speed, race prediction (VDOT + Riegel + CS) shown next to Garmin's race predictor.
-- Tools: `training_load`, `intensity_distribution`, `pace_curve`, `race_prediction`.
-
-## Phase 5: Workout metric coaching (v0.6)
-- Per run: efficiency factor, aerobic decoupling (Pa:HR), cadence and stride vs pace, HR drift, splits consistency, power, Training Effect.
-- A metrics glossary (each metric: what it means, good range, how to improve), stored as data and returned with results.
-- Fitness age: Garmin's value plus an open estimate from VO2max age norms, and which levers (VO2max, RHR, activity, BMI) would move it.
-- Tools: `explain_activity`, `metric_glossary`, `fitness_age`.
-
-## Phase 6: Memory and planning (v0.7)
-- Athlete profile: goals, target race, thresholds, preferences, injury notes. Coaching notes log.
-- `reality_check_goal`: target race time vs current fitness.
-- Tools: `athlete_context`, `update_athlete_context`, `goal_check`.
-
-## Phase 7: Workouts to the watch (v0.8)
-- Structured workout builder (warm-up, intervals by pace/HR, cool-down).
-- Delivery, in this order: (a) unofficial Garmin Connect workout upload, then sync to the watch; (b) fallback FIT workout file copied over USB. The official Training API is business-only.
-- Tools: `create_workout`, `list_workouts`, `delete_workout`.
-
-## Later / optional
-Weather context for runs, Apple Health import, intervals.icu as a second source, Grafana dashboard, remote MCP hosting.
-
-## Explicitly not building
-Skin temperature/ECG (the FR955 has neither sensor). ACWR as "injury risk". Strava as a source (its API terms ban AI use). Multi-provider dedupe.
+## Side-quest rule
+Research or fixes outside the current phase are done only when they feed an item above; each is
+logged in CHANGELOG under the item it serves, then work returns to the current phase.
