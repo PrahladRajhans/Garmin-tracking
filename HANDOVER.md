@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.13.1, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.13.2, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -183,9 +183,13 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
    paths, bypasses, custom domains, and policies that allow anyone beyond the configured email.
 10. **Fresh database:** the dashboard CLI still requires normalized, populated data. It fails
     on an empty database (missing tidy tables, then no latest day). This predates v0.13.1.
-11. **Review limits:** GitHub API and medical-reference/pricing hosts were denied by the cloud
-    network policy. Git read access works. No primary VO2max norm table was retrieved; no
-    norms have been added. Local checks do not establish Mac, iPhone, live Garmin, or CI health.
+11. **Review update:** network access is restored; PR #8 passed both CI jobs and was merged.
+    The primary FRIEND paper is now accessible and its table retrieved; implementation is the
+    next accuracy step. Local checks still do not establish Mac/iPhone/live Garmin health.
+12. **Sync/update reliability (v0.13.2):** the gate uses `meta.last_full_sync` plus
+    `sync_retry_required`; endpoint timestamps no longer imply completion. Dates are local.
+    Pagination/chunk loops are guarded. Failed dependency installs stop sync and are retried
+    using per-checkout `pending-install-*.json` markers in the data folder. See `docs/OPERATIONS.md`.
 
 ## 10. What is left (pick up here)
 In order. Each item says where it goes and what "done" means.

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from garmin_mcp import db, fit
+from garmin_mcp.client import today
 from garmin_mcp.config import db_path, fit_dir
 from garmin_mcp.sources.base import DataSource
 
@@ -130,7 +131,7 @@ class Syncer:
 
     # -- phases --------------------------------------------------------------
     def sync_daily(self, start: date, end: date) -> None:
-        fresh_from = date.today() - timedelta(days=self.refresh_days)
+        fresh_from = today() - timedelta(days=self.refresh_days)
         day = start
         while day <= end:
             key = day.isoformat()
@@ -218,8 +219,10 @@ class Syncer:
 
 
 def _chunks(start: date, end: date, size: int | None) -> list[tuple[str, str]]:
-    if not size:
+    if size is None:
         return [(start.isoformat(), end.isoformat())]
+    if size < 1:
+        raise ValueError("Range chunk size must be positive.")
     out, cur = [], start
     while cur <= end:
         stop = min(cur + timedelta(days=size - 1), end)
@@ -249,14 +252,12 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
     """Sync one or both sources. In "both" mode the official API runs first and the
     unofficial source only adds what the official one lacks; a failure in one source is
     reported and never blocks the other."""
-    end = date.today()
-    start = date.fromisoformat(since) if since else end - timedelta(days=days - 1)
     plan: list[tuple[str, Any]] = {
         "both": [("personal_api", _personal_api), ("garminconnect", lambda: _garminconnect(True))],
         "personal_api": [("personal_api", _personal_api)],
         "garminconnect": [("garminconnect", lambda: _garminconnect(False))],
     }[source]
-    out: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat(), "sources": {}}
+    out: dict[str, Any] = {"sources": {}}
     conn = db.connect(db_path())
     try:
         from garmin_mcp import athlete
@@ -264,6 +265,13 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
         seeded = athlete.seed_from_file(conn)
         if seeded:
             out["settings_seeded"] = seeded
+        end = today()
+        start = date.fromisoformat(since) if since else end - timedelta(days=days - 1)
+        if days < 1 or start > end:
+            raise ValueError("Sync needs a positive day count and a start date no later than today.")
+        out.update(start=start.isoformat(), end=end.isoformat())
+        conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('sync_retry_required','1')")
+        conn.commit()
         for name, factory in plan:
             try:
                 src = factory()
@@ -274,6 +282,14 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
         from garmin_mcp.normalize import rebuild
 
         out["tidy_tables"] = rebuild(conn)
+        complete = all("run_id" in r and not r.get("errors") and not r.get("aborted")
+                       for r in out["sources"].values())
+        out["full_sync_complete"] = complete
+        if complete:
+            conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('last_full_sync',?)",
+                         (db.now_iso(),))
+            conn.execute("DELETE FROM meta WHERE key='sync_retry_required'")
+            conn.commit()
         try:
             from garmin_mcp import dashboard
 
@@ -306,6 +322,8 @@ def main() -> None:
 
         info = autoupdate.update()  # re-executes on new code if it changed
         print(json.dumps({"auto_update": info}))
+        if info.get("requires_repair"):
+            raise SystemExit(1)
     if args.coverage:
         conn = db.connect(db_path())
         print(json.dumps(db.coverage(conn), indent=2))
@@ -333,9 +351,16 @@ def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     conn = db.connect(db_path())
     try:
-        row = conn.execute("SELECT MAX(ts) FROM sync_log WHERE status='ok' AND "
-                           "dataset NOT LIKE 'probe%'").fetchone()
-        last = datetime.fromisoformat(row[0]) if row and row[0] else None
+        retry = conn.execute("SELECT value FROM meta WHERE key='sync_retry_required'").fetchone()
+        if retry:
+            return {"sync": True, "reason": "previous full sync did not complete"}
+        row = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
+        try:
+            last = datetime.fromisoformat(row[0]) if row and row[0] else None
+            if last is not None and (last.tzinfo is None or last > now):
+                last = None
+        except ValueError:
+            last = None
         if last is None or (now - last).total_seconds() >= FULL_SYNC_EVERY_H * 3600:
             return {"sync": True, "reason": "last full sync >= 11 h ago" if last else
                     "no previous sync"}
@@ -352,10 +377,8 @@ def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
 
 
 def _probe_today() -> list[int]:
-    from datetime import date as _date
-
     src = _personal_api()
-    day = _date.today().isoformat()
+    day = today().isoformat()
     return [int(a["activityId"]) for a in src.list_activities(day, day) if "activityId" in a]
 
 

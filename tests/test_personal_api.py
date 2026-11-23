@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from types import SimpleNamespace
 
+import pytest
 from conftest import make_fit
 
 from garmin_mcp.sources.personal_api import PersonalAPISource
@@ -85,3 +86,27 @@ def test_expired_token_is_refreshed_once(conn):
     today = date.today()
     r = Syncer(conn, src, delay=0, store_fit_files=False).run(today, today)
     assert r.errors == 0 and auth.calls == 1 and client.token == "t1"
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_invalid_chunks_fail_instead_of_looping(size):
+    with pytest.raises(ValueError, match="positive"):
+        _chunks(date(2026, 1, 1), date(2026, 2, 1), size)
+
+
+def test_repeated_activity_page_is_rejected():
+    client = FakeClient(n_activities=100)
+    page = client.search_activities(0, 100, "2026-01-01", "2026-02-01")
+    client.search_activities = lambda **kwargs: page
+    src = PersonalAPISource("k", client=client)
+    with pytest.raises(RuntimeError, match="repeated"):
+        src.list_activities("2026-01-01", "2026-02-01")
+
+
+def test_never_ending_pagination_has_a_hard_limit(monkeypatch):
+    from garmin_mcp.sources import personal_api
+
+    monkeypatch.setattr(personal_api, "MAX_ACTIVITY_PAGES", 2)
+    src = PersonalAPISource("k", client=FakeClient(n_activities=300))
+    with pytest.raises(RuntimeError, match="request limit"):
+        src.list_activities("2026-01-01", "2026-02-01")

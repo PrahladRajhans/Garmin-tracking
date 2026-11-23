@@ -128,8 +128,51 @@ def test_gate_full_sync_after_11h_and_probe_otherwise(conn, monkeypatch, tmp_pat
     # no previous sync -> sync
     assert s.gate(probe=list)["sync"] is True
     db.log(conn, "r1", "x", "sleep", "d", "ok")
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync',?)", (db.now_iso(),))
     conn.commit()
     now = datetime.now(UTC)
     assert s.gate(now=now, probe=list)["sync"] is False          # recent, nothing new
     assert s.gate(now=now, probe=lambda: [999])["sync"] is True        # new activity
     assert s.gate(now=now + timedelta(hours=12), probe=list)["sync"] is True
+
+
+def test_partial_sync_is_retried_despite_recent_successful_requests(conn, tmp_path, monkeypatch):
+    from garmin_mcp import sync
+
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(sync, "_personal_api", lambda: FakeSource(fail={"hrv"}))
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync',?)", (db.now_iso(),))
+    conn.commit()
+    failed = sync.run_sync(days=1, source="personal_api", delay=0)
+    assert failed["full_sync_complete"] is False
+    assert sync.gate(probe=list)["sync"] is True
+    monkeypatch.setattr(sync, "_personal_api", FakeSource)
+    ok = sync.run_sync(days=1, source="personal_api", delay=0)
+    assert ok["full_sync_complete"] is True
+    assert sync.gate(probe=list)["sync"] is False
+
+
+def test_request_log_alone_is_not_a_completed_sync(conn, tmp_path, monkeypatch):
+    from garmin_mcp import sync
+
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    db.log(conn, "r1", "x", "sleep", "today", "ok")
+    conn.commit()
+    assert sync.gate(probe=list)["sync"] is True
+
+
+def test_sync_and_probe_use_athlete_local_today(conn, tmp_path, monkeypatch):
+    from garmin_mcp import sync
+
+    local_day = date(2026, 11, 24)
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(sync, "today", lambda: local_day)
+    src = FakeSource()
+    monkeypatch.setattr(sync, "_personal_api", lambda: src)
+    result = sync.run_sync(days=1, source="personal_api", delay=0)
+    assert result["start"] == result["end"] == local_day.isoformat()
+    assert {d for _, d in src.calls} == {local_day.isoformat()}
+    spans = []
+    src.list_activities = lambda s, e: spans.append((s, e)) or []
+    assert sync._probe_today() == []
+    assert spans == [(local_day.isoformat(), local_day.isoformat())]

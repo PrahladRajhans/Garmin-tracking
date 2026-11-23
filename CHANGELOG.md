@@ -9,6 +9,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.13.2] - 2026-11-23
+
+Operations and loop review (step 1 of the owner-requested review).
+
+- The 11-hour gate now records a completed, error-free run of every requested source, not
+  an individual successful request. A failed/interrupted run remains marked for retry even
+  when an older completed sync is recent. First run after this change performs a full sync.
+- Sync dates, refresh windows and the activity probe use the athlete's local date, after
+  settings seeding. Invalid day counts and non-positive range chunk sizes fail explicitly;
+  negative chunks could previously move backward forever.
+- Official API pagination rejects repeated pages and has a 1,000-request cap, failing rather
+  than accepting truncated history. Page fingerprints retain hashes rather than whole responses.
+  Unofficial-library pagination was inspected and already has its own request cap.
+- Failed dependency installation now stops re-execution/sync, preserves a per-checkout retry
+  marker outside the repo, and retries on the next run even without a new commit. A pending
+  install also blocks sync if the subsequent Git fetch fails.
+- CI now includes `codex/**` and `chatgpt/**` pushes in addition to PRs/main/Claude branches.
+- GitHub API access is restored. PR #8 passed CI on Python 3.12 and 3.13 and was merged
+  through GitHub; no direct push to main was used.
+- Added regression tests for completion/retry state, local dates, invalid chunks, pagination
+  limits and failed-install recovery. No live Garmin calls were made during validation.
+- Validation: 93 local tests and Ruff pass; CI is required before merge.
+
 ## [0.13.1] - 2026-11-23
 
 Continuation: prepare private phone hosting while preserving the existing dashboard and analytics.

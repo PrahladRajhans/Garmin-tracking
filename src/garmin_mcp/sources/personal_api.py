@@ -16,11 +16,15 @@ HRV/weight 365 d. Range datasets are therefore fetched in 28-day chunks.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
 from typing import Any
 
 from garmin_mcp.sources.base import DataSource
 from garmin_mcp.sources.garminconnect_source import extract_fit
+
+MAX_ACTIVITY_PAGES = 1000
 
 
 class PersonalAPISource(DataSource):
@@ -90,14 +94,22 @@ class PersonalAPISource(DataSource):
     def list_activities(self, start: str, end: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         offset, page = 0, 100
-        while True:
+        seen = set()
+        for _ in range(MAX_ACTIVITY_PAGES):
             result = self._search(offset, page, start, end)
             if not result:
                 break
+            signature = hashlib.sha256(json.dumps(result, sort_keys=True, default=str).encode()).digest()
+            if signature in seen:
+                raise RuntimeError("Garmin returned a repeated activity page; pagination stopped.")
+            seen.add(signature)
             items.extend(result)
             if len(result) < page:
                 break
             offset += page
+        else:
+            raise RuntimeError("Garmin activity pagination exceeded its request limit; no "
+                               "partial list was accepted.")
         return items
 
     def _search(self, offset: int, page: int, start: str, end: str) -> list[dict[str, Any]]:
