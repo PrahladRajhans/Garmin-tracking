@@ -17,7 +17,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - MCP tools `start_experiment`, `log_experiment`, `experiment_status`, `end_experiment` (49 tools). They mark the dashboard for rebuild at the next scheduled run.
 - Dashboard:
   - **Today:** a "Your experiment" card with the last attempt, the next step and the verdict so far. It also shows when the data snapshot is older, because it is about past runs.
-  - **Run pages:** an "Your experiment on this run" card with the changes versus your usual.
+  - **Run pages:** a "Your experiment on this run" card with the changes versus your usual.
+
+### Changed
+- **Dashboard file about 40 % smaller** (2.4 MB → 1.4 MB on the owner's data):
+  - Second-by-second run timelines are kept for the 3 latest runs (older runs keep their summary and pacing pages).
+  - About 100 points per timeline.
+  - Patterns draws the latest 120 days per chart; the statistics still use every day.
+  - Chart coordinates are rounded to 0.1 px.
+  - Next step: draw each chart's interactive points once instead of separately for phone and desktop.
 
 ### Added (docs)
 - `docs/PRODUCT_REVIEW_2026-11.md`: owner-requested critical product review of v0.17.0, with a specification for an insight and recommendation engine, a weekly plan, a 5-tab redesign, cuts, and acceptance criteria. It is the brief for the next stage of work.

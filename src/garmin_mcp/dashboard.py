@@ -13,6 +13,7 @@ import html
 import json
 import math
 import os
+import re
 import sqlite3
 import stat
 import tempfile
@@ -64,6 +65,11 @@ def _last_full_night(conn: sqlite3.Connection, end: str) -> str | None:
     return row[0] if row else None
 
 
+TRACE_RUNS = 3        # second-by-second timelines are kept for the latest runs only
+TRACE_POINTS = 100    # points per timeline (about one every 18 s on a 30-min run)
+SCATTER_POINTS = 120  # most recent days drawn per pattern; statistics use every day
+
+
 def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     if not _has(conn, "daily") or not insights._latest_day(conn):
         return {"available": False, "reason": "No Garmin data is available yet. Sync or import "
@@ -94,9 +100,12 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
             "ORDER BY julianday(start_time_local) DESC LIMIT 8", (end,)):
         b = running.running_breakdown(conn, aid, weight, read_metrics=read_run)
         if b.get("available"):
-            interval = max(10, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0) / 150))
+            interval = max(10, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0)
+                                         / TRACE_POINTS))
+            trace = (coaching.activity_stream(conn, aid, interval)
+                     if len(runs) < TRACE_RUNS else {})  # older runs: summary page only
             b.update(date=start[:10], start_local=start, km=round((dist or 0) / 1000, 2),
-                     trace=coaching.activity_stream(conn, aid, interval))
+                     trace=trace)
             runs.append(b)
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
@@ -1527,13 +1536,16 @@ def page_patterns(d: dict[str, Any]) -> str:
         when = "same day" if p["lag_days"] == 0 else "next day"
         ux = "points" if p["x"] == "trimp" else engine.UNITS[p["x"]]
         uy = "points" if p["y"] == "trimp" else engine.UNITS[p["y"]]
-        plot = both(scatter, p["points"], x, y, p.get("slope"),
+        drawn = sorted(p["points"])[-SCATTER_POINTS:]
+        plot = both(scatter, drawn, x, y, p.get("slope"),
                     x_unit=ux, y_unit=uy, lag=p["lag_days"])
         statement = p["statement"].partition(" (r =")[0]
         statement = statement.replace("TRIMP more training load", "more training load points")
         statement = statement.replace("TRIMP", "training load points")
         body = (f'<p class="sub">{_e(statement)}.</p>{plot}'
-                f'<p class="chart-note">{p["n"]} paired days · Zero is your recent average.</p>'
+                f'<p class="chart-note">{p["n"]} paired days'
+                + (f' (latest {len(drawn)} drawn)' if len(drawn) < len(p["points"]) else "")
+                + ' · Zero is your recent average.</p>'
                 f'<details><summary>How sure is this?</summary><p class="sub">'
                 f'Correlation {p["r"]:+.2f} · 95% range '
                 f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}.'
@@ -1783,7 +1795,9 @@ def render(d: dict[str, Any]) -> str:
                  page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
-            pages.extend((page_run(r, d.get("trial")), page_run_pacing(r), page_run_trace(r)))
+            pages.extend((page_run(r, d.get("trial")), page_run_pacing(r)))
+            if r["trace"].get("stream"):
+                pages.append(page_run_trace(r))
             if r["comparable_effort"]["available"]:
                 pages.append(page_run_compare(r, run_ids))
         calendar = d["calendar"]
@@ -1810,6 +1824,17 @@ def render(d: dict[str, Any]) -> str:
         '<nav class="top" '
         f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status} '
         f'</footer></main><script>{SCRIPT}</script></body></html>')
+
+
+_COORD = re.compile(r'(\b(?:x|y|x1|x2|y1|y2|cx|cy|width|height)=")(-?\d+\.\d)\d+"')
+_PATH_NUM = re.compile(r'(-?\d+\.\d)\d+')
+_PATH = re.compile(r'( (?:d|points)=")([^"]*)"')
+
+
+def _compact(html_text: str) -> str:
+    """Round chart coordinates to 0.1 px (invisible on screen; roughly a fifth smaller)."""
+    html_text = _COORD.sub(r'\1\2"', html_text)
+    return _PATH.sub(lambda m: m.group(1) + _PATH_NUM.sub(r"\1", m.group(2)) + '"', html_text)
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -1855,7 +1880,7 @@ def needs_rebuild(out_dir: Path | None = None) -> bool:
 def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
     path, icloud = _snapshot_paths(out_dir)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    content = render(collect(conn))
+    content = _compact(render(collect(conn)))
     _atomic_write(path, content)
     if icloud is not None:
         try:
