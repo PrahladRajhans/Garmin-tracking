@@ -15,6 +15,7 @@ Sources and conventions (see METRICS.md "Running breakdown"):
 
 from __future__ import annotations
 
+import math
 import sqlite3
 import statistics
 from datetime import date
@@ -105,8 +106,9 @@ def running_breakdown(conn: sqlite3.Connection, aid: int, weight_kg: float | Non
         ln = lines.get(key)
         if ln:
             exp = ln["intercept"] + ln["slope_per_ms"] * speed
-            row["your_usual_at_this_pace"] = round(exp, 3)
-            row["vs_usual_pct"] = round((v - exp) / exp * 100, 1)
+            if math.isfinite(exp) and exp > 0:
+                row["your_usual_at_this_pace"] = round(exp, 3)
+                row["vs_usual_pct"] = round((v - exp) / exp * 100, 1)
         form[key] = row
     eff = None
     if m.get("power_w") and weight_kg:
@@ -145,7 +147,12 @@ def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None) -> l
     if m.get("split_cv_pct") and m["split_cv_pct"] > 8:
         out.append("Pacing was uneven across kilometres: start slower and hold a steady effort.")
     if not out:
-        out.append("Form and pacing look in line with your usual. Keep building easy volume.")
+        if any("vs_usual_pct" in value for value in form.values()):
+            out.append("Available form comparisons show no large deviations from your usual. "
+                       "Keep building easy volume gradually.")
+        else:
+            out.append("Not enough comparable earlier runs to assess your usual form. "
+                       "Build easy volume gradually and compare future runs in similar conditions.")
     return out
 
 

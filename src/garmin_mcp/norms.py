@@ -58,8 +58,11 @@ def comparison(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
                           "ORDER BY day DESC LIMIT 1", (end,)).fetchone()
     th = loads.thresholds(conn, end)
     eff = loads.effective_vo2max(conn, end, th["hr_max"], 180) if th["hr_max"] else {}
-    return {**ref, "garmin": garmin[0] if garmin else None,
-            "garmin_as_of": garmin[1] if garmin else None, "effective": eff.get("value"),
+    def positive(value):
+        return value if isinstance(value, (int, float)) and math.isfinite(value) and value > 0 else None
+
+    return {**ref, "garmin": positive(garmin[0]) if garmin else None,
+            "garmin_as_of": garmin[1] if garmin else None, "effective": positive(eff.get("value")),
             "effective_runs": eff.get("runs", 0), "hr_max": th["hr_max"],
             "hr_max_user_override": "hr_max" in th.get("overrides", {}),
             "caveat": "Garmin and effective VO2max are separate estimates, not laboratory "

@@ -284,6 +284,7 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
         out["tidy_tables"] = rebuild(conn)
         complete = all("run_id" in r and not r.get("errors") and not r.get("aborted")
                        for r in out["sources"].values())
+        complete = complete and not out["tidy_tables"].get("loads_error")
         out["full_sync_complete"] = complete
         if complete:
             conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('last_full_sync',?)",

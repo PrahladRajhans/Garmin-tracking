@@ -121,3 +121,14 @@ reference bands avoid turning population ranks into health diagnoses. Missing ag
 Setup: [MAC_SETUP.md](MAC_SETUP.md#private-phone-access-optional). Source review and verified limits:
 [hosting research](research_notes/Garmin%20connector%20feature%20research/private_dashboard_hosting.md).
 Sections 1 and 5 retain the original design history; this section records the updated hosting decision.
+
+## Accessibility and reliability follow-up (v0.14.1)
+
+See [UI_REVIEW](docs/UI_REVIEW.md) for before/after evidence. Native disclosures expose exact
+chart data with scoped headers and captions. Date-based line charts preserve elapsed gaps;
+missing bars keep their original status colour. Text remains legible in both colour themes,
+focus has a visible outline, and navigation/disclosure targets are at least 44 px high.
+The empty dashboard explains how to obtain data. Today reports signal coverage and partial
+syncs; no stale health-status row is presented as today. The footer says "Data through".
+HTML is still script-free and responsive, with atomic local/iCloud replacement. Real Safari,
+iCloud and Cloudflare Access tests remain rollout work; Chromium checks do not close those.

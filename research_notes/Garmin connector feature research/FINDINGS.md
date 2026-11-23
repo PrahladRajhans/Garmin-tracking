@@ -40,3 +40,12 @@ Goal: a free personal FR955 connector. **Local sync → SQLite → thin MCP serv
 4. Derived analytics (PMC, HRV baseline, readiness components, pace curve, race prediction).
 5. MCP server: raw reads, derived reads, daily brief, data coverage, refresh/refetch-day.
 6. Optional: FIT workout encoder, Grafana view, intervals.icu as a 2nd source.
+
+## Continuation review sources (23 November 2026)
+
+- [Accuracy ledger](accuracy_review_2026-11.md): retrieved AASM consensus, primary FRIEND
+  Table 3, UTC behavior, confounders and explicit remaining scientific verification.
+- [Dashboard audit](../../docs/UI_REVIEW.md): synthetic before/after screenshots, W3C
+  contrast/focus references, browser evidence and device limitations for v0.14.1.
+- This index retains the original research proposals. Current tools (43), exclusions and
+  deployment state are governed by HANDOVER/ROADMAP, rather than the early proposals above.

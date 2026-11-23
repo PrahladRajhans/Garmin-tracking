@@ -62,3 +62,20 @@ Use `chatgpt/<topic>` branches, never direct pushes to main. PR checks run on Py
 3.13; merge only the tested head. GitHub API and Git transport are separate access paths. If API
 access is denied, add `api.github.com` in the cloud environment's Internet/network allowed
 domains and apply the setting. A repository edit cannot remove an external egress restriction.
+
+## Output, provenance and privacy follow-up (v0.14.1)
+
+A returned `loads_error` from normalization counts as an incomplete sync and retains the retry
+flag. Athlete-setting responses expose recalculation failure. `data_coverage.last_full_sync`
+and MCP `last_successful_sync` mean complete source/normalization success; legacy `last_sync`
+is still the last request-run log and must not be used as a freshness guarantee.
+
+New POSIX SQLite/HTML files use 0600 and new data/FIT/dashboard directories 0700; no chmod is
+applied to existing paths. Check permissions of pre-existing data/backups separately. Atomic
+HTML replacement preserves the old file on failure; an iCloud error warns and leaves local
+output available. Empty databases now render a waiting dashboard rather than crashing.
+
+Requested MCP results may leave the Mac through the selected AI client/model provider.
+Cloudflare Access protects reader access; the HTML is still stored by Cloudflare. Keep the
+optional upload disabled until the owner has configured both protected hostnames and checked
+anonymous denial, owner login and phone navigation.

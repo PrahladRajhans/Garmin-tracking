@@ -9,6 +9,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.14.1] - 2026-11-23
+
+- Empty databases render an honest waiting state across all seven pages. Today shows signal
+  coverage and incomplete-sync warnings; missing targets and explanations have explicit fallbacks.
+- Current-day personal ranges no longer reuse stale health-status rows. Prior-day baselines,
+  missing upper bounds and insufficient variation are handled explicitly. Insight advice agrees
+  with recovery's data-sufficiency rules. MCP provenance uses full-sync completion.
+- Charts preserve elapsed date gaps, retain status colours after missing bars, escape labels,
+  omit nonfinite values and provide expandable exact-value tables. Muted text is darker in light
+  mode, keyboard focus is visible, and navigation/disclosure targets are at least 44 px high.
+  Training-load and fitness-age wording avoids physiological/causal claims. Run advice no longer
+  claims a personal comparison without history or infers aerobic fitness from low drift alone.
+- Atomic HTML replacement preserves the previous file on failure. iCloud copy errors warn while
+  retaining the successful local build. New database/HTML files use POSIX mode 0600 and newly
+  created data/FIT/dashboard directories 0700; existing permissions are not changed.
+- Derived training-load rebuild failures prevent full-sync completion; athlete-setting responses
+  report a failed recalculation instead of claiming success.
+- Validation: 116 tests and Ruff pass. Synthetic browser and MCP evidence, screenshots and
+  remaining device limitations are recorded in `docs/UI_REVIEW.md`. No live Garmin/Cloudflare
+  credentials or health data were used. Privacy documentation now names the AI-provider boundary.
+
 ## [0.14.0] - 2026-11-23
 
 - Added the Body-page VO₂max reference bar from the retrieved primary FRIEND 2015 **Table 3**.

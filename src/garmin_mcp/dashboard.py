@@ -10,8 +10,12 @@ Output: $GARMIN_DATA_DIR/dashboard/index.html (+ a copy in iCloud Drive/Garmin i
 from __future__ import annotations
 
 import html
-import shutil
+import math
+import os
 import sqlite3
+import stat
+import tempfile
+import warnings
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -26,7 +30,7 @@ def _e(v: Any) -> str:
 
 
 def _f(v: Any, nd: int = 0, unit: str = "") -> str:
-    if not isinstance(v, (int, float)):
+    if not isinstance(v, (int, float)) or not math.isfinite(v):
         return "–"
     return f"{v:,.{nd}f}{unit}"
 
@@ -39,6 +43,9 @@ def _last_full_night(conn: sqlite3.Connection, end: str) -> str | None:
 
 
 def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
+    if not _has(conn, "daily") or not insights._latest_day(conn):
+        return {"available": False, "reason": "No Garmin data is available yet. Sync or import "
+                "your history on the Mac to build your dashboard."}
     end = end or insights._latest_day(conn)
     e = date.fromisoformat(end)
 
@@ -81,6 +88,8 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "explore": engine.explore(conn, end, 365, 8),
         "tests": running.test_runs(conn),
         "vo2_reference": norms.comparison(conn, end),
+        "sync_retry_required": conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
+        is not None,
         "feed": engine.insight_feed(conn, end)["insights"],
     }
 
@@ -163,13 +172,45 @@ def _scale(vals: list[float], pad: float = 0.08) -> tuple[float, float]:
     return lo - p, hi + p
 
 
+def _chart_table(headers: list[str], rows: list[tuple], caption: str) -> str:
+    head = "".join(f'<th scope="col">{_e(h)}</th>' for h in headers)
+    body = "".join(f'<tr><th scope="row">{_e(row[0])}</th>'
+                   + "".join(f'<td>{_e(v)}</td>' for v in row[1:]) + '</tr>' for row in rows)
+    return ('<details class="chart-values"><summary>View values</summary>'
+            '<div class="table-wrap" tabindex="0" role="region" aria-label="Chart data">'
+            f'<table><caption>{_e(caption)}</caption><thead><tr>{head}</tr></thead>'
+            f'<tbody>{body}</tbody></table></div></details>')
+
+
 def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | None = None,
                band_series: list[tuple[float, float]] | None = None, h: int = 150,
                nd: int = 0, cls: str = "s1", w: int = W, fmt: Any = None) -> str:
     """One series, one axis. band = fixed (lo, hi); band_series = per-point (lo, hi)."""
-    pts = [(d, v) for d, v in points if isinstance(v, (int, float))]
+    valid = [i for i, (_, v) in enumerate(points) if isinstance(v, (int, float)) and math.isfinite(v)]
+    pts = [points[i] for i in valid]
+    if band_series and len(band_series) == len(points):
+        band_series = [band_series[i] for i in valid]
+    days = None
+    try:
+        days = [date.fromisoformat(d[:10]).toordinal() for d, _ in pts]
+        order = sorted(range(len(pts)), key=lambda i: days[i])
+        pts = [pts[i] for i in order]
+        days = [days[i] for i in order]
+        if band_series and len(band_series) == len(order):
+            band_series = [band_series[i] for i in order]
+    except ValueError:
+        days = None  # split/km labels are categorical, rather than dates
+    headers = ["Date / label", f"Value{unit}"]
+    values = [(d, fmt(v) if fmt else _f(v, nd)) for d, v in pts]
+    if band or (band_series and len(band_series) == len(pts)):
+        headers += [f"Normal low{unit}", f"Normal high{unit}"]
+        bounds_list = band_series if band_series and len(band_series) == len(pts) else [band] * len(pts)
+        values = [(*row, _f(bounds[0], nd), _f(bounds[1], nd)) if bounds else (*row, "–", "–")
+                  for row, bounds in zip(values, bounds_list,
+                                         strict=True)]
+    table = _chart_table(headers, values, "Recorded trend values")
     if len(pts) < 2:
-        return '<p class="empty">Not enough data yet.</p>'
+        return '<p class="empty">Not enough data yet.</p>' + (table if pts else "")
     vals = [v for _, v in pts]
     if band:
         vals += list(band)
@@ -181,6 +222,8 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     n = len(pts)
 
     def X(i: int) -> float:
+        if days and days[-1] > days[0]:
+            return L + pw * (days[i] - days[0]) / (days[-1] - days[0])
         return L + pw * i / (n - 1)
 
     def Y(v: float) -> float:
@@ -210,16 +253,21 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                  f'{lab}</title></circle>')
     lx, ly = X(n - 1), Y(pts[-1][1])
     g.append(f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="4" class="dot {cls}"/>')
-    g.append(f'<text x="{L}" y="{h - 4}" class="tick">{_short(pts[0][0])}</text>'
+    g.append(f'<text x="{L}" y="{h - 4}" class="tick">{_e(_short(pts[0][0]))}</text>'
              f'<text x="{w - R}" y="{h - 4}" class="tick" text-anchor="end">'
-             f'{_short(pts[-1][0])}</text>')
-    return f'<svg class="chart" viewBox="0 0 {w} {h}" role="img">{"".join(g)}</svg>'
+             f'{_e(_short(pts[-1][0]))}</text>')
+    return (f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
+            f'aria-label="Trend{_e(unit)}; exact values in the following table">{"".join(g)}</svg>'
+            + table)
 
 
 def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None = None,
               ref_label: str = "", h: int = 140, nd: int = 0,
               tones: list[str] | None = None, w: int = W) -> str:
-    items = [(k, v) for k, v in items if isinstance(v, (int, float))]
+    aligned = [(k, v, tones[i] if tones and i < len(tones) else "s1") for i, (k, v) in
+               enumerate(items) if isinstance(v, (int, float)) and math.isfinite(v)]
+    items = [(k, v) for k, v, _ in aligned]
+    tones = [t for _, _, t in aligned]
     if not items:
         return '<p class="empty">Not enough data yet.</p>'
     top = max([v for _, v in items] + ([ref] if ref else [])) * 1.1 or 1
@@ -230,7 +278,7 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
     bw = (pw - gap * (n - 1)) / n
     g = [f'<line x1="{L}" x2="{w - R}" y1="{T + ph}" y2="{T + ph}" class="axis"/>']
     for i, (k, v) in enumerate(items):
-        bh = max(1.0, ph * v / top)
+        bh = max(0.0, ph * v / top)
         x, y = L + i * (bw + gap), T + ph - bh
         rr = min(4.0, bw / 2, bh)
         tone = tones[i] if tones else "s1"
@@ -243,10 +291,13 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
         g.append(f'<line x1="{L}" x2="{w - R}" y1="{yr:.1f}" y2="{yr:.1f}" class="ref"/>'
                  f'<text x="{w - R}" y="{yr - 5:.1f}" class="tick" text-anchor="end">'
                  f'{_e(ref_label)}</text>')
-    g.append(f'<text x="{L}" y="{h - 4}" class="tick">{_short(items[0][0])}</text>'
+    g.append(f'<text x="{L}" y="{h - 4}" class="tick">{_e(_short(items[0][0]))}</text>'
              f'<text x="{w - R}" y="{h - 4}" class="tick" text-anchor="end">'
-             f'{_short(items[-1][0])}</text>')
-    return f'<svg class="chart" viewBox="0 0 {w} {h}" role="img">{"".join(g)}</svg>'
+             f'{_e(_short(items[-1][0]))}</text>')
+    return (f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
+            f'aria-label="Amounts{_e(unit)}; exact values in the following table">{"".join(g)}</svg>'
+            + _chart_table(["Date / label", f"Value{unit}"], [(k, _f(v, nd)) for k, v in items],
+                           "Recorded amounts"))
 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
@@ -280,7 +331,10 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
                  f'y2="{Y(my + slope * (x1 - mx)):.1f}" class="fit"/>')
     g.append(f'<text x="{w - R_}" y="{h - 6}" class="tick" text-anchor="end">{_e(xl)} → '
              f'(vs usual)</text><text x="{L}" y="{T + 10}" class="tick">↑ {_e(yl)}</text>')
-    return f'<svg class="chart" viewBox="0 0 {w} {h}" role="img">{"".join(g)}</svg>'
+    return (f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
+            f'aria-label="Association between {_e(xl)} and {_e(yl)}; values in the following table">'
+            f'{"".join(g)}</svg>' + _chart_table(["Date", xl, yl],
+              [(d, _f(a, 2), _f(b, 2)) for d, a, b in points], "Values compared with your usual"))
 
 
 def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: float,
@@ -369,7 +423,8 @@ def page_today(d: dict[str, Any]) -> str:
         dial(rec.get("pct"), "Recovery", _f(rec.get("pct"), 0, "%"),
              (rec.get("label") or "calibrating").capitalize(), tone, "#recovery")
         + dial(sl.get("pct"), "Sleep", _f(sl.get("pct"), 0, "%"), sleep_sub, "s1", "#sleep")
-        + dial(None, "Strain", _f(st.get("value"), 1), f"target {tr[0]}–{tr[1]}", "s2",
+        + dial(None, "Strain", _f(st.get("value"), 1),
+               f"target {tr[0]}–{tr[1]}" if tr[0] is not None else "target unavailable", "s2",
                "#training", frac=(st.get("value") or 0) / 21))
     sug = d["brief"].get("suggestion") or {}
     bt = d["bedtime"]
@@ -377,7 +432,7 @@ def page_today(d: dict[str, Any]) -> str:
              f'<p class="sub">{_e(sug.get("why"))}</p>')
     if bt.get("available"):
         today += (f'<p class="pill">{icon("moon")}<span>Bed by <b>{_e(bt["suggested_bedtime"])}'
-                  f'</b> to wake at {_e(bt["usual_wake"])} rested</span></p>')
+                  f'</b> for a usual {_e(bt["usual_wake"])} wake time</span></p>')
     garmin = (f'<span class="chip">Garmin readiness {_f(rec.get("garmin_readiness"))} · '
               f'{_e((rec.get("garmin_level") or "").title())}</span>')
     names = {"hrv_ms": ("Heart rate variability", "ms", 0),
@@ -392,8 +447,9 @@ def page_today(d: dict[str, Any]) -> str:
             continue
         rg = m.get("range") or [None, None]
         state = {"in range": "good", "above": "up", "below": "down"}.get(m.get("state"), "")
-        rows.append(_row(lab, f'{_f(m["value"], nd)} <small>{unit}</small>',
-                         f'{m.get("state", "")} · usual {_f(rg[0], nd)}–{_f(rg[1], nd)}', state))
+        note = (f'{m.get("state", "")} · usual {_f(rg[0], nd)}–{_f(rg[1], nd)}'
+                if m.get("range") else "Personal range is still calibrating")
+        rows.append(_row(lab, f'{_f(m["value"], nd)} <small>{unit}</small>', note, state))
     hist = d["history"]
     week = bar_chart([(h["day"], h["recovery"]) for h in hist], "%", h=110,
                      tones=[TONE.get(h.get("band") or "", "muted") for h in hist])
@@ -403,15 +459,21 @@ def page_today(d: dict[str, Any]) -> str:
                                     ("training", "Training", "fitness, weekly load"),
                                     ("running", "Running", "every run, form, race times"),
                                     ("body", "Body & long term", "fitness age, month report"),
-                                    ("patterns", "Patterns", "what affects what, for you")))
-    body = (f'<section class="card wide hero"><div class="dials">{dials}</div></section>'
+                                    ("patterns", "Patterns", "what moves together, for you")))
+    why = f'<ul class="rows">{"".join(rows)}</ul>' if rows else (
+        '<p class="empty">Not enough recent measurements to compare with your personal ranges.</p>')
+    body = (f'<section class="card wide hero"><div class="dials">{dials}</div>'
+            f'<p class="hero-note">Recovery uses {rec.get("signals_used", 0)} of '
+            f'{rec.get("signals_total", 4)} signals. Strain covers recorded workouts.</p></section>'
             + _card("Today", today + garmin)
-            + _card("Why", f'<ul class="rows">{"".join(rows)}</ul>',
+            + _card("Why", why,
                     "Last night versus your personal range")
             + _card("Recovery, last 14 days", week, "Green ≥ 67 · amber 34–66 · red ≤ 33",
                     href="#recovery")
             + f'<nav class="card tiles">{tiles}</nav>')
     lede = f'Data to {_short(d["end"])}. Tap any dial or card for the detail.'
+    if d.get("sync_retry_required"):
+        lede += " Latest sync is incomplete; some measurements may be missing."
     return _page("today", "Today", lede, body)
 
 
@@ -475,10 +537,10 @@ def page_recovery(d: dict[str, Any]) -> str:
                               f'since {_short(v["date"])} ({v["before_mean"]:.1f} → '
                               f'{v["after_mean"]:.1f})') for k, v in sh.items())
     body = (_card("Heart rate variability (7-day average)", hrv_chart,
-                  "Shaded = your normal band. Above or inside is good; a dip below for several "
-                  "days means stress, illness or too much training.", wide=True)
-            + _card("Resting heart rate", rhr, "Lower is generally fitter; a jump of 5+ bpm "
-                    "often comes before illness.", wide=True)
+                  "Shaded = your normal band. Interpret sustained changes alongside sleep, "
+                  "training, stress and how you feel.", wide=True)
+            + _card("Resting heart rate", rhr, "Compare with your own baseline; recent training, "
+                    "sleep, stress and illness can influence it.", wide=True)
             + _card("Lasting changes", f'<ul class="rows">{shift_rows}</ul>' if shift_rows
                     else '<p class="empty">No lasting shift in the last 6 months.</p>',
                     "Step changes found in the last 180 days"))
@@ -487,10 +549,10 @@ def page_recovery(d: dict[str, Any]) -> str:
 
 
 def page_training(d: dict[str, Any]) -> str:
-    fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], h=160, nd=0)
+    fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], h=160, nd=1)
     wl = both(bar_chart, d["weekly_load"], " load", h=140)
-    body = (_card("Fitness trend", fit, "42-day average of training load. Rising = getting "
-                  "fitter. (Technical name: CTL.)", wide=True)
+    body = (_card("Training load trend", fit, "42-day smoothed load. Tracks training exposure, "
+                  "not a direct fitness test.", wide=True)
             + _card("Load per week", wl, "Sum of daily training load, Monday to Sunday",
                     wide=True))
     st = d["brief"].get("garmin_training_status")
@@ -512,8 +574,12 @@ def page_running(d: dict[str, Any]) -> str:
     trows = "".join(f'<tr><td>{ {"half": "Half", "marathon": "Marathon"}.get(k, k.upper())}</td><td>'
                     f'{_e(v.get("effective_vo2max"))}</td><td>{_e(v.get("best_effort_vdot"))}'
                     f'</td><td class="g">{_e(v.get("garmin"))}</td></tr>' for k, v in pr.items())
-    table = (f'<table><thead><tr><th></th><th>From fitness</th><th>From your best run</th>'
-             f'<th class="g">Garmin</th></tr></thead><tbody>{trows}</tbody></table>')
+    table = (f'<div class="table-wrap" tabindex="0" role="region" aria-label="Race time estimates">'
+             f'<table class="race-times"><caption>Estimates, not targets; sparse running history '
+             f'and untested maximum heart rate increase uncertainty.</caption>'
+             f'<thead><tr><th scope="col">Distance</th><th scope="col">From fitness</th>'
+             f'<th scope="col">From your best run</th><th scope="col" class="g">Garmin</th>'
+             f'</tr></thead><tbody>{trows}</tbody></table></div>')
     ms = d["marathon"]
     mshape = ""
     if ms.get("available"):
@@ -578,7 +644,7 @@ def page_run(r: dict[str, Any]) -> str:
     facts = (_row("Pace", f'{_e(r["pace"])}<small>/km</small>')
              + _row("Average heart rate", f'{_f(r.get("avg_hr"))}<small> bpm</small>')
              + _row("Heart-rate drift", f'{_f(p.get("decoupling_pct"), 1)}<small> %</small>',
-                    "under 5 % = solid aerobic base")
+                    "Descriptive only; heat, terrain, pacing and sensor noise can affect drift.")
              + _row("Power (wrist)", f'{_f(r.get("power_w"))}<small> W</small>')
              + _row("Running effectiveness", _f(r.get("running_effectiveness"), 2),
                     "speed per W/kg; compare only with yourself"))
@@ -600,7 +666,7 @@ def page_body(d: dict[str, Any]) -> str:
                        f'fitness age {_f(x["fitness_age_if_reached"], 1)} if reached')
                   for x in (fa.get("levers") or [])[:4])
     ag = d["ageing"]
-    ag_html = (f'<div class="big">{ag["pace_of_ageing"]:.1f}<small>×</small></div>'
+    ag_html = (f'<div class="big">{ag["pace_of_ageing"]:.1f}<small>years/year</small></div>'
                f'<p class="sub">{_e(ag["meaning"])}</p>' if ag.get("available")
                else f'<p class="empty">{_e(ag.get("reason"))}</p>')
     mo = d["month"]
@@ -617,7 +683,7 @@ def page_body(d: dict[str, Any]) -> str:
                   f'{_e(fa.get("chronological_age"))} · best reachable '
                   f'{_f(fa.get("achievable_age"), 1)}</p><ul class="rows">{lev}</ul>',
                   "Garmin's estimate and the levers that move it")
-            + _card("Pace of ageing", ag_html, "Trend in fitness age per calendar year")
+            + _card("Fitness-age trend", ag_html, "Change in Garmin's estimate per calendar year")
             + _card(f"Month report · {mo['month']}", f'<ul class="rows">{mrows}</ul>',
                     wide=True))
     if "vo2_reference" in d:
@@ -695,7 +761,7 @@ def page_patterns(d: dict[str, Any]) -> str:
                 f'{_e(p.get("statement") or "")} r = {p["r"]:+.2f} (95 % CI '
                 f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}), {p["n"]} days.</p>'
                 f'</details>')
-        cards += _card(f"{x} → {y} ({when})", body, wide=True)
+        cards += _card(f"{x} & {y} ({when})", body, wide=True)
     lede = (f'{d["explore"]["tested"]} pairs tested in your last year. Each dot is a day, both '
             'values shown against your usual (0 = normal day). The orange line is the trend.')
     return _page("patterns", "Patterns", lede, cards or _card(
@@ -705,30 +771,31 @@ def page_patterns(d: dict[str, Any]) -> str:
 # =============================================================================== render
 CSS = """
 :root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;
---muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;
+--muted:#6d6b66;--grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;
 --s2:#eb6834;--good:#0ca30c;--warn:#fab219;--serious:#ec835a;--bad:#d03b3b;--purple:#6250d6;
 --band:rgba(42,120,214,.12);--goodtext:#006300}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;
---page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--grid:#2c2c2a;--axis:#383835;
+--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#a7a39a;--grid:#2c2c2a;--axis:#383835;
 --border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--purple:#9085e9;
 --band:rgba(57,135,229,.18);--goodtext:#0ca30c}}
 :root[data-theme=dark]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;
---ink2:#c3c2b7;--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;
+--ink2:#c3c2b7;--muted:#a7a39a;--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;
 --s2:#d95926;--purple:#9085e9;--band:rgba(57,135,229,.18);--goodtext:#0ca30c}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,
 "Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
+a:focus-visible,summary:focus-visible,.table-wrap:focus-visible{outline:3px solid var(--s1);outline-offset:3px}
 .wrap{max-width:1080px;margin:0 auto;padding:16px 16px 48px}
 .top{display:flex;gap:4px;overflow-x:auto;padding:4px;margin:0 -4px 24px;scrollbar-width:none}
-.top a{flex:none;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;
+.top a{flex:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;
 color:var(--ink2)}
 .top a:hover{background:var(--surface)}
 .page{display:none}#today{display:block}body:has(.page:target) #today:not(:target){display:none}
 .page:target{display:block}
 .ph{margin:0 0 24px}.ph h2{font-size:34px;line-height:1.1;letter-spacing:-.02em;margin:0 0 8px}
 .lede{margin:0;color:var(--ink2);font-size:17px;line-height:1.4}
-.back{display:inline-flex;align-items:center;gap:4px;color:var(--s1);font-weight:600;
+.back{display:inline-flex;align-items:center;gap:4px;color:var(--ink);font-weight:600;
 font-size:15px;margin:0 0 16px}
 .grid{display:grid;grid-template-columns:1fr;gap:16px}
 @media (min-width:768px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}}
@@ -745,6 +812,7 @@ margin:0 0 4px;font-weight:600}
 .big small{font-size:.45em;font-weight:500;color:var(--ink2);margin-left:2px}
 .empty{color:var(--muted);font-size:13px;margin:12px 0}
 .hero{padding:24px 12px}
+.hero-note{font-size:12px;color:var(--ink2);text-align:center;margin:16px 0 0}
 .dials{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:640px;margin:0 auto}
 .dial{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px}
 .dial svg{width:100%;max-width:150px}
@@ -818,6 +886,7 @@ box-sizing:border-box}
 .track-marks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .track-marks span:last-child{transform:translateX(-100%)}
 table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.race-times{min-width:310px}.race-times td{white-space:nowrap}
 th{font-weight:600;color:var(--muted);text-align:right;padding:6px 4px;font-size:12px}
 td{padding:8px 4px;text-align:right;border-top:1px solid var(--grid)}
 td:first-child,th:first-child{text-align:left}.g{color:var(--muted)}
@@ -826,40 +895,70 @@ td:first-child,th:first-child{text-align:left}.g{color:var(--muted)}
 .meter{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--ink2)}
 .meter i{width:14px;height:6px;border-radius:3px;background:var(--grid)}
 .meter i.on{background:var(--s1)}.meter b{font-weight:500;margin-left:6px}
-details{margin-top:8px}summary{font-size:13px;color:var(--s1);cursor:pointer}
+details{margin-top:8px}summary{font-size:13px;color:var(--ink);cursor:pointer;min-height:44px;padding:10px 0}
+caption{text-align:left;font-size:12px;color:var(--ink2);padding:8px 0}
+.table-wrap{max-width:100%;overflow-x:auto}th,td{overflow-wrap:anywhere}
 footer{margin-top:48px;font-size:12px;color:var(--muted);line-height:1.6}
 @media print{.top,.back{display:none}.page{display:block!important;break-after:page}}
 """
 
 
 def render(d: dict[str, Any]) -> str:
-    pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
-             page_running(d), *(page_run(r) for r in d["runs"]), page_body(d),
-             page_patterns(d)]
-    nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in (
+    links = (
         ("today", "Today"), ("sleep", "Sleep"), ("recovery", "Recovery"),
         ("training", "Training"), ("running", "Running"), ("body", "Body"),
-        ("patterns", "Patterns")))
+        ("patterns", "Patterns"))
+    if d.get("available") is False:
+        pages = [_page(pid, title, "Your dashboard is waiting for data.",
+                       _card("No data yet", f'<p>{_e(d["reason"])}</p>')) for pid, title in links]
+        freshness = "No Garmin measurements are available yet."
+    else:
+        pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
+                 page_running(d), *(page_run(r) for r in d["runs"]), page_body(d),
+                 page_patterns(d)]
+        freshness = f'Data through {_e(d["end"])} from your own Garmin records.'
+    nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" '
         'content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Garmin Health'
-        f'</title><style>{CSS}</style></head><body><div class="wrap"><nav class="top">{nav}</nav>'
-        f'{"".join(pages)}<footer>Built {_e(d["end"])} from your own Garmin data, stored on '
-        'your Mac. Our scores are estimates; Garmin values shown in grey for comparison. Not '
-        'medical advice.</footer></div></body></html>')
+        f'</title><style>{CSS}</style></head><body><main class="wrap"><nav class="top" '
+        f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} '
+        'Our scores are estimates; Garmin values shown in grey for comparison. Not '
+        'medical advice.</footer></main></body></html>')
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Readers see either the old complete file or the new complete file; new mode is 0600."""
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".dashboard-", delete=False) as f:
+            temp = Path(f.name)
+            f.write(content)
+        if path.exists():
+            os.chmod(temp, stat.S_IMODE(path.stat().st_mode))
+        os.replace(temp, path)
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
     from garmin_mcp.config import data_dir
 
     out_dir = out_dir or data_dir() / "dashboard"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = out_dir / "index.html"
-    path.write_text(render(collect(conn)), encoding="utf-8")
+    content = render(collect(conn))
+    _atomic_write(path, content)
     icloud = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
     if icloud.is_dir():
-        (icloud / "Garmin").mkdir(exist_ok=True)
-        shutil.copyfile(path, icloud / "Garmin" / "dashboard.html")
+        try:
+            (icloud / "Garmin").mkdir(mode=0o700, exist_ok=True)
+            _atomic_write(icloud / "Garmin" / "dashboard.html", content)
+        except OSError:
+            warnings.warn("iCloud copy failed; the local dashboard is available.",
+                          RuntimeWarning, stacklevel=2)
     return path
 
 

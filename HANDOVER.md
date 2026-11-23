@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.14.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.14.1, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -182,8 +182,8 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
    account. No health data was uploaded. Cloudflare's preview Access switch alone does not
    protect the production address. The helper requires both apps and refuses conflicting
    paths, bypasses, custom domains, and policies that allow anyone beyond the configured email.
-10. **Fresh database:** the dashboard CLI still requires normalized, populated data. It fails
-    on an empty database (missing tidy tables, then no latest day). This predates v0.13.1.
+10. **Fresh database (resolved v0.14.1):** all seven dashboard pages now show a waiting state
+    until data is available; no fake scores or reassuring advice are generated.
 11. **Review update:** network access is restored; PR #8 passed both CI jobs and was merged.
     The primary FRIEND paper is now accessible and its Table 3 bar is implemented in v0.14.0.
     Local checks still do not establish Mac/iPhone/live Garmin health.
@@ -216,8 +216,9 @@ In order. Each item says where it goes and what "done" means.
 
 The user's continuation order is A private phone hosting → B primary-source VO2max table/bar
 → C design review and small improvements → D documentation alongside every change. This
-release prepares A; it does not mark A–C complete. The 390/768/1200 light/dark checks used
-synthetic data; rendered HTML is unchanged. See `docs/CONTINUATION_REVIEW.md` for evidence and
+release series implements A's publishing helper and B's exact reference bar. C's review and
+small improvements are recorded in `docs/UI_REVIEW.md` (v0.14.1). A's live account/device
+activation remains pending. Browser checks use synthetic data. See `docs/CONTINUATION_REVIEW.md` for evidence and
 known documentation drift. `ROADMAP.md` remains the only plan.
 
 **Deliberately not building** (`ROADMAP.md`, "Explicitly not building" and the dropped-items table):
@@ -239,3 +240,12 @@ known documentation drift. `ROADMAP.md` remains the only plan.
 - **Commands:** `garmin-mcp` (server), `garmin-mcp-sync [--force]`, `garmin-mcp-import <zip>`, `garmin-mcp-verify`, `garmin-mcp-dashboard`.
 - **Rules:** `AGENTS.md`. Changelog entry every change, sense-check against real data, never commit credentials, plain language on screen.
 - **Data:** not in the repo. It lives in the user's data folder on the Mac (`config.data_dir()`).
+
+## Review handoff: v0.14.1
+
+PRs #8–11 landed through passing Python 3.12/3.13 CI. The dashboard follow-up fixes stale
+personal ranges, empty data, chart accessibility and atomic/private file output. Full-sync
+provenance also includes derived-load success. See `docs/UI_REVIEW.md` and `docs/OPERATIONS.md`.
+Do not treat historical recovery-study figures as rerun results. The owner's real database,
+Mac/iCloud behavior, watch writes, untested maximum HR and live hosting still require their
+respective checks. MCP results go to the user's chosen AI provider; hosted HTML goes to Cloudflare.

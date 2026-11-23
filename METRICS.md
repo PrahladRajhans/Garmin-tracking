@@ -246,3 +246,15 @@ Source/limits and all 24 transcribed rows: [research note](research_notes/Garmin
 
 The v0.13.1 note about blocked primary-table access is historical; access was restored and
 this table retrieved before implementation. No source values were reconstructed from memory.
+
+## Personal-range freshness and baseline semantics (v0.14.1)
+
+`engine.personal_ranges` uses the requested day's metrics, not the latest historical health-status
+row. Complete, valid Garmin bounds are used only for that day. Otherwise a personal mean ± one
+sample standard deviation uses the preceding 60 days, excluding the scored day: at least 21
+prior values for HRV/resting HR/respiration, 14 valid nights for sleep HR/SpO₂. Nights under
+three hours, nonpositive/nonfinite values and zero-variation baselines do not establish a range.
+A current Garmin health-status value may fill a missing same-day series value. Missing ranges
+are calibrating; above/below describes a personal baseline, not disease or fitness clearance.
+`as_of` names the requested day and `range_available` distinguishes thin history. No recovery
+weights, statistical/FDR rules or physiological conversion constants changed in v0.14.1.

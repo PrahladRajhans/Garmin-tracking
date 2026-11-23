@@ -74,3 +74,16 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 
 ## Tests and CI
 `pytest` (unit + small end-to-end on synthetic FIT data) and `ruff`, run on Python 3.12 and 3.13 by `.github/workflows/ci.yml`. Real-data checks run with `garmin-mcp-verify` on the Mac.
+
+## Delivery boundaries and file lifecycle (v0.14.1)
+
+SQLite/raw credentials stay on the Mac in production. MCP stdio returns requested tool results
+to the desktop client, which may transmit them to its model provider. Optional Pages publication
+sends a derived HTML health-data snapshot to Cloudflare; Access authenticates readers but does
+not encrypt the content against the hosting provider. Cloud tests use synthetic data only.
+
+New POSIX database and HTML files are owner-readable/writable (0600); newly created data/FIT/
+dashboard directories use 0700. Existing paths retain owner-managed permissions. Each HTML
+write uses a sibling temporary file followed by atomic replacement. iCloud write failure warns
+without discarding the local build. This is file-replacement integrity, not a transaction across
+all destinations. MCP provenance reads full-sync completion, not the latest successful endpoint.

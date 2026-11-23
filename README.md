@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.14.0: 43 tools, a script-free dashboard with a cited VO₂max reference bar, safer sync/update recovery, corrected data-sufficiency handling, and optional private hosting (off by default).
+> **Status:** v0.14.1: 43 tools, a script-free dashboard with a cited VO₂max reference bar, safer sync/update recovery, corrected data-sufficiency handling, and optional private hosting (off by default).
 
 ## What this is, in one minute
 
@@ -323,3 +323,15 @@ Every change must add an entry to [CHANGELOG.md](CHANGELOG.md) and keep this REA
 ## License
 
 MIT
+
+### Dashboard reliability and privacy (v0.14.1)
+
+A fresh database now opens a waiting-for-data dashboard. Charts have expandable exact-value
+ tables, visible keyboard focus and date spacing that preserves gaps. Today uses current-day
+measurements; missing baselines remain explicit. See [the UI review](docs/UI_REVIEW.md).
+New database/dashboard files are owner-only on POSIX; existing permissions are preserved.
+Local and iCloud HTML replacement is atomic, and an iCloud failure leaves the local copy usable.
+
+MCP tool results pass to your chosen AI client/model provider when you request them. Optional
+Cloudflare hosting uploads a health-data HTML snapshot to Cloudflare behind Access. Neither
+choice means those providers cannot process the data; keep both opt-ins deliberate.

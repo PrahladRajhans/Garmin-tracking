@@ -434,41 +434,50 @@ def streaks(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
 
 
 def personal_ranges(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
-    """Fitbit/Oura-style: last night's vitals vs your personal range; count outside range.
-    Ranges are Garmin's health-status baseline bands when present, else mean +/- 1 SD of the
-    previous 60 days."""
+    """Current-day measurements only; current Garmin bands or prior personal observations."""
+    from garmin_mcp import recovery
+
     lo60 = (date.fromisoformat(end) - timedelta(days=60)).isoformat()
-    out, outside = {}, 0
-    hs = conn.execute("SELECT * FROM health_status WHERE day<=? ORDER BY day DESC LIMIT 1",
-                      (end,)).fetchone()
-    cols = [c[0] for c in conn.execute("SELECT * FROM health_status LIMIT 0").description]
-    h = dict(zip(cols, hs)) if hs else {}
-    for name, val, lo, hi in (("hrv_ms", h.get("hrv"), h.get("hrv_low"), h.get("hrv_high")),
-                              ("resting_hr_bpm", h.get("rhr"), h.get("rhr_low"), h.get("rhr_high")),
-                              ("respiration_brpm", h.get("respiration"), h.get("respiration_low"),
-                               h.get("respiration_high"))):
-        if val is None or lo is None:
-            continue
-        state = "in range" if lo <= val <= hi else ("below" if val < lo else "above")
-        outside += state != "in range"
-        out[name] = {"value": val, "range": [lo, hi], "state": state, "source": "Garmin baseline"}
-    for name, table, col in (("sleep_spo2_pct", "sleep", "avg_spo2"),
-                             ("sleep_hr_bpm", "sleep", "avg_hr")):
-        rows = [r[0] for r in conn.execute(f"SELECT {col} FROM {table} WHERE day BETWEEN ? AND ? "
-                                           f"AND {col} IS NOT NULL", (lo60, end))]
-        last = conn.execute(f"SELECT {col} FROM {table} WHERE day<=? AND {col} IS NOT NULL "
-                            f"ORDER BY day DESC LIMIT 1", (end,)).fetchone()
-        if len(rows) >= 14 and last:
-            m, sd = statistics.fmean(rows), statistics.stdev(rows)
-            lo, hi = round(m - sd, 1), round(m + sd, 1)
-            v = last[0]
-            state = "in range" if lo <= v <= hi else ("below" if v < lo else "above")
-            outside += state != "in range"
-            out[name] = {"value": v, "range": [lo, hi], "state": state,
-                         "source": "your 60-day mean +/- 1 SD"}
+    cursor = conn.execute("SELECT * FROM health_status WHERE day=?", (end,))
+    hs = cursor.fetchone()
+    h = dict(zip((d[0] for d in cursor.description), hs, strict=True)) if hs else {}
+    series = recovery.load_series(conn, end, 61)
+    out = {}
+
+    def valid(value):
+        return isinstance(value, (int, float)) and math.isfinite(value) and value > 0
+
+    def put(name, value, prior, bounds=None, minimum=21):
+        if not valid(value):
+            return
+        source = "Garmin current-day baseline"
+        if not bounds or not all(valid(v) for v in bounds) or bounds[0] > bounds[1]:
+            prior = [v for v in prior if valid(v)]
+            sd = statistics.stdev(prior) if len(prior) >= minimum else None
+            bounds = [round(statistics.fmean(prior) - sd, 1),
+                      round(statistics.fmean(prior) + sd, 1)] if sd else None
+            source = "your prior 60-day mean +/- 1 SD" if bounds else "baseline calibrating"
+        state = ("in range" if bounds[0] <= value <= bounds[1] else
+                 "below" if value < bounds[0] else "above") if bounds else "calibrating"
+        out[name] = {"value": value, "range": bounds, "state": state, "source": source,
+                     "as_of": end, "range_available": bounds is not None}
+
+    for name, key, field in (("hrv_ms", "hrv", "hrv"), ("resting_hr_bpm", "rhr", "rhr"),
+                              ("respiration_brpm", "resp", "respiration")):
+        prior = [v for d, v in series[key].items() if lo60 <= d < end]
+        value = series[key].get(end)
+        put(name, value if value is not None else h.get(field), prior,
+            [h.get(field + "_low"), h.get(field + "_high")])
+    for name, col in (("sleep_spo2_pct", "avg_spo2"), ("sleep_hr_bpm", "avg_hr")):
+        row = conn.execute(f"SELECT {col} FROM sleep WHERE day=? AND sleep_s>=3*3600", (end,)).fetchone()
+        prior = [r[0] for r in conn.execute(f"SELECT {col} FROM sleep WHERE day>=? AND day<? "
+                                           "AND sleep_s>=3*3600 AND " + col + " IS NOT NULL",
+                                           (lo60, end))]
+        put(name, row[0] if row else None, prior, minimum=14)
+    outside = sum(v["state"] in ("above", "below") for v in out.values())
     return {"day": end, "metrics": out, "outside_range": outside,
-            "meaning": "Several vitals outside range together is worth noticing (illness, "
-                       "alcohol, stress); one alone is usually noise."}
+            "meaning": "Descriptive comparisons, not a diagnosis. Missing/stale measurements "
+                       "are excluded; a range needs sufficient prior observations."}
 
 
 def form_percent(conn: sqlite3.Connection, end: str) -> dict[str, Any] | None:
@@ -501,9 +510,9 @@ def insight_feed(conn: sqlite3.Connection, end: str | None = None) -> dict[str, 
     end = end or conn.execute("SELECT MAX(day) FROM daily").fetchone()[0]
     items: list[dict[str, Any]] = []
     r = recovery.readiness(conn, end)
+    advice = recovery.suggestion(r)
     items.append({"level": 1, "kind": "today", "title": f"Readiness: {r['ours']['state']}",
-                  "detail": f"Garmin {r['garmin']['level'] if r['garmin'] else 'n/a'}; holding "
-                            f"back: {', '.join(r['ours']['holding_back']) or 'nothing'}",
+                  "detail": f"{advice['suggest']}; {advice['why']}",
                   "priority": 1})
     hrv = r["hrv"]
     if hrv.get("state") in ("below normal", "above normal"):
@@ -511,14 +520,14 @@ def insight_feed(conn: sqlite3.Connection, end: str | None = None) -> dict[str, 
                       "title": f"HRV-guided: 7-day HRV {hrv['state']}",
                       "detail": "Below normal: favour easy/low intensity today (HRV-guided "
                                 "training, Plews/Kiviniemi style)." if hrv["state"] ==
-                                "below normal" else "Above normal: fine for planned training.",
+                                "below normal" else "Above baseline alone does not establish readiness for hard training.",
                       "priority": 2})
     pr = personal_ranges(conn, end)
     if pr["outside_range"] >= 2:
         items.append({"level": 2, "kind": "vitals", "title": f"{pr['outside_range']} vitals "
                       "outside your personal range", "detail": ", ".join(
                           f"{k} {v['state']}" for k, v in pr["metrics"].items()
-                          if v["state"] != "in range"), "priority": 1})
+                          if v["state"] in ("above", "below")), "priority": 1})
     for f in load_flags(conn, end):
         items.append({"level": 3, "kind": "load", "title": f["flag"].capitalize(),
                       "detail": f"{f['detail']}. {f['suggest']}", "priority": 2})
