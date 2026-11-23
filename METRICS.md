@@ -13,7 +13,7 @@ Sources and citations: `research_notes/Garmin connector feature research/` (`met
 ## FR955 data we build on (watch only)
 Raw: 1 s HR, GPS pace and distance, barometric elevation, cadence, stride length, wrist running power, temperature, overnight RMSSD (HRV), RHR, respiration, SpO2, sleep stages, stress, Body Battery, steps, intensity minutes.
 Garmin-computed (fetched as-is): Training Readiness plus factors, Training Status, Acute Load and Load Focus, Training Effect (aerobic/anaerobic) plus primary benefit, Recovery Time, VO2max, Race Predictor, Endurance Score, Hill Score, Lactate Threshold (⚠ may need a chest strap on FR955), Heat/Altitude acclimation, Fitness Age, HRV Status, Sleep Score.
-Not available: skin temp, ECG, ground contact time balance; ⚠ probably also vertical oscillation and ground contact time (confirm with your FIT file).
+Not available: skin temp, ECG, ground contact time balance (not computed from wrist). Vertical oscillation, GCT, vertical ratio ARE recorded via wrist-based Running Dynamics (fw 15.09+, Apr 2023; confirmed in our FIT data).
 
 ## Decisions
 

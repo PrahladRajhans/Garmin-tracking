@@ -35,9 +35,9 @@ Design rules:
 |---|---|
 | README + CHANGELOG updated every change | ongoing ✅ |
 | Research: competitors, FR955 metrics, formulas, integrations | done ✅ |
-| Verify research claims marked unverified / snippet / [bg] (sites were blocked) | **open → step A** |
+| Verify research claims marked unverified / snippet / [bg] (sites were blocked) | **partly done**: Garmin labels verified, wrist running dynamics confirmed (fw 15.09); see VERIFICATION_LOG.md. Remaining: formula constants, tiers |
 | Confirm METRICS.md formulas against primary sources (⚠ items) | **open → step A** |
-| Import full history from the Garmin export | **open → step B** |
+| Import full history from the Garmin export | **done** (`garmin-mcp-import`, tested on your real export) |
 | Backfill extras from the unofficial library (only 7 days on the Mac) | open → step F (Mac) |
 | Tidy (normalised) tables from raw payloads | open → step C (Phase 2) |
 | Move the 4 original tools onto the local database (design rule 1) | open → step C |

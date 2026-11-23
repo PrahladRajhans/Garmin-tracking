@@ -19,6 +19,7 @@ dev = ["pytest>=8", "ruff>=0.6"]
 [project.scripts]
 garmin-mcp = "garmin_mcp.server:main"
 garmin-mcp-sync = "garmin_mcp.sync:main"
+garmin-mcp-import = "garmin_mcp.importer:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -70,6 +70,20 @@ Use `--source personal_api` for official-only.
 
 After this, the server reuses the saved tokens; your password is not stored.
 
+### Import your full history (one time)
+
+Request your data at Garmin (Account → Data Management → Export Your Data), download the ZIP, then:
+
+```bash
+garmin-mcp-import ~/Downloads/<your-export>.zip     # or the unzipped folder
+```
+
+It loads everything since you started using Garmin: activities with original FIT files, daily
+summaries, sleep, health status (overnight HRV/RHR/SpO2/respiration vs baseline), training
+readiness, training status, race predictions, endurance/hill score, acute load, VO2max,
+acclimation, hydration, personal records, zones. Safe to re-run; activities already synced from
+the API are never overwritten.
+
 ### Sync your data
 
 ```bash

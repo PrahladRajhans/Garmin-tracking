@@ -57,7 +57,7 @@ The FR955 launched (June 2022) with Training Readiness, HRV Status, Morning Repo
 
 ### Gaps
 - Official Training Readiness weights are unpublished. Figures circulating online should be treated as speculative.
-- Whether Lactate Threshold auto-detection on the FR955 still requires a chest strap in current firmware could not be verified.
+- LT guided test on FR955 requires a Garmin chest HRM + outdoor GPS [verified: FR955 OM https://www.manualowl.com/m/Garmin/Forerunner-955/Manual/699613?page=40]. Whether auto-detect works from wrist alone: still open (forum anecdote says chest strap only: https://forums.garmin.com/sports-fitness/running-multisport/f/forerunner-955-series/375790/failed-guided-lactate-threshold-test).
 
 ## Activity-level metrics and running dynamics (with sensor requirements)
 
@@ -71,7 +71,7 @@ Per activity, the FR955 records GPS track, pace and speed, distance, HR and HR z
 - Multi-band GNSS (GPS, GLONASS, Galileo, BeiDou, QZSS) with SatIQ comes on both the 955 and the 955 Solar. On the Solar, battery is about 49 h in standard GPS and about 22 h with multi-band — [the5krunner specs](https://the5krunner.com/specs/garmin/forerunner-955/); [Slowtwitch](https://www.slowtwitch.com/industry/garmin-brings-upgraded-hardware-and-all-the-analytics-to-forerunner-955-solar/)
 
 ### Inferences
-- Full dynamics set with accessory (unverified for complete list): cadence, stride length, GCT, GCT balance, vertical oscillation, vertical ratio. The wrist alone gives cadence and stride length, and some sources say limited GCT, VO and VR also come from the wrist on newer firmware.
+- Full dynamics set with HRM-Pro/RD pod: cadence, stride length, GCT, GCT balance, vertical oscillation, vertical ratio. **Wrist-based Running Dynamics** added to FR955 in fw 15.09 beta (Apr 2023), later stable: watch uses wrist dynamics automatically when no accessory is paired; gives cadence, stride, GCT, VO, VR; **GCT balance not computed from wrist**. Matches our FIT data. [verified: https://the5krunner.com/2023/04/04/garmin-forerunner-955-255-finally-get-new-features/; https://www8.garmin.com/manuals/webhelp/GUID-C001C335-A8EC-4A41-AB0E-BAC434259F92/EN-US/GUID-62A09512-518A-424A-8491-FE2B80CD2091.html]
 - Temperature comes from the internal wrist sensor, which body heat skews, or from a Tempe sensor (unverified).
 - Strap-only data: beat-to-beat HR while swimming (HRM-Pro storage). A chest strap also improves the accuracy of HR-derived metrics (Training Effect, load, VO2max).
 

@@ -29,7 +29,8 @@ Goal: a free personal FR955 connector. **Local sync → SQLite → thin MCP serv
 - Exact Personal API endpoint list. Does it include readiness, training status or advanced metrics? (Unconfirmed; implementer evidence says no.)
 - Personal API rate limits (none published).
 - Long-term stability of python-garminconnect against Cloudflare TLS fingerprinting.
-- Whether LT auto-detect on the FR955 still needs a chest strap.
+- Whether LT auto-detect on the FR955 works without a chest strap (guided test definitely needs one).
+- Unverified, still open: HRV SWC multiplier choice, Edwards/Banister constants, fitness-age formula, heat-HR model (garmin.com/support/www8 hosts unreachable from fetch; see VERIFICATION_LOG.md).
 - Garmin Connect+ "Active Intelligence" has no API, so it's out of scope. Re-check for an official Garmin MCP periodically.
 
 ## Suggested build order
