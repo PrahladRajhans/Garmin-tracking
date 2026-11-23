@@ -108,3 +108,11 @@ After the normal Mac update has installed v0.14.3, run one command from the repo
 with the stored Garmin summaries by year. It opens SQLite read-only and prints only group
 counts and aggregate differences. Keep the report local unless you choose to share it.
 Investigate large residuals alongside a few corresponding Garmin Connect activities.
+
+### Open the interactive dashboard
+
+In Safari on the Mac, open the local generated HTML and tap **Light** or **Dark**.
+The small offline script also enables selecting values directly on charts. On iPhone
+the Files preview may show the static charts only. Check whether the theme switch
+appears to confirm the reader runs the controls. An Access-protected website in Safari
+is the alternative when Files does not support the interactions.

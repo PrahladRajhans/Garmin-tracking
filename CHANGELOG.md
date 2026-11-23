@@ -16,6 +16,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.15.0] - 2026-11-23
+
+- Replace chart-value dropdowns with an interactive cursor. Hover, tap, drag or use arrow keys
+  to read individual line, bar and scatter values. Axes show numeric ticks, readable labels
+  and units. Sleep bars preserve missing calendar slots.
+- Light is the default, with a persistent Light/Dark choice where browser storage is available.
+  Phone navigation and race projections fit the page without a horizontally scrolling table.
+- Today shows the training plan first and surfaces qualified findings from the insight engine.
+  Older snapshots defer current guidance. Sleep leads with actual duration. Training adds a
+  weekly workout, training load and sleep recap with observation counts.
+- Recovery, the health snapshot, trends and pattern inputs consistently merge nightly HRV
+  sources. A valid dedicated night wins over the health-status fallback. Invalid readings
+  are excluded. Readiness weights and pattern thresholds stay the same.
+- The charts and page links render as a single HTML file. An inline script with an exact
+  hash in the content policy powers interaction without third-party requests.
+
 ## [0.14.3] - 2026-11-23
 
 - Monthly reports combine dedicated HRV and Garmin health status per day, with dedicated HRV

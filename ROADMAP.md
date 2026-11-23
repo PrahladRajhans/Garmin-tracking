@@ -59,6 +59,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.14.1 | Dashboard accessibility, current-day ranges, atomic/private files and provenance | implemented; CI/merge evidence recorded in GitHub PR |
 | 0.14.2 | Run pacing drill-down, timestamp-based timing, elapsed splits and Garmin timer evidence | Merged in PR #13 after both CI jobs passed |
 | 0.14.3 | Monthly coverage drill-down, pattern evidence, mobile navigation, archive comparison command | Implemented and checked with synthetic data |
+| 0.15.0 | Direct chart controls, visible findings, training/sleep context and theme switch | Implemented with phone and laptop browser checks |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -102,6 +103,19 @@ Sparse weeks, wear time, watch changes and selection of similar runs can bias es
 The Mac holds the original Garmin history and account access. Synthetic checks can validate
 individual formulas, mappings and edge cases. The recorded agreement figures are historical
 until the owner dataset is checked again.
+
+### Athlete intelligence follow-up
+
+| Order | Deliverable | Evidence needed |
+|---|---|---|
+| 1 | Chart interaction and daily briefing | Mouse, touch, keyboard and scroll checks. Guidance, drivers and trends visible with observation counts |
+| 2 | Verify daily guidance and run comparisons on the Mac archive | Compare with dated Garmin records and inspect missing nights, unusual runs and completed syncs |
+| 3 | Weekly coaching priorities and training response | Use comparable runs and later time periods to check whether a pattern repeats. Require coverage and holdout evidence before making predictive recommendations |
+| 4 | Feedback from iPhone and laptop use | Check Files preview and Safari, adjust the most-used interactions, verify private phone delivery |
+
+Competitor benchmarks guide which questions to answer. Proprietary recovery algorithms
+and device-only measurements are separate evidence. Report matched coverage and the
+limits of wrist HR, HRV, and training comparisons before expanding coaching claims.
 
 ### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
 | ID | Item | Backlog/source |

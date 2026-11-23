@@ -89,3 +89,41 @@ horizontal scrolling. Actual browser clicks verified Running → run → Pacing 
 Body → Monthly history, and the corresponding back links and evidence disclosures.
 Across 324 rendered states, no page overflow, broken fragment links, script tags or page
 errors were observed. Live Safari and device hosting remain verification tasks.
+
+## Direct interaction review (v0.15.0)
+
+Fresh captures use synthetic Garmin records, including enough history to exercise the
+insight engine. The audit checks the tasks of deciding how to train, looking up a reading,
+understanding a pattern, checking a split and reviewing training context.
+
+1. **Today.** Guidance previously sat below the scores and engine results were missing
+   from the page. The plan, scores and linked findings now lead the page. The appearance
+   switch sits above navigation. [Before](screenshots/direct-interaction/01-today-before.png)
+   · [After on phone](screenshots/direct-interaction/01-today-after.png)
+2. **Sleep.** The graph looked passive and the value disclosure moved the content during
+   lookup. A touch selects a dated value and moving horizontally changes it. A vertical
+   gesture still scrolls. Latest duration leads the page.
+   [Before](screenshots/direct-interaction/02-sleep-before.png)
+   · [Selected bar on phone](screenshots/direct-interaction/02-sleep-after.png)
+3. **Patterns.** The axes were faint and lacked a numeric scale. Both axes now have units,
+   signs, visible zero lines and a cursor. Selecting a dot shows both dates and values.
+   Keyboard focus remains visible. [Before](screenshots/direct-interaction/03-patterns-before.png)
+   · [Dark on laptop](screenshots/direct-interaction/03-patterns-after.png)
+4. **Pacing.** Tapping a split shows the kilometre and elapsed time; navigation back to the
+   run remains available. [Selected split on phone](screenshots/direct-interaction/04-pacing-after.png)
+5. **Training.** A seven-day summary now combines recorded workouts, change context and
+   sleep coverage before the load charts. [Training recap on laptop](screenshots/direct-interaction/05-training-after.png)
+
+Chromium checked 200 page and theme states at 320–1280 px, including the navigation
+breakpoint. Interaction checks exercised mouse hover and drag, touch tap and horizontal
+scrub, vertical scrolling, keyboard selection, theme persistence and run drill-down.
+No remote asset requests, document overflow or page errors were observed. A second
+browser engine, Linux WebKit, passed phone-size touch and laptop hover on all three chart
+types, theme persistence, and opening the interactive dashboard as a local file.
+With scripts disabled, static charts, native chart titles and links still rendered.
+The iPhone Files preview and physical-device assistive technology remain unverified.
+
+Direct taps provide an alternative to dragging. SVG labels, selection status and keyboard
+navigation were checked during the flow. These are scoped checks, not an accessibility
+certification. [W3C dragging guidance](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html)
+· [MDN touch-action behavior](https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action)

@@ -68,7 +68,7 @@ Status: **built in v0.12 (Phase 11 + 12).** Sections 6-8 are the as-built UI map
 
 ## 6. UI map (as built: multi-page, one file)
 
-One self-contained `index.html`. Each "page" is a section addressed by a link (`#sleep`, `#run-123`); the browser shows one at a time with plain CSS (`:target`), so it needs no JavaScript or server, and works offline, from iCloud Drive or as a private Artifact. The browser Back button works between pages.
+One self-contained `index.html`. Each "page" is a section addressed by a link (`#sleep`, `#run-123`); the browser shows one at a time with plain CSS (`:target`), so page navigation also works with scripts disabled. The bundled offline script adds chart inspection and an appearance switch. The browser Back button works between pages.
 
 ```
 Today (home) ─┬─ Sleep ───────── last night breakdown, HR dip, 30 nights, bedtimes
@@ -148,3 +148,21 @@ within a metric, with values and coverage in the same row. Empty months retain t
 and use a dash. Patterns lists eligible and qualifying pair counts and shows fit lines only for
 pairs passing the existing rule. Expanded evidence gives units and both dates. Phone layout
 fits all seven top links on two rows.
+
+## Direct chart interaction and insight hierarchy (v0.15.0)
+
+Today opens with the training plan, scores, and a short list of evidence-backed findings
+linked to the detail pages. Training puts recorded workouts and sleep coverage together.
+Sleep puts the latest duration and duration chart before supplementary Garmin details.
+
+The chart itself is the control. Hover and drag with a mouse, tap or slide horizontally
+with a finger, or focus the plot and use the arrow keys. Vertical touch gestures can
+scroll the page. The highlight shows the selected observation and leaves axis labels
+uncovered. Chart-value tables were removed. Month comparisons and measurement rows
+display their data directly. Each scatter axis names the variable and unit, and zero
+represents the recent personal baseline. Fits are shown for qualifying pairs only.
+
+The default is Light and a visible Light/Dark switch is offered when scripting runs.
+Both themes preserve axis contrast and focus. The self-contained HTML draws the charts
+and links without script support. Some file previews may render only that static view.
+See the latest [UI review](docs/UI_REVIEW.md#direct-interaction-review-v0150).

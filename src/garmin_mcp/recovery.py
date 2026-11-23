@@ -46,7 +46,9 @@ def nightly_hrv(conn: sqlite3.Connection, start: str, end: str) -> dict[str, flo
                   start, end)
     hs_hrv = _series(conn, "SELECT day, hrv FROM health_status WHERE day BETWEEN ? AND ?",
                      start, end)
-    return {**hs_hrv, **hrv}  # HRV status wins; health status fills history
+    valid = {d: v for d, v in hs_hrv.items() if math.isfinite(v) and v > 0}
+    valid.update({d: v for d, v in hrv.items() if math.isfinite(v) and v > 0})
+    return valid  # HRV status wins; health status fills gaps
 
 
 def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict[str, float]]:

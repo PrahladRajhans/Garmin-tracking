@@ -147,3 +147,15 @@ def test_training_status_numeric_code_uses_phrase():
     assert _status_word({"trainingStatus": 4}) is None
     assert dashboard._status_label(4) == "–"
     assert dashboard._status_label("NO_STATUS") == "No Status"
+
+
+def test_snapshot_hrv_combines_deduplicated_nights_from_both_sources(conn):
+    rebuild(conn)
+    conn.execute("INSERT INTO hrv(day,last_night_avg) VALUES "
+                 "('2026-11-20',80), ('2026-11-21',0), ('2026-11-23',60)")
+    conn.execute("INSERT INTO health_status(day,hrv) VALUES ('2026-10-23',20), "
+                 "('2026-11-20',10), ('2026-11-21',40)")
+    snapshot = insights.health_snapshot(conn, "2026-11-23")["hrv"]
+    assert snapshot["last_night_ms"] == 60
+    assert snapshot["avg_7d_ms"] == 60 and snapshot["days_in_7d"] == 3
+    assert snapshot["avg_60d_ms"] == 50 and snapshot["days_in_60d"] == 4

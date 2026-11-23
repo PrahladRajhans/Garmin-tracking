@@ -43,6 +43,8 @@ def _tz(conn: sqlite3.Connection) -> ZoneInfo:
 
 def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[str, float]]:
     """One row of numeric features per day (missing = absent key)."""
+    from garmin_mcp.recovery import nightly_hrv
+
     tz = _tz(conn)
     out: dict[str, dict[str, float]] = {}
 
@@ -51,7 +53,7 @@ def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[s
             day = row[0]
             for name, idx in mapping.items():
                 v = row[idx]
-                if isinstance(v, (int, float)):
+                if isinstance(v, (int, float)) and math.isfinite(v):
                     out.setdefault(day, {})[name] = float(v)
 
     put("SELECT day, sleep_s/3600.0, score, avg_sleep_stress, avg_respiration FROM sleep "
@@ -60,8 +62,8 @@ def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[s
     put("SELECT day, resting_hr, stress_avg, body_battery_max, steps, "
         "intensity_min_moderate + 2*intensity_min_vigorous FROM daily WHERE day BETWEEN ? AND ?",
         {"rhr": 1, "stress": 2, "bb_max": 3, "steps": 4, "intensity_min": 5})
-    put("SELECT day, hrv FROM health_status WHERE day BETWEEN ? AND ?", {"hrv": 1})
-    put("SELECT day, last_night_avg FROM hrv WHERE day BETWEEN ? AND ?", {"hrv": 1})
+    for day, value in nightly_hrv(conn, start, end).items():
+        out.setdefault(day, {})["hrv"] = float(value)
     put("SELECT day, score FROM readiness WHERE day BETWEEN ? AND ?", {"garmin_readiness": 1})
     try:
         put("SELECT day, load, ctl, atl, tsb FROM fitness WHERE day BETWEEN ? AND ?",
@@ -280,13 +282,16 @@ TREND_METRICS = {"hrv": ("health_status", "hrv"), "rhr": ("daily", "resting_hr")
 
 def trends(conn: sqlite3.Connection, end: str, days: int = 90) -> dict[str, Any]:
     """Robust trend per metric over `days`: Theil-Sen slope per 30 days, bootstrap CI."""
+    from garmin_mcp.recovery import nightly_hrv
+
     start = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
     rng = random.Random(SEED)
     out = {}
     for name, (table, col) in TREND_METRICS.items():
         try:
-            rows = conn.execute(f"SELECT day, {col} FROM {table} WHERE day BETWEEN ? AND ? AND "
-                                f"{col} IS NOT NULL", (start, end)).fetchall()
+            rows = (sorted(nightly_hrv(conn, start, end).items()) if name == "hrv" else
+                    conn.execute(f"SELECT day, {col} FROM {table} WHERE day BETWEEN ? AND ? AND "
+                                 f"{col} IS NOT NULL ORDER BY day", (start, end)).fetchall())
         except sqlite3.OperationalError:
             continue
         if name == "sleep_h":
@@ -505,7 +510,8 @@ def form_percent(conn: sqlite3.Connection, end: str) -> dict[str, Any] | None:
 
 
 # --------------------------------------------------------------------------- insight feed
-def insight_feed(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
+def insight_feed(conn: sqlite3.Connection, end: str | None = None, *,
+                 include_relationships: bool = True) -> dict[str, Any]:
     """Ranked insights across levels for the brief and dashboard."""
     from garmin_mcp import recovery
 
@@ -542,13 +548,16 @@ def insight_feed(conn: sqlite3.Connection, end: str | None = None) -> dict[str, 
                           "title": f"{name} {v['direction']} over 90 days",
                           "detail": f"{v['per_30_days']:+} per 30 days (95% CI {v['ci95'][0]} "
                                     f"to {v['ci95'][1]})",
+                          "metric": name, "direction": v["direction"],
+                          "per_30_days": v["per_30_days"], "points": v["points"],
                           "tone": "positive" if v["direction"] == good else "watch",
                           "priority": 3})
-    rel = relationships(conn, end, 365)
-    for n in rel["notable"][:4]:
-        items.append({"level": 2, "kind": "relationship", "title":
-                      f"{LABELS.get(n['x'], n['x'])} -> {LABELS.get(n['y'], n['y'])}",
-                      "detail": n["statement"], "priority": 4})
+    if include_relationships:
+        rel = relationships(conn, end, 365)
+        for n in rel["notable"][:4]:
+            items.append({"level": 2, "kind": "relationship", "title":
+                          f"{LABELS.get(n['x'], n['x'])} & {LABELS.get(n['y'], n['y'])}",
+                          "detail": n["statement"], "priority": 4})
     items.sort(key=lambda i: i["priority"])
     return {"day": end, "insights": items,
             "rules": "Level 1 = what happened, 2 = associations in your own data, 3 = what to "
