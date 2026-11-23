@@ -438,6 +438,78 @@ def daily_scores(day: str | None = None, history_days: int = 0) -> dict[str, Any
     return _with_db(run)
 
 
+# ----------------------------------------------------------------- Phase 12: health + running
+@mcp.tool()
+def sleep_breakdown(day: str | None = None) -> dict[str, Any]:
+    """One night in detail: Garmin sleep score with each part's rating and optimal range
+    (duration, deep/REM/light %, awakenings, restlessness, stress) plus the day-to-night
+    heart-rate dip (>= 10 % = healthy dip)."""
+    from garmin_mcp import health
+
+    return _with_db(lambda c: health.sleep_breakdown(c, _end(c, day)))
+
+
+@mcp.tool()
+def long_term_health(day: str | None = None) -> dict[str, Any]:
+    """Slow signals: pace of ageing (fitness-age trend, 1.0 = calendar pace), Marathon shape
+    (Runalyze: endurance readiness 0-100 %), detected shifts
+    in resting HR / HRV / sleep over 180 days, and days tagged sick/injured/break."""
+    from garmin_mcp import health
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        d = _end(c, day)
+        return {"pace_of_ageing": health.pace_of_ageing(c, d), "shifts": health.shifts(c, d),
+                "marathon_shape": health.marathon_shape(c, d),
+                "status_days": health.status_days(c)}
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def monthly_report(month: str | None = None) -> dict[str, Any]:
+    """Month summary (YYYY-MM, default last full month) vs the month before: sessions, hours,
+    run km, sleep, resting HR, steps, HRV."""
+    from garmin_mcp import health
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        m = month
+        if not m:
+            d = _end(c, None)
+            y, mo = int(d[:4]), int(d[5:7])
+            m = f"{y - 1}-12" if mo == 1 else f"{y}-{mo - 1:02d}"
+        return health.monthly_report(c, m)
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def running_breakdown(activity_id: int | None = None) -> dict[str, Any]:
+    """One run, coach-style: cadence, stride, ground contact, bounce and vertical ratio with
+    Garmin's colour rating AND versus your own usual at the same pace; pacing, HR drift,
+    running effectiveness; and 1-3 specific things to work on. Default: latest run."""
+    from garmin_mcp import athlete, running
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        aid = activity_id or (c.execute(
+            "SELECT activity_id FROM activities WHERE type LIKE '%run%' AND fit_parsed=1 "
+            "ORDER BY start_time_local DESC LIMIT 1").fetchone() or [None])[0]
+        if not aid:
+            return {"available": False, "reason": "no runs with FIT data"}
+        w = (athlete.context(c).get("profile") or {}).get("weight_kg")
+        return running.running_breakdown(c, aid, w)
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def running_form_history(runs: int = 60) -> dict[str, Any]:
+    """Per-run form series (pace, cadence, stride, ground contact, vertical ratio, efficiency)
+    with your personal cadence-vs-speed and stride-vs-speed lines."""
+    from garmin_mcp import running
+
+    return _with_db(lambda c: running.form_trends(c, max(5, min(runs, 200))))
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the

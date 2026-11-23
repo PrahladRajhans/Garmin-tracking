@@ -50,7 +50,7 @@ def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict
                    start, end)
     hs_resp = _series(conn, "SELECT day, respiration FROM health_status "
                       "WHERE day BETWEEN ? AND ?", start, end)
-    return {
+    out = {
         "hrv": {**hs_hrv, **hrv},  # Garmin HRV status value wins; health status fills history
         "rhr": _series(conn, "SELECT day, resting_hr FROM daily WHERE day BETWEEN ? AND ?",
                        start, end),
@@ -65,6 +65,14 @@ def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict
             conn, "SELECT day, sleep_need_min FROM sleep WHERE day BETWEEN ? AND ?",
             start, end).items()},
     }
+    # Days tagged sick / injured / break are left out of baselines (Bevel's activity status),
+    # except the day being scored, so being ill doesn't redefine "normal".
+    from garmin_mcp.health import status_days
+
+    skip = {d for d in status_days(conn) if d != end}
+    if skip:
+        out = {k: {d: v for d, v in ser.items() if d not in skip} for k, ser in out.items()}
+    return out
 
 
 def _stats(values: list[float]) -> tuple[float, float] | None:
@@ -219,6 +227,8 @@ def readiness(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
         if garmin else None,
         "hrv": hrv, "sleep": {**slp, "bedtime_sd_min_14d": bedtime_consistency(conn, day)},
         "illness_flag": illness_flag(series, day),
+        "activity_status": __import__("garmin_mcp.health", fromlist=["x"]).status_days(
+            conn).get(day),
     }
 
 
@@ -240,6 +250,10 @@ def suggestion(r: dict[str, Any]) -> dict[str, str]:
     """Rule-based training suggestion; every branch states its reason."""
     garmin_level = (r["garmin"] or {}).get("level")
     state = r["ours"]["state"]
+    status = r.get("activity_status")
+    if status:
+        return {"suggest": "training advice paused",
+                "why": f"today is tagged '{status}'; rest and recover, then remove the tag"}
     if r["illness_flag"]["raised"]:
         return {"suggest": "rest or very easy movement",
                 "why": "illness/strain pattern on two consecutive days"}

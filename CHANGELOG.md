@@ -6,6 +6,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+- `HANDOVER.md`: goal, story, why, a reference table for every calculation (code → formula → source → METRICS section), dashboard references, exact differences from Garmin and other apps, known issues, and the ordered list of what's left, so another person or AI can continue.
+
+## [0.12.0] - 2026-11-23
+
+Phase 11 (dashboard v2) and Phase 12 (health and running analytics). 40 tools.
+
+### Added
+- **Dashboard v2** (`dashboard.py`, rebuilt): one self-contained HTML file with 7 linked pages plus one page per run (Today, Sleep, Recovery, Training, Running, Run detail, Body, Patterns).
+  - No JavaScript and no CDN; pages switch with CSS `:target`, so it works offline, from iCloud Drive or as a private Artifact.
+  - Three-dial hero, "Why" rows against your personal range, 14-day recovery bars, drill-down tiles.
+  - Inline-SVG charts with native tooltips, one axis per chart, separate phone and desktop drawings so text stays 10–16 px.
+  - Garmin colour gauges for running form with a hollow marker for "your usual at this pace".
+  - Design system written down in `DASHBOARD_PLAN.md` §6–8 (type scale, 4 px spacing grid, radii, icon and line sizes). Palette validated light + dark with the dataviz validator.
+  - Copied to `iCloud Drive/Garmin/dashboard.html` after each build when iCloud Drive exists.
+- **`health.py`** + tools `sleep_breakdown`, `long_term_health`, `monthly_report`:
+  - Sleep breakdown: Garmin sub-scores with ratings and optimal ranges.
+  - Heart-rate dip: day vs night HR, ≥ 10 % = healthy dip.
+  - Pace of ageing: fitness-age trend in years per year; needs ≥ 90 days of history.
+  - Marathon shape: Runalyze formula, read from Runalyze source.
+  - Shift detection in resting HR / HRV / sleep (two-segment mean shift, ≥ 1 SD, ≥ 14 days each side).
+  - Month-vs-month report.
+- **Activity status:** days tagged `sick` / `injured` / `break` / `illness` (via `add_tag`) are left out of recovery baselines and pause training advice.
+- **`running.py`** + tools `running_breakdown`, `running_form_history`:
+  - Garmin colour bands for cadence, ground contact, vertical oscillation and vertical ratio (verified against Garmin's manual).
+  - Your own cadence-vs-speed and stride-vs-speed lines, with each run shown versus your usual at the same pace.
+  - Running effectiveness (speed ÷ W/kg).
+  - Pacing and HR drift.
+  - 1–3 evidence-based things to work on, e.g. cadence +5 % for knee load (Heiderscheit 2011, Willy 2016).
+- **Sync gate** (`sync.py`): the 3-hourly job does a full sync only if ≥ 11 h have passed since the last one, or if today's activity list shows a new activity. Otherwise it is a single cheap call. This matches syncing the phone morning and night. `--force` skips the gate.
+- Research note `running_form_benchmarks.md` (Garmin bands, Runalyze shape source, RE definition, cadence/knee studies).
+- Repo onboarding for people and other AI assistants: `ARCHITECTURE.md`, `AGENTS.md`, README overview and repo map.
+
+### Fixed
+- Pace of ageing was 3.1 from 30 days of data (a 0.3-year wobble × 12). Now needs ≥ 90 days of span and uses Whoop's scale (1.0 = calendar pace).
+- Bedtime chart used UTC timestamps; now local time (Asia/Kolkata) via the engine's timezone.
+
+### Findings (real data, 23 Nov)
+- Latest run: cadence 167 spm (green), ground contact 273 ms (green), vertical ratio 8.7 % (orange, borderline). HR drift 7.8 % → aerobic base is the limiter.
+- Marathon shape 1 %: 1.1 km a week vs about 65 km needed at your fitness. Accurate, not a bug.
+- Lasting shifts since June: resting HR −2.4 bpm, HRV +4.9 ms (both better).
+
 ## [0.11.0] - 2026-11-23
 
 Phase 10a: glanceable daily scores, self-update, CI, dashboard plan.

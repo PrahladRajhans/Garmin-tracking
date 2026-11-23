@@ -117,3 +117,19 @@ def test_rate_limit_waits_and_retries(conn):
     r = Syncer(conn, src, delay=0, store_fit_files=False, sleep=slept.append).run(today, today)
     assert r.errors == 0 and r.rate_limit_waits == 2 and slept == [8.0, 8.0]
     assert db.has_daily(conn, "sleep", today.isoformat())
+
+
+def test_gate_full_sync_after_11h_and_probe_otherwise(conn, monkeypatch, tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from garmin_mcp import sync as s
+
+    monkeypatch.setattr(s, "db_path", lambda: tmp_path / "test.db")
+    # no previous sync -> sync
+    assert s.gate(probe=list)["sync"] is True
+    db.log(conn, "r1", "x", "sleep", "d", "ok")
+    conn.commit()
+    now = datetime.now(UTC)
+    assert s.gate(now=now, probe=list)["sync"] is False          # recent, nothing new
+    assert s.gate(now=now, probe=lambda: [999])["sync"] is True        # new activity
+    assert s.gate(now=now + timedelta(hours=12), probe=list)["sync"] is True
