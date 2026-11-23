@@ -18,7 +18,8 @@ def test_dashboard_builds_on_small_database(conn, tmp_path):
     path = dashboard.build(conn, tmp_path)
     text = path.read_text()
     assert "<title>Garmin Health</title>" in text
-    assert "<script" not in text and "http" not in text.split("<body>")[1][:200]  # offline
+    assert text.count("<script>") == 1 and "<script src" not in text
+    assert "View values" not in text and "What stands out" in text
     for page in ("today", "sleep", "recovery", "training", "running", "body", "patterns"):
         assert f'id="{page}"' in text and f'href="#{page}"' in text
     assert "#today:not(:target)" in text  # home hides only when another page is targeted
@@ -32,7 +33,8 @@ def test_gauge_and_charts_render():
     c = dashboard.line_chart([("2026-11-01", 50.0), ("2026-11-02", 52.0)], " ms",
                              band=(48.0, 53.0))
     assert "<path" in c and 'class="band"' in c and "<title>" in c
-    assert "Not enough" in dashboard.line_chart([("2026-11-01", 1.0)])
+    assert dashboard.line_chart([("2026-11-01", 1.0)]).count(" data-point ") == 1
+    assert "No measurements" in dashboard.line_chart([("2026-11-01", None)])
     b = dashboard.bar_chart([("a", 1.0), ("b", 2.0)], ref=1.5, ref_label="need")
     assert b.count('class="bar') == 2 and "need" in b
     assert dashboard._clock(25.5) == "01:30"
@@ -52,19 +54,29 @@ def test_empty_database_builds_honest_dashboard_without_fake_scores(conn, tmp_pa
             rebuild(conn)
         path = dashboard.build(conn, tmp_path / "empty")
         text = path.read_text()
-        assert "No Garmin data is available yet" in text and "<script" not in text
+        assert "No Garmin data is available yet" in text and "data-chart=" not in text
         assert 'id="patterns"' in text and 'href="#patterns"' in text
         assert 'class="dial-num"' not in text and "planned training is fine" not in text
 
 
 def test_date_charts_preserve_elapsed_time_and_have_exact_values():
+    import math
     import re
 
     text = dashboard.line_chart([("2026-01-11", 3.), ("2026-01-01", 1.), ("2026-01-02", 2.)])
-    xs = [float(x) for x in re.findall(r'<circle cx="([\d.]+)"[^>]*class="hit"', text)]
-    assert xs == [34., 63.8, 332.]  # Jan 2 is one tenth of the span, not the middle
-    assert "<caption>Recorded trend values" in text and 'scope="row"' in text
-    assert "2026-01-02" in text and "View values" in text
+    xs = [float(x) for x in re.findall(r'<circle cx="([\d.]+)"[^>]*data-point', text)]
+    assert len(xs) == 3 and math.isclose((xs[1] - xs[0]) / (xs[2] - xs[0]), 0.1)
+    assert 'data-title="2026-01-02" data-value="2"' in text and "View values" not in text
+
+
+def test_dashboard_inline_script_matches_document_policy():
+    import base64
+    import hashlib
+
+    text = dashboard.render({"available": False, "reason": "No stored values"})
+    script = text.split("<script>", 1)[1].split("</script>", 1)[0]
+    digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+    assert f"sha256-{digest}" in text
 
 
 def test_missing_bar_keeps_remaining_status_colour_and_escapes_labels():

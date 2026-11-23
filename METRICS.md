@@ -300,3 +300,18 @@ Pearson/bootstrapping and false-discovery formulas are unchanged. Seven-observat
 can span more than seven calendar days when measurements are missing. Confounding, common
 sources, watch wear and selective recording can bias these associations. The displayed
 interval does not establish an individual's future response.
+
+## Nightly HRV consistency and visible insight evidence (v0.15.0)
+
+The health snapshot's 7-day and 60-day HRV averages and the trend/relationship inputs
+now use `recovery.nightly_hrv`. A valid positive finite value in the dedicated HRV table
+wins for that date. Health status supplies a valid value when dedicated data is missing
+or invalid. Snapshot averages include the selected day and expose their observation
+counts. Existing recovery weights and statistical evidence cutoffs remain unchanged.
+
+Training uses the established `insights.weekly_review` date windows, while explicitly
+showing recorded sessions and the count of usable nights. Charts label partial weeks
+and keep absent training weeks blank. Today cites the sign and units of supported
+trends, the number of readings, and the record date. Treat linked patterns as personal
+associations and load suggestions as coaching heuristics. Link validation needs both
+the Garmin record for the date and a consistent input history.

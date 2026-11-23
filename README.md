@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.14.3. The 43 MCP tools and static dashboard include run pacing, six-month history, and Patterns with visible evidence and sample sizes. Optional private phone hosting is off by default.
+> **Status:** v0.15.0. The 43 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -145,7 +145,9 @@ After this, the server reuses the saved tokens; your password is not stored.
 
 `garmin-mcp-dashboard` writes `dashboard/index.html` in your data folder (rebuilt after every
 sync). It is one self-contained file with linked pages: Today → Sleep, Recovery, Training,
-Running (→ each run), Body, Patterns. No JavaScript, no internet needed.
+Running (→ each run), Body, Patterns. Hover, tap or slide over a chart for values. Keyboard
+users can focus a chart and use arrow keys. Choose **Light** or **Dark** at the top. A bundled
+script handles these controls offline. The file has no remote scripts or requests.
 
 - **Mac:** open `~/.garmin-mcp/dashboard/index.html` in Safari (or your `GARMIN_DATA_DIR` override).
   The file is rebuilt after each sync; reload an already open tab to see new data.

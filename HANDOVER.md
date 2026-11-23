@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.14.3, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.15.0, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -166,6 +166,9 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Connectors | Fitness AI Connector, AthleteData: cloud, paid | Local, free, formulas visible | `research_notes/.../ai_connectors.md` |
 
 ## 9. Known issues and open questions
+The dashboard now shows the ranked engine findings on Today. An older snapshot asks for a
+sync before giving current training guidance. The appearance switch and direct chart cursor
+need a browser that runs scripts. Device testing still includes iPhone Files and Safari.
 **Validation status:** CI and browser evidence use synthetic data. The Mac archive still needs
 verification. The read-only `garmin-mcp-verify --run-timing` report compares paired watch and
 stream timing/HR values by year. Monthly coverage exposes gaps and the Patterns policy stays
@@ -202,7 +205,7 @@ exploratory. Historical coefficients below are dated observations.
     on real data before using them to propose a weight change. Actual weights remain equal.
 
 ## 10. What is left (pick up here)
-The next checks are the Mac archive, then private phone hosting. Code for the VO₂max bar,
+The next checks are the Mac archive, iPhone interaction, then private phone hosting. Code for the VO₂max bar,
 pacing and monthly drill-downs, and evidence-first Patterns is on the GitHub delivery track.
 The table below describes the rest of the work. ROADMAP owns ordering and status.
 
@@ -260,3 +263,8 @@ The v0.14.2 Running drill-down separates our recorded moving and elapsed times f
 FIT session timer and elapsed times. See METRICS for gaps, coverage and split interpolation.
 Tests exercise older stored FIT rows and known timing cases. Comparison with the owner's
 actual Garmin history still belongs to the Mac rollout in ROADMAP.
+
+In v0.15.0 the health snapshot, trends and relationships share the same valid nightly HRV
+source merge as recovery and monthly history. Underlying readiness weights and association
+thresholds are unchanged. Training shows a seven-day overview with the sleep-night count.
+The screenshot and input checks are in `docs/UI_REVIEW.md`.

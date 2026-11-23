@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import statistics
 from datetime import date, timedelta
 from typing import Any
 
@@ -72,6 +73,8 @@ def _hours(seconds: Any) -> float | None:
 
 # --------------------------------------------------------------------------- snapshot
 def health_snapshot(conn: sqlite3.Connection, day: str | None = None) -> dict[str, Any]:
+    from garmin_mcp.recovery import nightly_hrv
+
     day = day or _latest_day(conn) or date.today().isoformat()
     flags: list[str] = []
 
@@ -114,23 +117,27 @@ def health_snapshot(conn: sqlite3.Connection, day: str | None = None) -> dict[st
     # HRV: Garmin HRV status (Personal API/unofficial) or health-status HRV (export).
     hrv = _row(conn, "hrv", day) or {}
     hs = _row(conn, "health_status", day) or {}
-    hrv_night = hrv.get("last_night_avg") or hs.get("hrv")
+    history = nightly_hrv(conn, (date.fromisoformat(day) - timedelta(days=59)).isoformat(), day)
+    hrv_night = history.get(day)
     band = (hrv.get("baseline_low") or hs.get("hrv_low"),
             hrv.get("baseline_high") or hs.get("hrv_high"))
     hrv_status = hrv.get("status") or hs.get("status_hrv")
-    hrv7, _ = _avg(conn, "health_status", "hrv", day, 7)
-    hrv60, n60 = _avg(conn, "health_status", "hrv", day, 60)
-    if hrv_night and band[0] and hrv_night < band[0]:
+    cutoff = (date.fromisoformat(day) - timedelta(days=6)).isoformat()
+    week_hrv = [v for d, v in history.items() if d >= cutoff]
+    hrv7 = statistics.fmean(week_hrv) if week_hrv else None
+    hrv60 = statistics.fmean(history.values()) if history else None
+    if hrv_night and band[0] is not None and band[1] is not None and hrv_night < band[0]:
         flags.append(f"HRV {hrv_night:.0f} ms below your baseline band ({band[0]:.0f}-"
                      f"{band[1]:.0f}).")
     hrv_out = {
         "last_night_ms": hrv_night,
         "garmin_weekly_avg_ms": hrv.get("weekly_avg"),
-        "garmin_baseline_band_ms": list(band) if band[0] else None,
+        "garmin_baseline_band_ms": list(band) if None not in band else None,
         "garmin_status": hrv_status,
-        "avg_7d_ms": _r(hrv7), "avg_60d_ms": _r(hrv60), "days_in_60d": n60,
-        "meaning": "Overnight HRV inside your own baseline band = recovered nervous system; "
-                   "a sustained drop below it suggests fatigue, illness or stress.",
+        "avg_7d_ms": _r(hrv7), "avg_60d_ms": _r(hrv60), "days_in_60d": len(history),
+        "days_in_7d": len(week_hrv),
+        "meaning": "Compare overnight HRV with your usual range and other recovery signals. "
+                   "Sleep, recent training, stress and measurement quality can affect it.",
     }
 
     # Resting heart rate vs baseline (heuristic flag: +5 bpm over the 60-day mean).
@@ -460,6 +467,7 @@ def weekly_review(conn: sqlite3.Connection, end: str | None = None) -> dict[str,
                         "duration": _hms(longest[2])} if longest and longest[1] else None,
         "recovery": {"avg_sleep_h": _r(sum(sleep_vals) / len(sleep_vals), 2)
                      if sleep_vals else None,
+                     "sleep_nights": len(sleep_vals),
                      "readiness_states": [d["state"] for d in trend],
                      "illness_flag_days": sum(1 for d in trend if d["illness_flag"])},
         "by_type": recent_activities(conn, days=7, end=end)["summary"]["by_type"],
