@@ -61,7 +61,8 @@ def _iso(value: Any) -> str | None:
 def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, int]:
     """Decode a FIT file and replace this activity's stored streams. Returns row counts."""
     messages = decode(data)
-    for table in ("fit_records", "fit_laps", "fit_hrv", "fit_sessions"):
+    for table in ("fit_records", "fit_laps", "fit_hrv", "fit_sessions", "fit_lengths",
+                  "fit_sets", "fit_zones", "fit_profile"):
         conn.execute(f"DELETE FROM {table} WHERE activity_id=?", (activity_id,))
 
     records = []
@@ -110,6 +111,43 @@ def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, 
         [(activity_id, i, float(t)) for i, t in enumerate(rr)],
     )
 
+    # Pool swims: one message per length (active or rest).
+    lengths = [
+        (activity_id, i, str(x.get("length_type")), str(x.get("swim_stroke")),
+         x.get("total_timer_time"), x.get("total_strokes"), x.get("avg_swimming_cadence"))
+        for i, x in enumerate(messages.get("length_mesgs", []))
+    ]
+    conn.executemany("INSERT INTO fit_lengths VALUES (?,?,?,?,?,?,?)", lengths)
+
+    # Strength: one message per set. category is a list (main, sub, ...) in the SDK output.
+    def _cat(value: Any) -> str | None:
+        if isinstance(value, (list, tuple)):
+            parts = [str(v) for v in value if v not in (None, "unknown")]
+            return "/".join(parts) or None
+        return None if value in (None, "unknown") else str(value)
+
+    sets = [
+        (activity_id, i, str(x.get("set_type")), _cat(x.get("category")),
+         x.get("repetitions"), x.get("weight"), x.get("duration"))
+        for i, x in enumerate(messages.get("set_mesgs", []))
+    ]
+    conn.executemany("INSERT INTO fit_sets VALUES (?,?,?,?,?,?,?)", sets)
+
+    zone = next((z for z in messages.get("time_in_zone_mesgs", [])
+                 if z.get("reference_mesg") == "session"), None)
+    if zone:
+        conn.execute(
+            "INSERT INTO fit_zones VALUES (?,?,?,?,?,?,?,?)",
+            (activity_id, dumps(zone.get("time_in_hr_zone")),
+             dumps(zone.get("hr_zone_high_boundary")), dumps(zone.get("time_in_power_zone")),
+             str(zone.get("hr_calc_type")), zone.get("max_heart_rate"),
+             zone.get("resting_heart_rate"), zone.get("threshold_heart_rate")))
+    prof = (messages.get("user_profile_mesgs") or [None])[0]
+    if prof:
+        conn.execute("INSERT INTO fit_profile VALUES (?,?,?,?,?)",
+                     (activity_id, str(prof.get("gender")), prof.get("weight"),
+                      prof.get("height"), prof.get("resting_heart_rate")))
+
     sessions = messages.get("session_mesgs", [])
     if sessions:
         s = sessions[0]
@@ -118,4 +156,25 @@ def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, 
             (activity_id, str(s.get("sport")), str(s.get("sub_sport")), dumps(sessions)),
         )
     conn.execute("UPDATE activities SET fit_parsed=1 WHERE activity_id=?", (activity_id,))
-    return {"records": len(records), "laps": len(laps), "rr_intervals": len(rr)}
+    return {"records": len(records), "laps": len(laps), "rr_intervals": len(rr),
+            "lengths": len(lengths), "sets": len(sets)}
+
+
+def reparse_all(conn: sqlite3.Connection) -> dict[str, int]:
+    """Re-read every stored FIT file (after parser improvements). Never re-downloads."""
+    from pathlib import Path
+
+    done = missing = errors = 0
+    for activity_id, path in conn.execute(
+        "SELECT activity_id, fit_path FROM activities WHERE fit_path IS NOT NULL"
+    ).fetchall():
+        if not path or not Path(path).exists():
+            missing += 1
+            continue
+        try:
+            store(conn, activity_id, Path(path).read_bytes())
+            done += 1
+        except Exception:  # noqa: BLE001 - keep going; counted
+            errors += 1
+    conn.commit()
+    return {"reparsed": done, "missing_files": missing, "errors": errors}

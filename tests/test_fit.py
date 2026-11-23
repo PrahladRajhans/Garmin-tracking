@@ -10,7 +10,7 @@ from garmin_mcp.sources.garminconnect_source import extract_fit
 def test_store_fit_streams(conn):
     db.upsert_activity(conn, {"activityId": 1, "activityType": {"typeKey": "running"}})
     counts = fit.store(conn, 1, make_fit(n=5))
-    assert counts == {"records": 5, "laps": 1, "rr_intervals": 3}
+    assert counts == {"records": 5, "laps": 1, "rr_intervals": 3, "lengths": 0, "sets": 0}
     row = conn.execute("SELECT * FROM fit_records WHERE activity_id=1 ORDER BY ts").fetchone()
     assert row["heart_rate"] == 140 and row["speed"] == 3.2 and row["power"] == 260
     assert 51.3 < row["lat"] < 51.4  # semicircles converted to degrees

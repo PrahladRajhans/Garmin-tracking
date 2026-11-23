@@ -10,3 +10,11 @@ Note: WebFetch could not resolve www8.garmin.com or support.garmin.com; verifica
 | Recovery Time max | 96 h [bg] | Verified (4 days) | FR955 OM p.45 |
 | Wrist running dynamics | ⚠ VO/GCT probably absent | CORRECTED: present via wrist RD (fw 15.09+); only GCT balance absent | the5krunner 2023-04-04; Garmin RD manual page |
 | LT requires chest strap | unverified | Guided test: yes. Auto-detect: open | FR955 OM p.40; Garmin forum |
+
+## v0.5.0 additions (verified on real data or by test)
+| Claim | Result | How |
+|---|---|---|
+| FIT running fields are scaled by the SDK to m/s, mm, ms, one-foot rpm | verified | cadence×2×step_length = speed within 0.3 % on all runs |
+| Garmin HR-zone upper bounds are exclusive (HR < bound) | verified | recomputed zone times match Garmin's FIT time_in_zone 0.0–1.0 % on runs |
+| Banister, VDOT, Riegel, Swain, Minetti constants | pinned | unit tests (tests/test_loads.py); VDOT matches Daniels' table (5K 19:57 ≈ 50) |
+| running_and_sport_metrics.md was written from memory (no page fetches) | caution | constants used in code are pinned by tests above; others stay unverified |

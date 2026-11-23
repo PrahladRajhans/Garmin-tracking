@@ -6,6 +6,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-23
+
+Phase 4: training load & performance (ROADMAP 4.1–4.11).
+
+### Added
+- `loads.py`:
+  - 4.1 thresholds with Garmin's beside ours: HRmax (observed), resting HR (60-day median), LTHR (best 20-min run HR); sex from the watch profile.
+  - 4.2 per-activity Banister TRIMP for every sport, plus rTSS (runs, only with a maximal critical speed).
+  - 4.3 CTL/ATL/TSB and ramp rate.
+  - 4.4 Seiler 3-zone time and Treff polarisation index.
+  - 4.5 monotony and strain.
+  - 4.6 pace-duration curve and critical speed with a submaximal-effort flag.
+  - 4.7 race predictions by several methods beside Garmin's, including effective VO2max (Swain 1994) for submaximal training data, plus a low-volume warning.
+- 4.8 `weekly_review`: last 7 days vs the previous 4 weeks.
+- 4.10 Swim and strength analytics: FIT pool lengths (pace/100 m, strokes, SWOLF by stroke) and strength sets (exercise, reps, volume). New FIT tables: `fit_lengths`, `fit_sets`, `fit_zones` (Garmin's own zone times), `fit_profile`. `fit.reparse_all` re-reads stored FIT files without downloading.
+- 4.11 Sense checks: our numbers vs Garmin's and physics (load correlation, VO2max, cadence × stride = speed, HR-zone times, thresholds). New tool `sense_checks`; also printed by `garmin-mcp-verify`.
+- MCP tools `training_load`, `performance`, `weekly_review`, `sense_checks` (14 tools total).
+- 4.9 Formula constants pinned by unit tests (33 tests total).
+- `research_notes/.../running_and_sport_metrics.md`: running metric definitions and interactions, swim/strength metrics, Garmin Active Intelligence and Strava Athlete Intelligence notes (for later phases).
+
+### Fixed
+- HR-zone boundaries follow Garmin's exclusive upper bound; recomputed zone times now match Garmin's to 0–1 % on runs (was 8 %).
+
+### Findings from the sense checks
+- Garmin's max-HR setting (209) is 16 bpm above any HR recorded (193) and its LTHR (185) is above any sustained run HR (166). The observed values are used, and both are flagged.
+- Best-effort predictions reflect training pace, because no recent run was all-out; effective VO2max predictions bracket Garmin's.
+
 ## [0.4.0] - 2026-11-23
 
 Phase 3: recovery & readiness (ROADMAP items 3.1–3.6).

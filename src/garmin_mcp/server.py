@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from datetime import date, timedelta
 from typing import Any
 
 from dotenv import load_dotenv
@@ -104,6 +105,59 @@ def daily_brief(day: str | None = None) -> dict[str, Any]:
     """Morning report: how recovered you are and why, a training suggestion with its reason,
     yesterday's activities, the week so far and flags. Narrate it in 2-4 sentences."""
     return _with_db(lambda c: insights.daily_brief(c, parse_date(day) if day else None))
+
+
+@mcp.tool()
+def training_load(days: int = 42, end: str | None = None) -> dict[str, Any]:
+    """Fitness (CTL), fatigue (ATL), form (TSB), ramp rate, monotony and strain from TRIMP,
+    plus current thresholds (HRmax, resting HR, LTHR) with Garmin's values beside them."""
+    from garmin_mcp import loads
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        e = parse_date(end) if end else insights._latest_day(c) or parse_date(None)
+        lo = (date.fromisoformat(e) - timedelta(days=max(7, min(days, 730)) - 1)).isoformat()
+        series = [dict(zip(("day", "load", "ctl", "atl", "tsb", "ramp", "monotony", "strain"), r))
+                  for r in c.execute("SELECT * FROM fitness WHERE day BETWEEN ? AND ? ORDER BY day",
+                                     (lo, e))]
+        return {"today": series[-1] if series else None, "series": series,
+                "thresholds": loads.thresholds(c, e),
+                "meaning": "CTL = long-term load (fitness), ATL = 7-day load (fatigue), "
+                           "TSB = CTL - ATL (form, yesterday's values). Units: Banister TRIMP. "
+                           "TSB bands are heuristics, not validated thresholds."}
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def performance(days: int = 90, end: str | None = None) -> dict[str, Any]:
+    """Running performance: pace-duration curve, critical speed, effective VO2max, and race
+    predictions from several methods beside Garmin's, with notes on reliability."""
+    from garmin_mcp import loads
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        e = parse_date(end) if end else insights._latest_day(c) or parse_date(None)
+        d = max(30, min(days, 730))
+        return {"race_predictions": loads.race_predictions(c, e, d),
+                "pace_curve": loads.pace_curve(c, e, d)["curve"]}
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def weekly_review(end: str | None = None) -> dict[str, Any]:
+    """Last 7 days vs the previous 4 weeks: sessions, hours, run km, load, intensity balance,
+    fitness/form, longest run, sleep and readiness. Narrate as a weekly recap."""
+    return _with_db(lambda c: insights.weekly_review(c, parse_date(end) if end else None))
+
+
+@mcp.tool()
+def sense_checks(end: str | None = None) -> dict[str, Any]:
+    """Self-checks of our calculations against Garmin's values and physics (load correlation,
+    VO2max, cadence x stride = speed, HR-zone times, thresholds). Run when numbers look odd."""
+    from garmin_mcp import loads
+
+    return _with_db(lambda c: loads.sense_checks(
+        c, parse_date(end) if end else insights._latest_day(c) or parse_date(None)))
 
 
 @mcp.tool()
