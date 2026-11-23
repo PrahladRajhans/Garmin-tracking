@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from garmin_fit_sdk import Encoder, Profile
@@ -16,7 +16,7 @@ def conn(tmp_path, monkeypatch):
 
 def make_fit(n: int = 5, with_hrv: bool = True) -> bytes:
     mn = Profile["mesg_num"]
-    t0 = datetime(2026, 11, 1, 7, 0, tzinfo=timezone.utc)
+    t0 = datetime(2026, 11, 1, 7, 0, tzinfo=UTC)
     e = Encoder()
     e.write_mesg({"mesg_num": mn["FILE_ID"], "type": "activity", "manufacturer": "garmin",
                   "time_created": t0})

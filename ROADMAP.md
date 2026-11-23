@@ -18,7 +18,7 @@ Design rules:
 ## Phase 0: Verify before building (1 short session)
 | # | Task | Why | Needs you |
 |---|---|---|---|
-| 0.1 | Apply for a Garmin Personal API key | Confirms the official path and its endpoint list | ✅ apply at developer.garmin.com |
+| 0.1 | ~~Apply for a Garmin Personal API key~~ **Done.** Endpoints confirmed via Garmin's official client: no readiness, training status, race predictor or endurance/hill score, so the unofficial add-on stays | Confirms the official path | done |
 | 0.2 | Run v0.1.0 login on your machine | Checks whether the unofficial library logs in today | ✅ run `python -m garmin_mcp.login` |
 | 0.3 | Export one recent run's FIT file | Shows which fields a watch-only FR955 records | ✅ download "Export Original" from Connect |
 | 0.4 | Request the Garmin account data export | Backfills history beyond the API's limits (takes days to arrive) | ✅ Garmin account → Data management |

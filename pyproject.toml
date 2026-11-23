@@ -3,13 +3,14 @@ name = "garmin-mcp"
 version = "0.2.0"
 description = "Free, self-hosted MCP server that exposes your Garmin Connect data to AI assistants."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
     "mcp>=2.0,<3",
     "garminconnect>=0.3.20,<0.4",
     "python-dotenv>=1.0",
     "garmin-fit-sdk>=21.0",
+    "garmin-connect-personal-api-python>=1.1,<2",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +29,7 @@ packages = ["src/garmin_mcp"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

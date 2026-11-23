@@ -16,11 +16,20 @@ from garminconnect import Garmin
 
 from garmin_mcp.sources.base import DataSource
 
+# Datasets the official Personal API does not provide. In "both" mode only these are synced
+# from the unofficial source, so the fragile path carries as little as possible.
+EXTRAS = {
+    "training_readiness", "training_status", "max_metrics", "respiration",
+    "intensity_minutes", "body_battery_events", "acclimation", "floors",
+    "race_predictions", "endurance_score", "hill_score", "lactate_threshold",
+    "body_composition",
+}
+
 
 class GarminConnectSource(DataSource):
     name = "garminconnect"
 
-    def __init__(self, client: Garmin) -> None:
+    def __init__(self, client: Garmin, *, extras_only: bool = False) -> None:
         super().__init__()
         c = client
         self.client = c
@@ -61,6 +70,9 @@ class GarminConnectSource(DataSource):
             "power_zones": lambda a: c.get_activity_power_in_timezones(str(a)),
             "weather": lambda a: c.get_activity_weather(str(a)),
         }
+        if extras_only:
+            self.daily = {k: v for k, v in self.daily.items() if k in EXTRAS}
+            self.ranges = {k: v for k, v in self.ranges.items() if k in EXTRAS}
 
     def list_activities(self, start: str, end: str) -> list[dict[str, Any]]:
         return self.client.get_activities_by_date(start, end) or []

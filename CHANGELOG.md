@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+- Official Garmin Personal API source, built on Garmin's own `garmin-connect-personal-api-python` client: 6 daily datasets, 8 windowed datasets (fetched in 28-day chunks for the API's history caps), activities with pagination, original FIT download, automatic token renewal on 401.
+- `--source both` (now the default): official API first, then only the extras the official API lacks from the unofficial library. Either source failing is reported without blocking the other.
+- Tests for the Personal API source (14 total).
+
+### Changed
+- Python 3.12+ required (official Garmin client requirement).
+- README: key setup via a private key file, source modes, what each source covers.
+
 ## [0.2.0] - 2026-11-23
 
 Phase 1: data foundation.

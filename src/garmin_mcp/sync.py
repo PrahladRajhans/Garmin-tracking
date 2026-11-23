@@ -102,12 +102,12 @@ class Syncer:
             day += timedelta(days=1)
 
     def sync_ranges(self, start: date, end: date) -> None:
-        s, e = start.isoformat(), end.isoformat()
-        for dataset, fn in self.source.ranges.items():
-            ok, payload = self._call(dataset, f"{s}..{e}", fn, s, e)
-            if ok:
-                db.put_range(self.conn, dataset, s, e, self.source.name, payload)
-        self.conn.commit()
+        for s, e in _chunks(start, end, self.source.range_chunk_days):
+            for dataset, fn in self.source.ranges.items():
+                ok, payload = self._call(dataset, f"{s}..{e}", fn, s, e)
+                if ok:
+                    db.put_range(self.conn, dataset, s, e, self.source.name, payload)
+            self.conn.commit()
 
     def sync_activities(self, start: date, end: date) -> None:
         ok, items = self._call(
@@ -174,39 +174,66 @@ class Syncer:
         return self.result
 
 
-def make_source(name: str) -> DataSource:
-    if name == "garminconnect":
-        from garmin_mcp.client import get_client
-        from garmin_mcp.sources.garminconnect_source import GarminConnectSource
-
-        return GarminConnectSource(get_client())
-    if name == "personal_api":
-        import os
-
-        from garmin_mcp.sources.personal_api import PersonalAPISource
-
-        return PersonalAPISource(os.environ.get("GARMIN_PERSONAL_API_KEY", ""))
-    raise ValueError(f"unknown source: {name}")
+def _chunks(start: date, end: date, size: int | None) -> list[tuple[str, str]]:
+    if not size:
+        return [(start.isoformat(), end.isoformat())]
+    out, cur = [], start
+    while cur <= end:
+        stop = min(cur + timedelta(days=size - 1), end)
+        out.append((cur.isoformat(), stop.isoformat()))
+        cur = stop + timedelta(days=1)
+    return out
 
 
-def run_sync(days: int = 7, since: str | None = None, source: str = "garminconnect",
+def _garminconnect(extras_only: bool) -> DataSource:
+    from garmin_mcp.client import get_client
+    from garmin_mcp.sources.garminconnect_source import GarminConnectSource
+
+    return GarminConnectSource(get_client(), extras_only=extras_only)
+
+
+def _personal_api() -> DataSource:
+    from garmin_mcp.sources.personal_api import PersonalAPISource
+
+    return PersonalAPISource()
+
+
+SOURCE_CHOICES = ["both", "personal_api", "garminconnect"]
+
+
+def run_sync(days: int = 7, since: str | None = None, source: str = "both",
              delay: float = 0.4) -> dict[str, Any]:
+    """Sync one or both sources. In "both" mode the official API runs first and the
+    unofficial source only adds what the official one lacks; a failure in one source is
+    reported and never blocks the other."""
     end = date.today()
     start = date.fromisoformat(since) if since else end - timedelta(days=days - 1)
+    plan: list[tuple[str, Any]] = {
+        "both": [("personal_api", _personal_api), ("garminconnect", lambda: _garminconnect(True))],
+        "personal_api": [("personal_api", _personal_api)],
+        "garminconnect": [("garminconnect", lambda: _garminconnect(False))],
+    }[source]
+    out: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat(), "sources": {}}
     conn = db.connect(db_path())
     try:
-        result = Syncer(conn, make_source(source), delay=delay).run(start, end)
+        for name, factory in plan:
+            try:
+                src = factory()
+            except Exception as exc:  # noqa: BLE001 - missing key / login: report, continue
+                out["sources"][name] = {"skipped": f"{type(exc).__name__}: {exc}"[:300]}
+                continue
+            out["sources"][name] = Syncer(conn, src, delay=delay).run(start, end).as_dict()
     finally:
         conn.close()
-    return result.as_dict() | {"start": start.isoformat(), "end": end.isoformat()}
+    return out
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync Garmin data into the local database.")
     parser.add_argument("--days", type=int, default=7, help="days back from today (default 7)")
     parser.add_argument("--since", help="start date YYYY-MM-DD (overrides --days)")
-    parser.add_argument("--source", default="garminconnect",
-                        choices=["garminconnect", "personal_api"])
+    parser.add_argument("--source", default="both", choices=SOURCE_CHOICES,
+                        help="both (default): official API + unofficial extras")
     parser.add_argument("--delay", type=float, default=0.4, help="seconds between API calls")
     parser.add_argument("--coverage", action="store_true", help="print stored-data coverage only")
     args = parser.parse_args()

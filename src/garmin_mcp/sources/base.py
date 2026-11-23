@@ -18,6 +18,8 @@ class DataSource:
     """
 
     name = "base"
+    #: Split windowed fetches into chunks of this many days (None = one call).
+    range_chunk_days: int | None = None
 
     def __init__(self) -> None:
         self.daily: dict[str, DailyFetcher] = {}
