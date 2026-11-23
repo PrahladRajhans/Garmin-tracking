@@ -264,6 +264,9 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
     for lap in laps:
         sp = lap.pop("avg_speed")
         lap["pace_min_km"] = _hms(1000 / sp) if sp else None
+        cad = lap.pop("avg_cadence")
+        # FIT running cadence counts one foot; x2 = steps per minute (same as the run average).
+        lap["avg_cadence_spm"] = cad * 2 if cad and a["type"] and "run" in a["type"] else cad
     stream = conn.execute(
         "SELECT COUNT(*), AVG(heart_rate), AVG(cadence), AVG(power), AVG(vertical_oscillation),"
         " AVG(stance_time), AVG(step_length), MAX(altitude)-MIN(altitude), AVG(temperature) "

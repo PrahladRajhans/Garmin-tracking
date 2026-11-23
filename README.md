@@ -4,9 +4,9 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.3.0, Phase 2: full history (export + official API + unofficial extras) in tidy local tables, with a one-call health snapshot. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.3.1, Phase 2: full history (export + official API + unofficial extras) in tidy local tables, with a one-call health snapshot. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
-> **Plan:** see [ROADMAP.md](ROADMAP.md) for decisions and phased build order.
+> **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
 ## How it works
 
@@ -159,6 +159,7 @@ Optional environment variables (or a `.env` file, see `.env.example`):
 pip install -e '.[dev]'
 pytest
 ruff check .
+garmin-mcp-verify     # data-quality checks on your real data (cross-source, units, fill rates)
 ```
 
 Project layout:

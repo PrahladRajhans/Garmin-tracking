@@ -124,12 +124,15 @@ def _as_list(payload: Any) -> list[Any]:
 
 
 def _ms_to_iso(value: Any) -> str | None:
+    """GMT timestamp (epoch ms or Garmin string) -> 'YYYY-MM-DD HH:MM:SS' UTC."""
     if isinstance(value, (int, float)) and value > 10**11:
         from datetime import datetime
 
         return datetime.fromtimestamp(value / 1000, tz=UTC).strftime(
             "%Y-%m-%d %H:%M:%S")
-    return value if isinstance(value, str) else None
+    if isinstance(value, str) and len(value) >= 19:  # '2026-10-25T00:08:45.0'
+        return value[:10] + " " + value[11:19]
+    return None
 
 
 # --------------------------------------------------------------------------- extractors
@@ -144,8 +147,10 @@ def daily_from_summary(payload: Any) -> Rows:
             continue
         if "movement" in rec or "heartRate" in rec:  # Personal API daily summary
             yield day, {
-                "steps": _num(_g(rec, "movement", "steps")),
-                "floors_up_m": _num(_g(rec, "movement", "floorsAscended")),
+                "steps": _num(_g(rec, "movement", "steps", "value")),
+                "distance_m": _num(_g(rec, "movement", "steps", "distanceInMeters")),
+                # floorsAscended.value is a floor COUNT; the metres are distanceInMeters.
+                "floors_up_m": _num(_g(rec, "movement", "floorsAscended", "distanceInMeters")),
                 "resting_hr": _num(_g(rec, "heartRate", "restingValue")),
                 "min_hr": _num(_g(rec, "heartRate", "minValue")),
                 "max_hr": _num(_g(rec, "heartRate", "maxValue")),

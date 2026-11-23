@@ -96,3 +96,30 @@ def test_activity_detail(conn):
     assert out["distance_km"] == 5.0 and out["duration"] == "30:00"
     assert insights.activity_detail(conn, 999) is None
     assert json.dumps(out)
+
+
+def test_units_floors_metres_distance_and_timestamp_format(conn):
+    from garmin_mcp.normalize import _ms_to_iso, daily_from_summary
+
+    rows = dict(daily_from_summary({"data": [{"calendarDate": DAY, "movement": {
+        "steps": {"value": 4192, "distanceInMeters": 3440.0},
+        "floorsAscended": {"value": 12, "distanceInMeters": 36.58}}}]}))
+    assert rows[DAY]["floors_up_m"] == 36.58  # not the floor count (12)
+    assert rows[DAY]["steps"] == 4192 and rows[DAY]["distance_m"] == 3440.0
+    assert _ms_to_iso("2026-10-25T00:08:45.0") == "2026-10-25 00:08:45"
+    assert _ms_to_iso(EPOCH_MS) == "2026-11-20 00:00:00"
+
+
+def test_verify_passes_on_consistent_sources(conn):
+    from garmin_mcp import verify
+
+    _seed(conn)
+    db.put_daily(conn, "pa_sleep", DAY, "personal_api", {
+        "calendarDate": DAY, "deepSleepSeconds": 3600, "lightSleepSeconds": 14400,
+        "remSleepSeconds": 7200, "sleepStartTimestampGMT": EPOCH_MS - 7 * 3600 * 1000,
+        "sleepScores": {"overall": {"value": 82}}})
+    db.put_daily(conn, "ex_sleep", "2026-11-21", "export", {"calendarDate": "2026-11-21"})
+    conn.commit()
+    rebuild(conn)
+    result = verify.run(conn)
+    assert result["ok"], result["problems"]
