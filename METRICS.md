@@ -432,3 +432,26 @@ time zone for the latest seven days.
 - Show Garmin Detraining with actual seven-day running kilometres and the existing
   conservative plan. That label does not measure personal fitness lost or establish a
   minimum exercise dose. Never add hard training based on the label alone.
+
+## Measured conditions and outcomes (v0.20.0)
+
+- For an outdoor run, intersect each timed **observation** window with its FIT record
+  span. Group by source and, for AQI, reporting standard. Require at least 80% of
+  elapsed record time for one source. Compute the time-weighted median of its recorded
+  values. Retain three or more earlier qualifying pace-, duration- and climb-matched runs
+  from that same source and AQI standard. Report the current weather value and moving
+  HR next to medians of those same earlier efforts. The AQI value is a median of source
+  readings, never converted across standards. Garmin snapshots and modeled observations
+  remain contextual.
+- For bedroom observations, intersect with the stored sleep start and end. Apply
+  the same source and 80% gate separately to temperature, humidity and fine-particle
+  concentration. In a trailing 180-day window, split nights by each source's median
+  reading, excluding ties at the split. Require 6 distinct nights on each side and a
+  recorded span of at least 14 days. Group medians describe observed sleep duration.
+  Show the optional morning self-rating (1–5) only with at least four recorded
+  ratings on each side. The rating is kept separate from Garmin Body Battery.
+- These comparisons can reveal where to look next. Changes in venue, route, exertion,
+  sleep timing and health can affect the results. The comparisons leave the training
+  plan and recovery score unchanged. Observation coverage gates are engineering choices.
+  [Bedroom sensor study](https://pubmed.ncbi.nlm.nih.gov/37474050/) ·
+  [Exercise in heat consensus](https://pmc.ncbi.nlm.nih.gov/articles/PMC4602249/)

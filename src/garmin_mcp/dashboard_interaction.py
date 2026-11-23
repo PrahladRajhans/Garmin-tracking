@@ -54,9 +54,11 @@ SCRIPT = r"""
     const vertical = cursor.querySelector('.cursor-x');
     const horizontal = cursor.querySelector('.cursor-y');
     const marker = cursor.querySelector('circle');
+    const conditions = JSON.parse(figure.dataset.conditions || '[]');
     const points = [...svg.querySelectorAll('[data-point]')].map(el => ({
       x: Number(el.getAttribute('cx')), y: Number(el.getAttribute('cy')),
-      title: el.dataset.title, value: el.dataset.value, extra: el.dataset.extra
+      title: el.dataset.title, value: el.dataset.value, extra: el.dataset.extra,
+      condition: conditions[el.dataset.conditionIndex]
     }));
     let selected = -1;
     let pointer = null;
@@ -81,7 +83,7 @@ SCRIPT = r"""
     function select(index, announce = false) {
       const point = points[index];
       if (!point) return;
-      const value = overlay && point.extra ? point.value + ' · ' + point.extra : point.value;
+      const value = [point.value, point.condition, overlay ? point.extra : ''].filter(Boolean).join(' · ');
       if (announce) status.textContent = point.title + '. ' + value;
       if (index === selected) return;
       selected = index;

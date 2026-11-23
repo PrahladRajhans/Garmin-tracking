@@ -8,7 +8,7 @@ import json
 import math
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -26,6 +26,9 @@ FIELDS = {
     "aqi": (0, 500),
 }
 DETAIL_KIND = "local_conditions_v1"
+BEDROOM_DATASET = "local_bedroom_v1"
+BEDROOM_FIELDS = {"temperature_c": FIELDS["temperature_c"], "humidity_pct": FIELDS["humidity_pct"],
+                  "pm25_ug_m3": (0, math.inf)}
 MAX_ROWS = 512
 
 
@@ -82,14 +85,50 @@ def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:
     activity = conn.execute("SELECT type FROM activities WHERE activity_id=?", (aid,)).fetchone()
     if not activity or activity[0] not in RUN_TYPES or not bounds[0]:
         raise ValueError("choose an outdoor run with a local FIT timeline")
-    first, last = (datetime.fromisoformat(ts) for ts in bounds)
-    first = first.replace(tzinfo=first.tzinfo or UTC).astimezone(UTC)
-    last = last.replace(tzinfo=last.tzinfo or UTC).astimezone(UTC)
+    windows = _read_windows(path, _stored_time(bounds[0]), _stored_time(bounds[1]),
+                            FIELDS, ("observation", "model"))
+    db.put_activity_detail(conn, aid, DETAIL_KIND, windows)
+    return len(windows)
+
+
+def _stored_time(timestamp: str) -> datetime:
+    parsed = datetime.fromisoformat(timestamp)
+    return parsed.replace(tzinfo=parsed.tzinfo or UTC).astimezone(UTC)
+
+
+def sleep_interval(conn: sqlite3.Connection, day: str) -> tuple[datetime, datetime] | None:
+    row = conn.execute("SELECT sleep_start, sleep_end FROM sleep WHERE day=? AND sleep_s>=10800",
+                       (day,)).fetchone()
+    if not row or not all(row):
+        return None
+    try:
+        first, last = (_stored_time(ts) for ts in row)
+    except ValueError:
+        return None
+    return (first, last) if first < last else None
+
+
+def import_bedroom(conn: sqlite3.Connection, day: str, path: Path, energy: int | None = None) -> int:
+    span = sleep_interval(conn, day)
+    if not span:
+        raise ValueError("choose a recorded wake date with both sleep start and end")
+    if energy is not None and not 1 <= energy <= 5:
+        raise ValueError("morning energy must be between 1 and 5")
+    windows = _read_windows(path, *span, BEDROOM_FIELDS, ("observation",))
+    db.put_daily(conn, BEDROOM_DATASET, day, "local_bedroom",
+                 {"windows": windows, "morning_energy": energy})
+    return len(windows)
+
+
+def _read_windows(path: Path, first: datetime, last: datetime, fields: dict,
+                  kinds: tuple[str, ...]) -> list[dict]:
     windows = []
     with path.open(encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
         required = {"start_utc", "end_utc", "source", "kind"}
-        allowed = required | FIELDS.keys() | {"aqi_standard"}
+        allowed = required | fields.keys()
+        if "aqi" in fields:
+            allowed |= {"aqi_standard"}
         headers = reader.fieldnames or []
         if not required <= set(headers) <= allowed or len(headers) != len(set(headers)):
             raise ValueError("use the documented columns, including start_utc,end_utc,source,kind")
@@ -102,11 +141,11 @@ def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:
                 if not start < end:
                     raise ValueError("the end must follow the start")
                 source, kind = _text(row["source"]), row["kind"].strip()
-                if not source or kind not in ("observation", "model"):
-                    raise ValueError("provide a source and kind (observation or model)")
+                if not source or kind not in kinds:
+                    raise ValueError(f"provide a source and an allowed kind ({', '.join(kinds)})")
                 window = {"start_utc": start.isoformat(), "end_utc": end.isoformat(),
                           "source": source, "kind": kind}
-                for name, limits in FIELDS.items():
+                for name, limits in fields.items():
                     if raw := row.get(name, "").strip():
                         value = _value(float(raw), limits)
                         if value is None or (name == "aqi" and not value.is_integer()):
@@ -119,7 +158,7 @@ def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:
                     window["aqi_standard"] = standard
                 elif standard:
                     raise ValueError("an AQI standard requires an AQI value")
-                if not FIELDS.keys() & window.keys():
+                if not fields.keys() & window.keys():
                     raise ValueError("provide at least one reading")
                 if end > first and start <= last:
                     windows.append(window)
@@ -128,12 +167,11 @@ def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:
             except ValueError as error:
                 raise ValueError(f"CSV line {line}: {error}") from error
     if not windows:
-        raise ValueError("no observation window intersects this activity")
+        raise ValueError("no observation window overlaps the recorded interval")
     windows.sort(key=lambda window: _utc(window["start_utc"]))
     if any(_utc(a["end_utc"]) > _utc(b["start_utc"]) for a, b in pairwise(windows)):
         raise ValueError("overlapping windows need to be resolved in the source file")
-    db.put_activity_detail(conn, aid, DETAIL_KIND, windows)
-    return len(windows)
+    return windows
 
 
 def for_samples(start_utc: str | None, samples: list[dict], context: dict) -> dict[int, dict]:
@@ -160,21 +198,37 @@ def for_samples(start_utc: str | None, samples: list[dict], context: dict) -> di
 def main() -> None:
     from garmin_mcp.config import db_path
 
-    parser = argparse.ArgumentParser(description="Manage optional local workout weather and AQI.")
-    parser.add_argument("activity_id", type=int)
+    parser = argparse.ArgumentParser(description="Manage optional workout or measured bedroom conditions.")
+    parser.add_argument("activity_id", type=int, nargs="?")
+    parser.add_argument("--night", type=date.fromisoformat, help="Recorded local wake date")
+    parser.add_argument("--morning-energy", type=int, choices=range(1, 6))
     options = parser.add_mutually_exclusive_group(required=True)
     options.add_argument("--csv", type=Path)
     options.add_argument("--clear", action="store_true")
     args = parser.parse_args()
+    if (args.activity_id is None) == (args.night is None):
+        parser.error("provide either an activity ID or --night YYYY-MM-DD")
+    if args.morning_energy is not None and (args.night is None or args.clear):
+        parser.error("--morning-energy can only accompany a bedroom import")
     load_dotenv()
     try:
         with closing(db.connect(db_path())) as conn, conn:
-            if args.clear:
+            if args.night is not None:
+                day = args.night.isoformat()
+                if args.clear:
+                    conn.execute("DELETE FROM raw_daily WHERE dataset=? AND day=?",
+                                 (BEDROOM_DATASET, day))
+                    print("Removed local bedroom conditions and morning check-in.")
+                else:
+                    count = import_bedroom(conn, day, args.csv, args.morning_energy)
+                    print(f"Saved {count} measured bedroom interval(s).")
+            elif args.clear:
                 cursor = conn.execute("DELETE FROM activity_details WHERE activity_id=? AND kind=?",
                                       (args.activity_id, DETAIL_KIND))
                 print(f"Removed {cursor.rowcount} local conditions record(s).")
             else:
                 count = import_windows(conn, args.activity_id, args.csv)
-                print(f"Saved {count} observation window(s). Rebuild the dashboard to view them.")
+                print(f"Saved {count} observation window(s).")
+            conn.execute("INSERT OR REPLACE INTO meta VALUES ('dashboard_rebuild_pending','1')")
     except (OSError, ValueError, csv.Error, sqlite3.Error) as error:
         parser.exit(2, f"{error}\n")

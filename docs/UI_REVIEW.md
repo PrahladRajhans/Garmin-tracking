@@ -188,3 +188,13 @@ See the [reference-to-build table](../research_notes/Garmin%20connector%20featur
 Synthetic comparison screenshots: [Today on a phone](screenshots/today-flow/phone-today.png),
 [Today on a laptop](screenshots/today-flow/desktop-today.png) and
 [the aligned workout tracks in Dark](screenshots/today-flow/phone-run-comparison.png).
+
+## Measured conditions (v0.20.0)
+
+Chromium and WebKit opened each comparison from its normal navigation path with
+synthetic, sufficiently covered source windows. The room disclosure shows the recorded
+dates, the two groups and their morning energy check-ins. The workout card keeps
+the earlier weather and heart-rate medians together and labels the AQI standard.
+Weather readouts are deduplicated in the HTML and the original workout unit stays
+visible during the comparison. See [bedroom](screenshots/conditions-evidence/bedroom-phone.png)
+and [similar workouts](screenshots/conditions-evidence/similar-runs-phone.png).

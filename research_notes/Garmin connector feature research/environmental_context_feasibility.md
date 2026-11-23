@@ -59,3 +59,13 @@ US EPA AQI, and a zero observation from missing coverage. No provider lookup run
 app. The next research task is to verify local station availability, interval and elevation
 alignment, and agreement across independent products before introducing automatic fetching.
 The pilot does not change analytics scores or estimate a weather effect. See [method and units](../../METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
+
+## 24 November · Workout and bedroom pilot
+
+Comparable run output uses independent ambient observations and preserves the reporting
+standard for AQI. The bedside pilot uses explicit room measurements and the recorded
+sleep interval. Baniassadi et al. showed how to join home bedroom temperature with
+wearable sleep and found considerable individual variation in older adults. That
+paper supports a measurement design and no threshold applied to this athlete. The
+optional morning check-in is its own outcome. Available results are descriptive.
+[Bedroom study](https://pubmed.ncbi.nlm.nih.gov/37474050/) · [Current method](../../METRICS.md#measured-conditions-and-outcomes-v0200)

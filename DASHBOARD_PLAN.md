@@ -225,3 +225,11 @@ a link to evidence. Trends links to the older overview pages. Recovery uses a co
 14-day history. Workout comparison has two time-aligned tracks with separate scales and
 actual units. Conditions stay near the workout. See the [product review](docs/PRODUCT_REVIEW_2026-11.md)
 and [visual checks](docs/UI_REVIEW.md#today-first-flow-v0190).
+
+## Conditions in context (v0.20.0)
+
+The run overview uses a short line for available conditions. A timed reading belongs
+to its point on the workout timeline. Conditions across comparable workouts sit behind
+Heart rate on similar runs. Sleep shows its own measured room comparisons, including
+paired dates in a disclosure, when enough observations exist. Keep these details out of
+the first screen and preserve coverage gaps.

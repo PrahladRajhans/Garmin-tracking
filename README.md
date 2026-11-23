@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.19.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.20.0. The 45 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -83,6 +83,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `workout_templates()` | Easy, tempo, VO2 intervals and calibration-test specs from your HR thresholds |
 | `create_workout(spec, upload=False, schedule_date?)` | Validate and build a structured workout; optional upload and schedule to Garmin Connect (Mac) |
 | `garmin_workouts(action='list'\|'delete', workout_id?)` | Workouts saved in Garmin Connect (Mac) |
+| `bedroom_conditions(end?)` | Compare sleep duration and optional morning energy ratings with locally measured room conditions |
 | `sleep_breakdown(day?)` | Garmin sleep score parts (stages, awakenings, restlessness, stress) with ratings and optimal ranges, plus the day-to-night heart-rate dip |
 | `long_term_health(day?)` | Pace of ageing, Marathon shape (Runalyze), lasting shifts in resting HR/HRV/sleep, sick/injured days |
 | `monthly_report(month?)` | Month vs previous month: sessions, hours, run km, sleep, resting HR, steps, HRV |
@@ -378,3 +379,20 @@ Open **Body → Month report** for six months of sleep, HRV and running with obs
 or **Running → a run → Pacing and effort** for split times beside watch fields. On the Mac,
 `garmin-mcp-verify --run-timing` reads the stored history and reports aggregate differences by
 year. The command needs a local database and performs no sync or upload.
+
+### Compare measured conditions
+
+**On runs**, open Heart rate on similar runs. The conditions card appears only when a
+recorded temperature, relative humidity or AQI source covered at least 80% of the file
+for the current run and three earlier matches. The card gives the measured value and
+moving heart rate side by side. Garmin’s saved weather and model windows remain
+visible as context on the timeline.
+
+**For sleep**, optional bedroom logger observations can be imported for the wake
+date with `garmin-mcp-conditions --night YYYY-MM-DD --csv PATH`. Use the same timestamped
+CSV layout as above with `temperature_c`, `humidity_pct` or `pm25_ug_m3`, and label
+`kind` as `observation`. Supply one logger identity in `source`. Use the measured
+bedroom intervals and include a timezone offset. Optional `--morning-energy 1–5` is your own
+morning rating. Use `--night YYYY-MM-DD --clear` to remove those measurements and the
+paired rating. Sleep and the `bedroom_conditions` MCP tool show groups once repeated
+nights qualify. Outdoor weather does not represent the room.
