@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-24
+
+- Keep the VO₂max reference band compact and size all charts to the space in their cards.
+  Wide layouts use a wider drawing and plots retain their aspect ratio.
+- Put run splits, the timeline, and similar-run comparisons on one page while preserving
+  existing deep links. Offer up to four pace overlays and six cadence overlays on one plot
+  per comparison, with a separate labelled scale.
+- Label running-form bands, recorded heart-rate bands, personal recovery ranges, and
+  sleep goal status in the chart and its selected-point reading.
+- Extend the optional local narrator to recent workouts with Garmin summaries. Add
+  [local narrator governance](docs/OLLAMA.md) and retain the original Garmin rows.
 - Show modelled weather and US EPA AQI separately from observations on comparable-run pages.
 - Add local paired comparisons for outdoor conditions, moving heart rate, following sleep,
   nightly HRV and next-day resting heart rate. Training exposes the pairs and their coverage,

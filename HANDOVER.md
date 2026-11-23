@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.22.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.23.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -19,7 +19,13 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
   the weekly plan above the fold in both themes. Remaining checks on the owner's Mac and iPhone
   include actual model latency, the five-second impression with real data, the private link and
   the product review's 600 KB target.
-- **Outdoor conditions:** `environment_review.outdoor_patterns` reuses stored outdoor
+- **v0.23.0:** chart drawings now fit the available card width. VO₂max follows the same
+  responsive layout using a compact reference band. The version stamp prompts the Mac
+  updater to rebuild older snapshots even when a scheduled run skips fetching Garmin.
+  Run evidence now opens within one page, and the latest timelines offer multiple overlays.
+  Training links to recent workout summaries, which can receive checked local narration.
+  See [chart layout](DASHBOARD_PLAN.md#chart-sizing-v0230) and [Ollama governance](docs/OLLAMA.md).
+- **Outdoor conditions (v0.23.0):** `environment_review.outdoor_patterns` reuses stored outdoor
   condition windows and local matched effort, and joins Garmin sleep/HRV/resting HR only after
   checking the following sleep interval. Review the Training card and its paired evidence,
   plus `tests/test_environment_review.py`. On the owner's Mac, check how many contrasts

@@ -63,6 +63,8 @@ _CLAUSES = {
     "recorded moving minutes on last attempt": ("You moved for {} minutes on the last attempt.",
                                                 "The last attempt had {} minutes of moving time."),
     "distance km": ("You ran {} km.", "The run was {} km."),
+    "workout distance km": ("The workout covered {} km.", "You covered {} km in this workout."),
+    "workout duration": ("The workout lasted {}.", "Your recorded workout duration was {}."),
     "average pace minutes per km": ("Your average pace was {} per km.", "You averaged {}/km."),
     "average heart rate bpm": ("Your heart rate averaged {} bpm.", "Average heart rate was {} bpm."),
     "cadence steps per minute": ("Your cadence averaged {} steps per minute.",
@@ -138,7 +140,9 @@ def _facts(**values: Any) -> Facts:
             or (label == "recovery_band" and isinstance(value, str)
                 and value in {"low", "moderate", "recovered"})
             or (label == "average_pace_minutes_per_km" and isinstance(value, str)
-                and re.fullmatch(r"\d{1,3}:[0-5]\d", value))}
+                and re.fullmatch(r"\d{1,3}:[0-5]\d", value))
+            or (label == "workout_duration" and isinstance(value, str)
+                and re.fullmatch(r"\d{1,3}:[0-5]\d(?::[0-5]\d)?", value))}
 
 
 def items(data: dict) -> dict[str, Item]:
@@ -178,6 +182,13 @@ def items(data: dict) -> dict[str, Item]:
             average_heart_rate_bpm=round(hr) if isinstance(hr, (float, int))
             and math.isfinite(hr) else None,
             cadence_steps_per_minute=cadence.get("value")))
+    for workout in data.get("workouts", []):
+        hr = workout.get("avg_hr")
+        candidates[f'workout-{workout["id"]}'] = Item("workout", _facts(
+            workout_duration=workout.get("duration"),
+            workout_distance_km=workout.get("distance_km"),
+            average_heart_rate_bpm=round(hr) if isinstance(hr, (float, int))
+            and math.isfinite(hr) else None))
     return {name: item for name, item in candidates.items() if item.facts}
 
 

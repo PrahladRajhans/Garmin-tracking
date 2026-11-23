@@ -128,3 +128,10 @@ The regular publishing path is responsible for any separately enabled private ho
 windows, the shared `run_evidence` matching rules and normalized recovery tables. It
 returns separate results and coverage for each source, reading type, AQI standard and
 outcome. The Training page and `outdoor_conditions_patterns` share that function.
+
+## Dashboard activity pages (v0.23.0)
+
+A run article owns its timeline, pace and comparison details. Existing section IDs resolve
+within that article. Overlay controls select one secondary SVG layer and change the cursor
+readout for the same recorded timestamp. Ordinary Garmin workout details use the bounded
+calendar activity list. Narration allowlists and review steps are in [docs/OLLAMA.md](docs/OLLAMA.md).

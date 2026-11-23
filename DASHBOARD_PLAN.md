@@ -171,6 +171,19 @@ In v0.15.1 the smaller chart marker and thinner guides keep the data visible. Th
 renders at most once per frame while moving and horizontal touch intent is detected before
 updating it. Vertical swipes use native scrolling. A tap still selects the release point.
 
+## Chart sizing (v0.23.0)
+
+Choose the plot drawing using the available width inside its card. Narrow cards keep the
+mobile drawing and limit its width. Wide cards use the desktop drawing, with a maximum
+plot width of 720 CSS pixels. Maintain the SVG aspect ratio so axis labels and chart
+inspection stay aligned. The VO₂max reference band uses the same layout with a shorter
+drawing and a compact reading area. The latest three full run timelines offer one overlay at
+a time, selected from the readings present in that workout. The second series shares the
+same elapsed-time axis and uses a labelled right axis in its original units. Garmin form
+bands, recorded heart-rate bands, personal recovery ranges and the sleep goal have color
+and text status. The section links at the top jump within the run. Timeline, splits,
+conditions and earlier efforts are on the run page. Previous deep links open the same sections.
+
 ## Personal ranges, History and the run overlay trial (v0.16.0)
 
 Today remains a short entry point. Recovery cards show a reading line, dashed recent

@@ -68,7 +68,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.20.0 | Measured workout and bedroom comparisons | Local coverage validation and automatic provider retrieval remain open |
 | 0.21.0 | Experiment follow-up, slimmer HTML and opt-in run weather and AQI | Merged in PR #25 |
 | 0.22.0 | Optional on-Mac Ollama narrator with inspectable, deterministic facts | Local and mocked verification; owner Mac and iPhone acceptance pending |
-| Unreleased | Paired local run, weather, AQI and following recovery evidence | Synthetic validation; owner coverage to be checked on the Mac |
+| 0.23.0 | Responsive charts, single-page runs with selectable overlays, workout narration and paired conditions evidence | Synthetic viewport and data checks; owner coverage and physical-device check pending |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)

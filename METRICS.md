@@ -196,7 +196,8 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   the dashboard. Overnight facts use the complete night ending on the snapshot date and optional
   Garmin scores and sleep need. Run facts use the displayed distance, FIT pace, average heart rate
   and cadence. The experiment uses the number of reviewed attempts and the measured cadence
-  target/time available from `trials.py`. No recommendations, location or free-form notes enter
+  target/time available from `trials.py`. Other recent workouts use Garmin summary duration,
+  distance and average heart rate. No recommendations, location or free-form notes enter
   the prompt.
 - Output must be 1–3 plain sentences, at most 60 words. Every number must appear in the input
   values. Decimal formatting such as `5.7` → `5.70` is accepted. Pace and ratio values are checked
@@ -518,3 +519,18 @@ time zone for the latest seven days.
   plan and recovery score unchanged. Observation coverage gates are engineering choices.
   [Bedroom sensor study](https://pubmed.ncbi.nlm.nih.gov/37474050/) ·
   [Exercise in heat consensus](https://pmc.ncbi.nlm.nih.gov/articles/PMC4602249/)
+
+## Chart color and interpretation (v0.23.0)
+
+- Running-form dots use the existing Garmin population bands from `running.GAUGES`
+  for cadence, ground contact time, bounce and vertical ratio. Apply the same
+  exclusive upper cutoffs as the existing running-form gauge. They describe how form
+  compares with other runners. Compare your own readings at a similar pace.
+- Heart-rate colors appear when the activity includes valid increasing FIT band
+  bounds. Each point uses the first exclusive upper bound it falls below.
+- On Recovery, colors compare each observation with its own historical range. The
+  readout states whether it is below, within or above usual. Sleep bars use the current
+  sleep goal as the visible comparison. Pace, stride length, elevation and power retain
+  their actual units and default colors.
+- [Garmin running dynamics bands](https://www8.garmin.com/manuals/webhelp/GUID-C001C335-A8EC-4A41-AB0E-BAC434259F92/EN-US/GUID-EE9E7F6F-49BE-4452-82E6-B40371D0AEC1.html)
+  and [Garmin bounce and vertical ratio bands](https://www8.garmin.com/manuals/webhelp/GUID-C001C335-A8EC-4A41-AB0E-BAC434259F92/EN-US/GUID-E2728EFE-C7BC-418E-A31D-D44FD12D1A4C.html).

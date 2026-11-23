@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.22.0. The 52 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama summaries and private phone hosting are off by default.
+> **Status:** v0.23.0. The 52 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama summaries and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -44,8 +44,9 @@ Garmin Connect --(scheduled sync)--> local SQLite (~/.garmin-mcp) <--reads-- MCP
 The sync job stores every Garmin response verbatim plus parsed FIT streams, so the assistant reads
 fast local data and Garmin is called only by the scheduled sync (or the `refresh_data` tool).
 
-The optional [local narrator](MAC_SETUP.md#local-ai-narrator-optional) summarizes selected
-dashboard facts on the Mac. Python supplies every number, recommendation, and training decision.
+The optional local narrator summarizes Today, sleep, experiments, recent runs and other recent
+workouts on the Mac. Python supplies every number, recommendation, and training decision.
+[Setup and checks](docs/OLLAMA.md)
 
 It uses the unofficial [`garminconnect`](https://github.com/cyberjunky/python-garminconnect)
 Python library, which talks to the same endpoints as the Garmin Connect website.
@@ -187,9 +188,10 @@ and History. The recovery history opens on Recovery. Recovery stays in calibrati
 footer gives the last complete sync and the code version that built the file.
 **History** opens day, week, month and year. Full day pages cover the last 30 days.
 Older months retain day-by-day summaries. For older full detail use the daily MCP tools. **Recovery** shows usual ranges and seven-day changes for resting
-pulse and overnight metrics when enough readings exist. Open **Running → a recent run
-→ Run timeline** to try the optional heart-rate and step-length overlays. **Heart rate
-on similar runs** shows the earlier efforts behind your personal reference. The **Training**
+pulse and overnight metrics when enough readings exist. Open **Running → a recent run** for its
+timeline, splits, form, conditions, and similar-run comparisons on one page. In the timeline,
+**Compare with** changes the overlaid metric and its right-hand scale. **Training → Recent
+workouts** opens the recorded summary for other activities. The **Training**
 page can show whether Garmin readiness lined up with lower or higher heart rate on comparable
 runs in your records. See [the method and limits](METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
 

@@ -31,8 +31,10 @@ SCRIPT = r"""
 
   function markPage() {
     const id = location.hash.slice(1) || 'today';
+    const target = document.getElementById(id);
+    if (target?.classList.contains('run-section')) target.open = true;
     const section = id.startsWith('run-') ? 'running'
-      : id === 'recovery' ? 'today'
+      : id.startsWith('workout-') ? 'training' : id === 'recovery' ? 'today'
       : id.startsWith('day-') || id.startsWith('month-') ||
         ['body', 'patterns', 'history'].includes(id) ? 'trends' : id;
     for (const link of document.querySelectorAll('.top a')) {
@@ -49,7 +51,8 @@ SCRIPT = r"""
     const primary = readout.querySelector('strong');
     const secondary = readout.querySelector('span');
     const status = figure.querySelector('[role=status]');
-    const overlayControl = figure.querySelector('[data-overlay-control]');
+    const overlayControls = [...figure.querySelectorAll('[data-overlay-control]')];
+    const overlayTracks = [...svg.querySelectorAll('[data-overlay-track]')];
     const cursor = figure.querySelector('.chart-cursor');
     const vertical = cursor.querySelector('.cursor-x');
     const horizontal = cursor.querySelector('.cursor-y');
@@ -57,7 +60,7 @@ SCRIPT = r"""
     const conditions = JSON.parse(figure.dataset.conditions || '[]');
     const points = [...svg.querySelectorAll('[data-point]')].map(el => ({
       x: Number(el.getAttribute('cx')), y: Number(el.getAttribute('cy')),
-      title: el.dataset.title, value: el.dataset.value, extra: el.dataset.extra,
+      title: el.dataset.title, value: el.dataset.value,
       condition: conditions[el.dataset.conditionIndex]
     }));
     let selected = -1;
@@ -66,7 +69,8 @@ SCRIPT = r"""
     let touchOrigin = null;
     let moveFrame = 0;
     let latestMove;
-    let overlay = false;
+    let overlay = null;
+    let overlayReadings = [];
     const scatter = figure.dataset.chart === 'scatter';
     const hint = primary.textContent;
     const details = secondary.textContent;
@@ -83,7 +87,7 @@ SCRIPT = r"""
     function select(index, announce = false) {
       const point = points[index];
       if (!point) return;
-      const value = [point.value, point.condition, overlay ? point.extra : ''].filter(Boolean).join(' · ');
+      const value = [point.value, point.condition, overlayReadings[index]].filter(Boolean).join(' · ');
       if (announce) status.textContent = point.title + '. ' + value;
       if (index === selected) return;
       selected = index;
@@ -133,19 +137,23 @@ SCRIPT = r"""
     }
 
     figure.dataset.ready = 'true';
-    const compactHeight = svg.viewBox.baseVal.height;
-    const primaryBottom = vertical.getAttribute('y2');
-    if (overlayControl) overlayControl.addEventListener('click', () => {
-      overlay = !overlay;
-      svg.viewBox.baseVal.height = overlay ? Number(overlayControl.dataset.openHeight) : compactHeight;
-      vertical.setAttribute('y2', overlay ? overlayControl.dataset.openBottom : primaryBottom);
-      overlayControl.textContent = (overlay ? 'Hide ' : 'Show ') + overlayControl.dataset.trackName;
-      figure.classList.toggle('has-overlay', overlay);
-      overlayControl.setAttribute('aria-pressed', String(overlay));
-      const index = selected;
-      selected = -1;
-      select(index, true);
-    });
+    for (const button of overlayControls) {
+      const readings = JSON.parse(button.dataset.readings);
+      button.addEventListener('click', () => {
+        const key = button.dataset.overlayControl;
+        overlay = overlay === key ? null : key;
+        overlayReadings = overlay ? readings : [];
+        for (const choice of overlayControls) {
+          choice.setAttribute('aria-pressed', String(choice.dataset.overlayControl === overlay));
+        }
+        for (const track of overlayTracks) {
+          track.classList.toggle('active', track.dataset.overlayTrack === overlay);
+        }
+        const index = selected;
+        selected = -1;
+        select(index, true);
+      });
+    }
     svg.setAttribute('tabindex', '0');
     svg.querySelectorAll('title[data-native]').forEach(title => title.remove());
     svg.addEventListener('pointerdown', event => {
