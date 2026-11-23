@@ -55,3 +55,74 @@ def test_bedroom_review_uses_local_intervals_and_optional_morning_checkins(conn,
     assert "Bedroom logger" in html and "2026-11-01" in html
     with pytest.raises(ValueError, match="between 1 and 5"):
         conditions.import_bedroom(conn, day, path, energy=6)
+
+
+def _paired_runs(conn):
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    first = datetime(2026, 10, 10, 4, tzinfo=UTC)
+    for n in range(12):
+        start = first + timedelta(days=2 * n)
+        high = n % 2 == 1
+        seed(conn, n + 1, start, hr=148 if high else 140)
+        conn.execute("UPDATE fit_records SET lat=19.08, lon=72.88 WHERE activity_id=?", (n + 1,))
+        db.put_activity_detail(conn, n + 1, conditions.DETAIL_KIND, [{
+            "start_utc": start.isoformat(), "end_utc": (start + timedelta(hours=1)).isoformat(),
+            "kind": "model", "source": "Open-Meteo test", "aqi_standard": "US-EPA",
+            "temperature_c": 26, "aqi": 96 if high else 52}])
+        bedtime = start + timedelta(hours=15)
+        hours, hrv, rhr = (7, 49, 53) if high else (8, 54, 50)
+        # The wake date is the following local day, though bedtime is on the activity date in UTC.
+        wake = (start.date() + timedelta(days=1)).isoformat()
+        conn.execute("INSERT INTO sleep(day,sleep_s,sleep_start,sleep_end) VALUES (?,?,?,?)",
+                     (wake, 3600 * hours, bedtime.isoformat(),
+                      (bedtime + timedelta(hours=hours)).isoformat()))
+        conn.execute("INSERT INTO hrv(day,last_night_avg) VALUES (?,?)", (wake, hrv))
+        conn.execute("INSERT INTO daily(day,resting_hr) VALUES (?,?)", (wake, rhr))
+    conn.commit()
+    return "2026-11-02"
+
+
+def test_modelled_aqi_can_use_same_kind_and_standard_in_run_comparison(conn):
+    _paired_runs(conn)
+    evidence = coaching.run_analysis(conn, 12)["conditions_comparison"]
+    aqi = next(row for row in evidence if row["metric"] == "aqi")
+    assert aqi["recorded"]["kind"] == "model" and aqi["recorded"]["standard"] == "US-EPA"
+    assert aqi["recorded"]["value"] == 96
+    assert "Model estimate" in dashboard._run_conditions_comparison(evidence)
+
+
+def test_outdoor_pairs_use_utc_order_and_separate_outcome_counts(conn):
+    end = _paired_runs(conn)
+    review = environment_review.outdoor_patterns(conn, end)
+    assert review["sampled_runs"] == 12
+    assert len(review["patterns"]) == 1  # temperature did not differ
+    aqi = review["patterns"][0]
+    assert aqi["metric"] == "aqi" and aqi["kind"] == "model" and aqi["standard"] == "US-EPA"
+    assert {item["key"]: (item["median_delta"], item["pairs"]) for item in aqi["outcomes"]} == {
+        "moving_hr": (8, 6), "sleep_h": (-1, 6), "hrv": (-5, 6), "rhr": (3, 6)}
+    assert len({part["day"] for pair in aqi["pairs"] for part in pair.values()}) == 12
+    assert all(part["wake_day"] > part["day"] for pair in aqi["pairs"] for part in pair.values())
+    assert "72.88" not in str(review)
+    card = dashboard._outdoor_patterns_card(review)
+    assert "See the pairs" in card and "AQI (US EPA)" in card and "Following nightly HRV" in card
+
+    # A mismatched record that starts before the run ends contributes no later-health value.
+    conn.execute("UPDATE sleep SET sleep_start='2026-11-01T03:00:00+00:00' WHERE day=?", (end,))
+    review = environment_review.outdoor_patterns(conn, end)
+    assert [o["key"] for o in review["patterns"][0]["outcomes"]] == ["moving_hr"]
+
+
+@pytest.mark.parametrize("change", ["second workout", "different location", "different AQI scale"])
+def test_outdoor_pairs_do_not_fill_evidence_gaps(conn, change):
+    end = _paired_runs(conn)
+    if change == "second workout":
+        seed(conn, 13, datetime(2026, 11, 1, 11, tzinfo=UTC), kind="walking", fit=False)
+    elif change == "different location":
+        conn.execute("UPDATE fit_records SET lat=29.05 WHERE activity_id=12")
+    else:
+        windows = conditions.for_activity(conn, 12)["windows"]
+        windows[0]["aqi_standard"] = "IN-CPCB"
+        db.put_activity_detail(conn, 12, conditions.DETAIL_KIND, windows)
+    assert environment_review.outdoor_patterns(conn, end)["patterns"] == []

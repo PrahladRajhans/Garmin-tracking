@@ -33,7 +33,7 @@ from typing import Any
 from garmin_mcp import conditions, db
 
 OPT_IN_KEY = "weather_opt_in"
-SOURCE = "Open-Meteo model, location rounded to ~1 km"
+SOURCE = conditions.OPEN_METEO_SOURCE
 FORECAST = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 AIR = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -106,7 +106,12 @@ def fetch_for_run(conn: sqlite3.Connection, aid: int, *, today: date | None = No
     recent = (today - first.date()).days <= RECENT_DAYS
     weather = get(FORECAST if recent else ARCHIVE,
                   {**common, "hourly": ",".join(WEATHER_VARS), "wind_speed_unit": "ms"})
-    rows = _hourly(weather, WEATHER_VARS)
+    rows = _hourly(weather, {name: field for name, field in WEATHER_VARS.items()
+                             if name != "precipitation"})
+    # The API stamps the preceding hour's accumulation with its end time.
+    for stamp, value in _hourly(weather, {"precipitation": "precipitation_mm"}).items():
+        start = datetime.fromisoformat(stamp) - timedelta(hours=1)
+        rows.setdefault(start.isoformat(timespec="minutes"), {}).update(value)
     try:
         air = get(AIR, {**common, "hourly": "us_aqi"})
         for t, v in _hourly(air, {"us_aqi": "aqi"}).items():
@@ -129,6 +134,8 @@ def fetch_for_run(conn: sqlite3.Connection, aid: int, *, today: date | None = No
             if field == "aqi":
                 ok = float(round(ok))
                 window["aqi_standard"] = "US-EPA"
+            if field == "precipitation_mm":
+                window["precipitation_alignment"] = conditions.ALIGNED_RAIN
             window[field] = ok
         if len(window) > 4:
             windows.append(window)

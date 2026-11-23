@@ -123,3 +123,8 @@ Settings and content-addressed results are in local SQLite `meta`. The renderer 
 accepted cache entries for the current facts and model. The worker checks the snapshot ID
 before replacing the Mac and iCloud files and serializes the replacement with other builds.
 The regular publishing path is responsible for any separately enabled private hosted copy.
+
+`environment_review.outdoor_patterns` builds outdoor pair evidence from saved condition
+windows, the shared `run_evidence` matching rules and normalized recovery tables. It
+returns separate results and coverage for each source, reading type, AQI standard and
+outcome. The Training page and `outdoor_conditions_patterns` share that function.
