@@ -9,6 +9,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.14.3] - 2026-11-23
+
+- Monthly reports combine dedicated HRV and Garmin health status per day, with dedicated HRV
+  taking precedence. Coverage counts accompany averages and totals. Body links to six completed
+  calendar months with visual comparisons for sleep, overnight HRV and recorded running distance.
+- Patterns prioritizes qualifying results, shows eligible and qualifying pair counts and lists
+  both sample dates and units. The fitted line appears only when the existing evidence rule is
+  met. The confidence meter is replaced by the rule result and sample size. Mobile navigation
+  fits all sections without sideways scrolling.
+- Added `garmin-mcp-verify --run-timing` for local, read-only annual comparison of paired watch
+  and FIT stream values. Reports sample size and signed/absolute differences without thresholds.
+- 119 tests, Ruff and 324 browser states passed. Real archive and device checks await the Mac.
+
 ## [0.14.2] - 2026-11-23
 
 - Run analysis uses FIT timestamps for moving duration, minute pace variation, time-weighted

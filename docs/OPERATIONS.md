@@ -79,3 +79,12 @@ Requested MCP results may leave the Mac through the selected AI client/model pro
 Cloudflare Access protects reader access; the HTML is still stored by Cloudflare. Keep the
 optional upload disabled until the owner has configured both protected hostnames and checked
 anonymous denial, owner login and phone navigation.
+
+## Archive verification (v0.14.3)
+
+Use `garmin-mcp-verify --run-timing` on the Mac for a read-only annual summary of paired
+FIT sample span vs Garmin elapsed time, recorded moving time vs Garmin timer time, and
+moving HR vs Garmin activity HR. The named differences can reflect timing definitions and
+sampling. They are useful diagnostics for older exports, recent syncs and gaps, without an
+automatic claim of agreement or sensor accuracy. The ordinary data-quality verifier still
+covers unit ranges/source mappings and rebuilds tidy tables.

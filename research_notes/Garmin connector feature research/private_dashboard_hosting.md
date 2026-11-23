@@ -70,3 +70,13 @@ and a subsequent scheduled update on the actual devices. Account changes after a
 affect existing copies; leave their Access protection in place.
 
 See `MAC_SETUP.md` for the minimal owner actions and instructions for the local assistant.
+
+### November follow-up
+
+[Cloudflare One setup](https://developers.cloudflare.com/cloudflare-one/setup/) documents a
+Zero Trust Free plan. The fetched [Zero Trust plans page](https://www.cloudflare.com/plans/zero-trust-services/)
+does not give a seat allowance in its visible public text. The account UI is the remaining
+check. [Tailscale Serve](https://tailscale.com/kb/1312/serve) documents private service access
+inside a tailnet. It is the alternative if you prefer serving directly from an awake Mac.
+The Pages snapshot serves while the Mac is offline. iCloud is the simplest first device test
+for an Apple-only workflow. Cloudflare account configuration and live upload remain pending.

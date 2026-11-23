@@ -98,3 +98,12 @@ differ across platforms. The repo now labels its sample-based estimate separatel
 FIT fields. The gap, coverage and steady-run rules are documented engineering choices. The
 recording tests check one-second and five-second sampling, a long pause, interpolation and an
 odd/partial last kilometre. The owner's Garmin history was unavailable in cloud.
+
+### Coverage and visualization follow-up (v0.14.3)
+
+The monthly source merge was checked against a fixture with duplicate HRV readings from two
+Garmin tables, gaps and a leap month. Patterns treats ranked results as exploratory evidence;
+missing days and unmeasured confounders remain limitations. The new Mac report provides paired
+summary residuals by year. The hardware/archive numbers have yet to be run. Competitor checks
+were limited this pass: Strava's help URL returned 404 and Apple's guide rate-limited the
+request. No claims about those workflows were added.

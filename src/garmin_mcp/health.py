@@ -19,8 +19,10 @@ shift detection, monthly report.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import statistics
+from calendar import monthrange
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -185,34 +187,56 @@ def shifts(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[str, Any
 
 
 # --------------------------------------------------------------------------- monthly report
+def _month_stats(conn: sqlite3.Connection, first: date) -> tuple[dict[str, Any], dict[str, int]]:
+    from garmin_mcp.recovery import nightly_hrv
+
+    days = monthrange(first.year, first.month)[1]
+    start, end = first.isoformat(), first.replace(day=days).isoformat()
+    next_month = (first + timedelta(days=days)).isoformat()
+    a = conn.execute(
+        "SELECT COUNT(*), SUM(duration_s)/3600.0, SUM(CASE WHEN type LIKE '%run%' THEN "
+        "distance_m END)/1000.0, COUNT(duration_s), "
+        "COUNT(CASE WHEN type LIKE '%run%' THEN distance_m END) FROM activities "
+        "WHERE start_time_local>=? AND start_time_local<?", (start, next_month)).fetchone()
+    s = conn.execute("SELECT AVG(sleep_s)/3600.0, COUNT(*) FROM sleep WHERE "
+                     "day BETWEEN ? AND ? AND sleep_s>=3*3600", (start, end)).fetchone()
+    d = conn.execute("SELECT AVG(resting_hr), AVG(steps), COUNT(resting_hr), COUNT(steps), "
+                     "COUNT(*) FROM daily WHERE day BETWEEN ? AND ?", (start, end)).fetchone()
+    hrv = [v for v in nightly_hrv(conn, start, end).values() if math.isfinite(v) and v > 0]
+
+    def rounded(value: float | None, places: int = 1) -> float | None:
+        return round(value, places) if value is not None and math.isfinite(value) else None
+
+    values = {"sessions": a[0], "hours": rounded(a[1]), "run_km": rounded(a[2]),
+              "avg_sleep_h": rounded(s[0], 2), "nights": s[1], "avg_resting_hr": rounded(d[0]),
+              "avg_steps": rounded(d[1], 0),
+              "avg_hrv": rounded(statistics.fmean(hrv)) if hrv else None}
+    coverage = {"calendar_days": days, "daily_rows": d[4], "sleep_nights": s[1],
+                "hrv_nights": len(hrv), "resting_hr_days": d[2], "step_days": d[3],
+                "sessions_with_duration": a[3], "runs_with_distance": a[4]}
+    return values, coverage
+
+
 def monthly_report(conn: sqlite3.Connection, month: str) -> dict[str, Any]:
-    """month = 'YYYY-MM'. Totals and averages, compared with the previous month."""
-
-    def stats(m: str) -> dict[str, Any]:
-        a = conn.execute(
-            "SELECT COUNT(*), SUM(duration_s)/3600.0, SUM(CASE WHEN type LIKE '%run%' THEN "
-            "distance_m END)/1000.0 FROM activities WHERE substr(start_time_local,1,7)=?",
-            (m,)).fetchone()
-        s = conn.execute("SELECT AVG(sleep_s)/3600.0, COUNT(*) FROM sleep WHERE "
-                         "substr(day,1,7)=? AND sleep_s >= 3*3600", (m,)).fetchone()
-        d = conn.execute("SELECT AVG(resting_hr), AVG(steps) FROM daily WHERE substr(day,1,7)=?",
-                         (m,)).fetchone()
-        h = conn.execute("SELECT AVG(hrv) FROM health_status WHERE substr(day,1,7)=?",
-                         (m,)).fetchone()
-
-        def r(v: Any, nd: int = 1) -> Any:
-            return round(v, nd) if isinstance(v, (int, float)) else v
-
-        return {"sessions": a[0], "hours": r(a[1]), "run_km": r(a[2]),
-                "avg_sleep_h": r(s[0], 2), "nights": s[1], "avg_resting_hr": r(d[0]),
-                "avg_steps": r(d[1], 0), "avg_hrv": r(h[0])}
-
-    y, m = (int(x) for x in month.split("-"))
-    prev = f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
-    cur, before = stats(month), stats(prev)
+    """month = 'YYYY-MM'. Totals, averages and coverage compared with the prior month."""
+    first = date.fromisoformat(f"{month}-01")
+    prior = (first - timedelta(days=1)).replace(day=1)
+    cur, coverage = _month_stats(conn, first)
+    before, prior_coverage = _month_stats(conn, prior)
     change = {k: (round(cur[k] - before[k], 2) if isinstance(cur[k], (int, float)) and
                   isinstance(before[k], (int, float)) else None) for k in cur}
-    return {"month": month, "this_month": cur, "previous_month": before, "change": change}
+    return {"month": month, "this_month": cur, "previous_month": before, "change": change,
+            "coverage": {"this_month": coverage, "previous_month": prior_coverage}}
+
+
+def monthly_history(conn: sqlite3.Connection, month: str, count: int = 6) -> list[dict[str, Any]]:
+    first = date.fromisoformat(f"{month}-01")
+    history = []
+    for _ in range(count):
+        values, coverage = _month_stats(conn, first)
+        history.append({"month": first.isoformat()[:7], "values": values, "coverage": coverage})
+        first = (first - timedelta(days=1)).replace(day=1)
+    return list(reversed(history))
 
 
 # --------------------------------------------------------------------------- marathon shape

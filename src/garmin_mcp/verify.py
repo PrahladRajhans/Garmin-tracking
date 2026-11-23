@@ -11,8 +11,11 @@ field-mapping mistakes before they reach an analysis.
 
 from __future__ import annotations
 
+import argparse
 import json
+import math
 import sqlite3
+import statistics
 from typing import Any
 
 from garmin_mcp import normalize as N
@@ -156,9 +159,64 @@ def run(conn: sqlite3.Connection) -> dict[str, Any]:
             "known_upstream_differences": sorted(f"{t}.{c}" for t, c in KNOWN_DIFFS)}
 
 
+def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Per-year paired watch/stream residuals from stored outdoor runs."""
+    from garmin_mcp.coaching import run_metrics
+    from garmin_mcp.loads import RUN_TYPES
+
+    groups: dict[str, dict[str, Any]] = {}
+    for aid, start, hr, payload in conn.execute(
+            f"SELECT a.activity_id, a.start_time_local, a.avg_hr, s.payload FROM activities a "
+            f"LEFT JOIN fit_sessions s USING(activity_id) WHERE a.type IN "
+            f"({','.join('?' * len(RUN_TYPES))}) AND a.fit_parsed=1 "
+            "AND a.start_time_local IS NOT NULL ORDER BY a.start_time_local", RUN_TYPES):
+        year = groups.setdefault(start[:4], {"runs_with_fit": 0, "runs_usable": 0, "pairs": {}})
+        year["runs_with_fit"] += 1
+        metrics = run_metrics(conn, aid)
+        if metrics is None:
+            continue
+        year["runs_usable"] += 1
+        sessions = json.loads(payload) if payload else []
+        session = sessions[0] if len(sessions) == 1 else {}
+        for name, measured, watch in (
+            ("record_span_minus_watch_elapsed_s", metrics["recorded_elapsed_s"],
+             session.get("total_elapsed_time")),
+            ("recorded_moving_minus_watch_timer_s", metrics["moving_s"],
+             session.get("total_timer_time")),
+            ("moving_hr_minus_watch_activity_hr_bpm", metrics["avg_hr"], hr),
+        ):
+            if measured is not None and isinstance(watch, (int, float)) and math.isfinite(watch) and watch > 0:
+                year["pairs"].setdefault(name, []).append(measured - watch)
+    for year in groups.values():
+        year["pairs"] = {
+            name: {"paired_runs": len(diff), "median_difference": round(statistics.median(diff), 2),
+                   "median_absolute_difference": round(statistics.median(map(abs, diff)), 2),
+                   "largest_absolute_difference": round(max(map(abs, diff)), 2)}
+            for name, diff in year["pairs"].items()
+        }
+    return {
+        "years": groups,
+        "meaning": "Recorded stream minus Garmin summary in the named units. The time/HR "
+                   "definitions and sampling can differ. Residuals are diagnostics, with no "
+                   "pass/fail threshold and no independent validation of Garmin's sensors.",
+    }
+
+
 def main() -> None:
     from garmin_mcp import db
     from garmin_mcp.config import db_path
+
+    parser = argparse.ArgumentParser(description="Check stored Garmin data.")
+    parser.add_argument("--run-timing", action="store_true",
+                        help="Compare stored FIT recordings with watch summaries by year, read-only.")
+    args = parser.parse_args()
+    if args.run_timing:
+        path = db_path()
+        if not path.is_file():
+            parser.error("No stored Garmin database. Run this where your archive is stored.")
+        with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as read_only:
+            print(json.dumps(run_timing(read_only), indent=2))
+        return
 
     conn = db.connect(db_path())
     N.rebuild(conn)

@@ -145,15 +145,17 @@ def pair_points(feat: dict[str, dict[str, float]], x: str, y: str,
 
 
 def explore(conn: sqlite3.Connection, end: str, days: int = 365, top: int = 8) -> dict[str, Any]:
-    """Every tested pair ranked by strength, with its points, for the explorer page."""
+    """Eligible pairs with their points, prioritizing those that pass the evidence rule."""
     rel = relationships(conn, end, days)
     start = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
     feat = features(conn, start, end)
-    ok = sorted((r for r in rel["all"] if r.get("status") == "ok"), key=lambda r: -abs(r["r"]))
+    ok = sorted((r for r in rel["all"] if r.get("status") == "ok"),
+                key=lambda r: (not r["notable"], -abs(r["r"])))
     for r in ok[:top]:
         r["points"] = [(d, round(a, 3), round(b, 3))
                        for d, a, b in pair_points(feat, r["x"], r["y"], r["lag_days"])]
-    return {"pairs": ok[:top], "tested": rel["pairs_tested"], "method": rel["method"]}
+    return {"pairs": ok[:top], "tested": rel["pairs_tested"], "eligible": len(ok),
+            "notable": len(rel["notable"]), "method": rel["method"]}
 
 
 def relationship(feat: dict[str, dict[str, float]], x: str, y: str, lag: int = 0,

@@ -285,3 +285,18 @@ Source: [Garmin FIT Cookbook, Elapsed, Timer, and Moving Durations](https://deve
 The watch timer may start before the first sample and end after the final sample. These time
 definitions can differ on correctly recorded activities. Tests use known fixture values.
 Garmin history and current device data still require a Mac verification run.
+
+## Monthly and pattern evidence (v0.14.3)
+
+Monthly HRV averages one positive finite nightly value per day. `recovery.nightly_hrv`
+prefers the dedicated HRV table, with Garmin health status filling missing dates. Sleep averages
+still require a record of at least three hours. The report returns calendar length and
+per-input counts for both months. Comparisons describe recorded observations, and coverage
+can differ by month. Bars use a zero origin and the largest observed month in that metric.
+
+Patterns ranks passing pairs before exploratory pairs. A fit line appears for a pair only
+when the established q < 0.10 and |r| ≥ 0.15 rule is met. Baseline, minimum pair count,
+Pearson/bootstrapping and false-discovery formulas are unchanged. Seven-observation blocks
+can span more than seven calendar days when measurements are missing. Confounding, common
+sources, watch wear and selective recording can bias these associations. The displayed
+interval does not establish an individual's future response.

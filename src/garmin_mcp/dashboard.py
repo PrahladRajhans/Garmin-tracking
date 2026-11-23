@@ -84,6 +84,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "fitness_age": coaching.fitness_age(conn),
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
+        "month_history": health.monthly_history(conn, _prev_month(end)),
         "runs": runs, "form": running.form_trends(conn, 40),
         "explore": engine.explore(conn, end, 365, 8),
         "tests": running.test_runs(conn),
@@ -301,7 +302,7 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
-            w: int = W, h: int = 200) -> str:
+            w: int = W, h: int = 200, x_unit: str = "", y_unit: str = "", lag: int = 0) -> str:
     """Baseline-adjusted x vs y (0 = your usual), with the fitted line. One mark per day."""
     if len(points) < 3:
         return '<p class="empty">Not enough data yet.</p>'
@@ -333,8 +334,11 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
              f'(vs usual)</text><text x="{L}" y="{T + 10}" class="tick">↑ {_e(yl)}</text>')
     return (f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="Association between {_e(xl)} and {_e(yl)}; values in the following table">'
-            f'{"".join(g)}</svg>' + _chart_table(["Date", xl, yl],
-              [(d, _f(a, 2), _f(b, 2)) for d, a, b in points], "Values compared with your usual"))
+            f'{"".join(g)}</svg>' + _chart_table(
+                ["First date", "Second date", f"{xl} ({x_unit})" if x_unit else xl,
+                 f"{yl} ({y_unit})" if y_unit else yl],
+                [(d, (date.fromisoformat(d) + timedelta(days=lag)).isoformat() if lag else d,
+                  _f(a, 2), _f(b, 2)) for d, a, b in points], "Values compared with your usual"))
 
 
 def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: float,
@@ -363,15 +367,6 @@ def both(fn: Any, *a: Any, **k: Any) -> str:
     """Phone and desktop drawings of the same chart so text stays readable on both."""
     return (f'<div class="sm">{fn(*a, w=W, **k)}</div><div class="lg">{fn(*a, w=720, **k)}'
             f'</div>')
-
-
-def meter(frac: float, label: str) -> str:
-    """'How sure' meter: 5 pips."""
-    k = max(1, min(5, round(frac * 5)))
-    pips = "".join(f'<i class="{"on" if i < k else ""}"></i>' for i in range(5))
-    return f'<span class="meter" title="{_e(label)}">{pips}<b>{_e(label)}</b></span>'
-
-
 
 
 def _clock(h: float) -> str:
@@ -714,11 +709,46 @@ def page_body(d: dict[str, Any]) -> str:
                   "Garmin's estimate and the levers that move it")
             + _card("Fitness-age trend", ag_html, "Change in Garmin's estimate per calendar year")
             + _card(f"Month report · {mo['month']}", f'<ul class="rows">{mrows}</ul>',
-                    wide=True))
+                    "Explore six months and check how many days were recorded",
+                    wide=True, href="#month-detail"))
     if "vo2_reference" in d:
         body += _card("VO₂max reference", vo2_reference(d["vo2_reference"]),
                       "Garmin and our effective estimate, shown separately", wide=True)
     return _page("body", "Body & long term", "Slow signals that change over months.", body)
+
+
+def _month_bars(history: list[dict[str, Any]], key: str, unit: str, nd: int,
+                coverage_key: str) -> str:
+    values = [m["values"][key] for m in history]
+    top = max((v for v in values if v is not None), default=0) or 1
+    rows = []
+    for month, value in zip(history, values, strict=True):
+        cov = month["coverage"]
+        width = max(0, 100 * value / top) if value is not None else 0
+        bar = f'<span class="month-bar" aria-hidden="true"><i style="width:{width:.1f}%"></i></span>'
+        count = (f'{cov[coverage_key]}/{cov["calendar_days"]}'
+                 if coverage_key != "runs_with_distance" else str(cov[coverage_key]))
+        label = date.fromisoformat(month["month"] + "-01").strftime("%b %Y")
+        rows.append(f'<tr><th scope="row">{label}</th><td>{_f(value, nd, unit)}{bar}</td>'
+                    f'<td>{count}</td></tr>')
+    heading = "Recorded runs" if coverage_key == "runs_with_distance" else "Days covered"
+    return ('<table class="month-bars"><thead><tr><th scope="col">Month</th>'
+            f'<th scope="col">Value</th><th scope="col">{heading}</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>')
+
+
+def page_months(d: dict[str, Any]) -> str:
+    history = d["month_history"]
+    cards = (
+        _card("Sleep duration", _month_bars(history, "avg_sleep_h", " h", 2, "sleep_nights"),
+              "Average across nights with at least three recorded hours")
+        + _card("Overnight HRV", _month_bars(history, "avg_hrv", " ms", 1, "hrv_nights"),
+                "Average of recorded nightly values")
+        + _card("Running distance", _month_bars(history, "run_km", " km", 1, "runs_with_distance"),
+                "Recorded kilometres from activities with distance", wide=True)
+    )
+    return _page("month-detail", "Monthly history", "Six full calendar months. Compare coverage "
+                 "before interpreting differences.", cards, back="#body")
 
 
 def vo2_reference(r: dict[str, Any]) -> str:
@@ -766,33 +796,27 @@ def vo2_reference(r: dict[str, Any]) -> str:
             f'Kaminsky et al. 2015, Table 3</a></p></details>')
 
 
-def _sure(r: dict[str, Any]) -> tuple[float, str]:
-    lo, hi = r.get("r_ci95") or (0, 0)
-    if not r.get("notable"):
-        return 0.2, "not sure: could be chance"
-    if min(abs(lo), abs(hi)) >= 0.3 and lo * hi > 0:
-        return 1.0, "very sure"
-    if min(abs(lo), abs(hi)) >= 0.1 and lo * hi > 0:
-        return 0.7, "fairly sure"
-    return 0.45, "early sign"
-
-
 def page_patterns(d: dict[str, Any]) -> str:
     lab = engine.LABELS
+    explore = d["explore"]
     cards = ""
-    for p in d["explore"]["pairs"]:
+    for p in explore["pairs"]:
         x, y = lab.get(p["x"], p["x"]), lab.get(p["y"], p["y"])
-        frac, sure = _sure(p)
         when = "same day" if p["lag_days"] == 0 else "next day"
-        body = (f'{meter(frac, sure)}'
-                f'{both(scatter, p["points"], x, y, p.get("slope"))}'
-                f'<details><summary>Details</summary><p class="sub">'
-                f'{_e(p.get("statement") or "")} r = {p["r"]:+.2f} (95 % CI '
-                f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}), {p["n"]} days.</p>'
+        trend = p.get("slope") if p["notable"] else None
+        status = "Passed evidence rule" if p["notable"] else "Weak evidence"
+        plot = both(scatter, p["points"], x, y, trend, x_unit=engine.UNITS[p["x"]],
+                    y_unit=engine.UNITS[p["y"]], lag=p["lag_days"])
+        body = (f'<p class="sub"><strong>{status}</strong> · {p["n"]} paired days</p>{plot}'
+                f'<details><summary>How this was assessed</summary><p class="sub">'
+                f'{_e(p["statement"]) if p["notable"] else "This pair did not pass the evidence rule after checking multiple pairs."}'
+                f'</p><p class="sub">Correlation {p["r"]:+.2f} · 95% interval '
+                f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f} · adjusted q {_f(p["q_bh"], 3)}.</p>'
                 f'</details>')
         cards += _card(f"{x} & {y} ({when})", body, wide=True)
-    lede = (f'{d["explore"]["tested"]} pairs tested in your last year. Each dot is a day, both '
-            'values shown against your usual (0 = normal day). The orange line is the trend.')
+    lede = (f'{explore["eligible"]} of {explore["tested"]} pairs could be assessed. '
+            f'{explore["notable"]} passed the evidence rule. Each dot compares two '
+            'measurements with your recent averages. Other factors can explain an association.')
     return _page("patterns", "Patterns", lede, cards or _card(
         "Patterns", '<p class="empty">Not enough data yet.</p>'))
 
@@ -820,6 +844,10 @@ a:focus-visible,summary:focus-visible,.table-wrap:focus-visible{outline:3px soli
 .top a{flex:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;
 color:var(--ink2)}
 .top a:hover{background:var(--surface)}
+@media(max-width:520px){
+.top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}
+.top a{justify-content:center;padding:4px;font-size:12px}
+}
 .page{display:none}#today{display:block}body:has(.page:target) #today:not(:target){display:none}
 .page:target{display:block}
 .ph{margin:0 0 24px}.ph h2{font-size:34px;line-height:1.1;letter-spacing:-.02em;margin:0 0 8px}
@@ -916,14 +944,14 @@ box-sizing:border-box}
 .track-marks span:last-child{transform:translateX(-100%)}
 table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 .race-times{min-width:310px}.race-times td{white-space:nowrap}
+.month-bars td:nth-child(2){width:43%;font-weight:600}
+.month-bar{display:block;height:4px;margin:4px 0;background:var(--grid);border-radius:4px}
+.month-bar i{display:block;height:100%;background:var(--s1);border-radius:4px}
 th{font-weight:600;color:var(--muted);text-align:right;padding:6px 4px;font-size:12px}
 td{padding:8px 4px;text-align:right;border-top:1px solid var(--grid)}
 td:first-child,th:first-child{text-align:left}.g{color:var(--muted)}
 .pats{list-style:none;padding:0;margin:0}.pat{padding:16px 0;border-top:1px solid var(--grid)}
 .pat:first-child{border-top:0}
-.meter{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--ink2)}
-.meter i{width:14px;height:6px;border-radius:3px;background:var(--grid)}
-.meter i.on{background:var(--s1)}.meter b{font-weight:500;margin-left:6px}
 details{margin-top:8px}summary{font-size:13px;color:var(--ink);cursor:pointer;min-height:44px;padding:10px 0}
 caption{text-align:left;font-size:12px;color:var(--ink2);padding:8px 0}
 .table-wrap{max-width:100%;overflow-x:auto}th,td{overflow-wrap:anywhere}
@@ -944,7 +972,7 @@ def render(d: dict[str, Any]) -> str:
     else:
         pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
                  page_running(d), *(page for r in d["runs"]
-                                    for page in (page_run(r), page_run_pacing(r))), page_body(d),
+                                    for page in (page_run(r), page_run_pacing(r))), page_body(d), page_months(d),
                  page_patterns(d)]
         freshness = f'Data through {_e(d["end"])} from your own Garmin records.'
     nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)

@@ -57,7 +57,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | merged PR #10 after both CI jobs passed |
 | 0.14.0 | Exact FRIEND VO2max reference bar, source transcription and tests | merged PR #11 after both CI jobs passed; live profile check pending |
 | 0.14.1 | Dashboard accessibility, current-day ranges, atomic/private files and provenance | implemented; CI/merge evidence recorded in GitHub PR |
-| 0.14.2 | Run pacing drill-down, timestamp-based timing, elapsed splits and Garmin timer evidence | Implemented with synthetic regression and browser checks |
+| 0.14.2 | Run pacing drill-down, timestamp-based timing, elapsed splits and Garmin timer evidence | Merged in PR #13 after both CI jobs passed |
+| 0.14.3 | Monthly coverage drill-down, pattern evidence, mobile navigation, archive comparison command | Implemented and checked with synthetic data |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -89,9 +90,14 @@ an authentication/authorization and private-data deployment design has been veri
 | Order | Deliverable | Evidence needed |
 |---|---|---|
 | 1 | Run timing and pacing evidence (v0.14.2) | Known-speed/HR, sparse timing, pauses, partial kilometres, link navigation and Garmin session-field mapping |
-| 2 | Monthly drill-down and pattern evidence | Show coverage beside trends, distinguish weak associations and make missing days visible |
-| 3 | Historical validation on the Mac | Run the existing data-quality verifier on the archived history and compare sampled watch summaries with new recorded-stream outputs |
+| 2 | Monthly drill-down and pattern evidence (v0.14.3) | Coverage and missing months shown. Patterns fit gated by existing rule. Six widths and both themes tested |
+| 3 | Historical validation on the Mac | Run the existing data-quality verifier plus `garmin-mcp-verify --run-timing` on the archive. Review paired counts and outliers before interpreting agreement |
 | 4 | Phone deployment | Verify protected preview and production, owner login, dashboard drill-down and next scheduled update |
+
+Later review: independently verify remaining load/VO₂ conversion references, benchmark
+competitor flows where available, and test patterns on held-out blocks before introducing
+predictive recommendations. Date blocks in current inference are consecutive paired observations.
+Sparse weeks, wear time, watch changes and selection of similar runs can bias estimates.
 
 The Mac holds the original Garmin history and account access. Synthetic checks can validate
 individual formulas, mappings and edge cases. The recorded agreement figures are historical

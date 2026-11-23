@@ -77,3 +77,15 @@ The new [pacing drill-down screenshot](screenshots/review-2026-11/run-pacing.png
 synthetic run on a 390 px viewport. The watch duration and stream span are separate
 values. Chromium checked 300 page/theme/viewport/disclosure states, including the new
 run screen, without page overflow, broken fragment links, scripts or page errors.
+
+### Monthly history and Patterns follow-up (v0.14.3)
+
+[Monthly history on a phone](screenshots/review-2026-11/month-phone.png) ·
+[Monthly history in dark mode](screenshots/review-2026-11/month-desktop.png) ·
+[Patterns evidence](screenshots/review-2026-11/patterns-evidence.png)
+
+The screens use synthetic coverage gaps. The phone layout displays every main link without
+horizontal scrolling. Actual browser clicks verified Running → run → Pacing and effort,
+Body → Monthly history, and the corresponding back links and evidence disclosures.
+Across 324 rendered states, no page overflow, broken fragment links, script tags or page
+errors were observed. Live Safari and device hosting remain verification tasks.
