@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-24
+
+### Added
+- **Coaching follow-up (`trials.py`):** start one small experiment, record how each attempt felt, and see what changed on comparable runs.
+  - **What you did:** for cadence experiments, the minutes the watch recorded at or near the target cadence.
+  - **How it felt:** Garmin's post-run "How did you feel?" and "Perceived effort" answers are read automatically from every payload shape (live, `summaryDTO`, export). You can add knee comfort during the run and the next morning, plus a note, by telling Claude.
+  - **What changed:** heart rate, speed per heartbeat, heart-rate drift, cadence and stride length versus the median of your steady runs at a similar pace (±30 s/km) and duration (±40 %) from before the experiment started.
+  - **Honesty:** changes smaller than normal run-to-run variation say "about the same". Fewer than 3 attempts is labelled "early". Knee discomfort of 4/10 or more stops the experiment.
+- MCP tools `start_experiment`, `log_experiment`, `experiment_status`, `end_experiment` (49 tools). They mark the dashboard for rebuild at the next scheduled run.
+- Dashboard:
+  - **Today:** a "Your experiment" card with the last attempt, the next step and the verdict so far. It also shows when the data snapshot is older, because it is about past runs.
+  - **Run pages:** a "Your experiment on this run" card with the changes versus your usual.
+
+- **Opt-in weather and air quality** (`weather_fetch.py`, tool `weather_retrieval`, command `garmin-mcp-weather --enable | --disable | --fetch | --clear | --status`).
+  - **Off by default.**
+  - **When on:** each sync fills hourly modelled temperature, humidity, wind, rain and US AQI for outdoor runs from the last 14 days that have no conditions yet.
+  - **Source:** Open-Meteo forecast, archive and air-quality APIs (free, no account).
+  - **What leaves the Mac:** only the run's start position rounded to 2 decimals (~1 km) and its date.
+  - **Storage:** the same format as imported windows, so the run timeline and matched-run comparisons use it. Imported windows are never overwritten, and `--clear` removes only fetched data.
+  - **Failure handling:** a rate limit or network failure is reported and never fails the sync.
+
+### Changed
+- **Dashboard file about 40 % smaller** (2.4 MB → 1.4 MB on the owner's data):
+  - Second-by-second run timelines are kept for the 3 latest runs (older runs keep their summary and pacing pages).
+  - About 100 points per timeline.
+  - Patterns draws the latest 120 days per chart; the statistics still use every day.
+  - Chart coordinates are rounded to 0.1 px.
+  - Next step: draw each chart's interactive points once instead of separately for phone and desktop.
+
 ### Added (docs)
 - `docs/PRODUCT_REVIEW_2026-11.md`: owner-requested critical product review of v0.17.0, with a specification for an insight and recommendation engine, a weekly plan, a 5-tab redesign, cuts, and acceptance criteria. It is the brief for the next stage of work.
 

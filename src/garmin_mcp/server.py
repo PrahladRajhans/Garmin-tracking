@@ -572,6 +572,99 @@ def recovery_weight_study(days: int = 180) -> dict[str, Any]:
     return _with_db(lambda c: scores.weight_study(c, _end(c, None), max(60, min(days, 365))))
 
 
+# ----------------------------------------------------------------- coaching follow-up
+@mcp.tool()
+def start_experiment(kind: str = "cadence", title: str | None = None,
+                     target_spm: int | None = None) -> dict[str, Any]:
+    """Start one small training experiment to follow up on. kind='cadence' (target defaults to
+    +5 % over your latest steady run, knee-friendly) or 'custom' with a title, e.g.
+    'Lights out by 01:00'. Starting a new one closes the previous one."""
+    from garmin_mcp import trials
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        try:
+            out = trials.start(c, kind, title, target_spm)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        _mark_dashboard_stale(c)
+        return out
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def log_experiment(knee_during: int | None = None, knee_next_morning: int | None = None,
+                   felt: int | None = None, effort: int | None = None,
+                   note: str | None = None, activity_id: int | None = None) -> dict[str, Any]:
+    """Record how the latest experiment run felt. knee_*: 0 none to 10 worst; felt: 1 very
+    weak to 5 very strong; effort: 1-10. Defaults to the latest run since the experiment
+    began. Garmin's own post-run feel/effort answers are read automatically."""
+    from garmin_mcp import trials
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        try:
+            out = trials.log(c, activity_id=activity_id, knee_during=knee_during,
+                             knee_next_morning=knee_next_morning, felt=felt, effort=effort,
+                             note=note)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        _mark_dashboard_stale(c)
+        return out
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def experiment_status() -> dict[str, Any]:
+    """The current experiment: each attempt with what you did, how it felt and what changed
+    versus your comparable runs before it started; a verdict so far and the next step."""
+    from garmin_mcp import trials
+
+    return _with_db(trials.status)
+
+
+@mcp.tool()
+def end_experiment(note: str | None = None) -> dict[str, Any]:
+    """Close the current experiment, with an optional note on what you decided."""
+    from garmin_mcp import trials
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        t = trials._trial(c)
+        if not t:
+            return {"error": "No active experiment."}
+        out = trials.close(c, t["id"], note)
+        _mark_dashboard_stale(c)
+        return out
+
+    return _with_db(run)
+
+
+def _mark_dashboard_stale(conn: sqlite3.Connection) -> None:
+    """The next scheduled run rebuilds the dashboard (same marker as condition imports)."""
+    conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES "
+                 "('dashboard_rebuild_pending', '1')")
+    conn.commit()
+
+
+@mcp.tool()
+def weather_retrieval(enable: bool | None = None, fetch_now: bool = False) -> dict[str, Any]:
+    """Opt-in weather and air quality for outdoor runs from Open-Meteo (free, no account).
+    Off by default. enable=True/False turns it on or off; fetch_now fills the last 14 days.
+    When on, only each run's start position rounded to ~1 km and its date are sent."""
+    from garmin_mcp import weather_fetch
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if enable is not None:
+            out.update(weather_fetch.set_enabled(c, enable))
+        out["enabled"] = weather_fetch.enabled(c)
+        if fetch_now:
+            out["fetch"] = weather_fetch.fill_recent(c)
+        return out
+
+    return _with_db(run)
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the

@@ -170,6 +170,26 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Running effectiveness | speed (m/s) ÷ (power W ÷ weight kg) | Coggan/WKO (Palladino). Garmin wrist power reads higher than Stryd, so compare only with yourself |
 | Cadence advice | If < 170 spm: suggest +5 % at the same pace, in short metronome blocks | Heiderscheit 2011 (knee energy absorption falls at +5 %), Lenhart 2014 (+10 % → −14 % patellofemoral force), Willy 2016 (+7.5 % retained at 1 month) |
 
+## Implemented in v0.21.0: coaching follow-up (`trials.py`)
+| Item | Rule |
+|---|---|
+| Attempt | Any outdoor run with FIT data that starts after the experiment began and before it closed |
+| Did it (cadence) | Moving seconds (speed > 1 m/s) with FIT cadence × 2 ≥ target − 2 steps/min, converted to minutes using the median sample interval |
+| Felt | Garmin `workoutFeel` 0/25/50/75/100 = very weak/weak/normal/strong/very strong. `workoutRpe` 10–100 ÷ 10 = effort 1–10. Other values are ignored |
+| Comparison runs | Same activity type, steady (≥ 20 min, 1-min speed CV < 15 %), average pace within ±30 s/km and moving time within ±40 % of the attempt, before the experiment started; most recent 6. Needs ≥ 2 |
+| Change | Attempt minus the median of the comparison runs. "About the same" under: HR 3 bpm, efficiency 3 %, drift 2 points, cadence 2 spm, stride 0.02 m (typical wrist-data run-to-run noise; heuristic) |
+| Verdict | < 3 attempts: "early". From 3 attempts: median efficiency change and median next-morning knee score |
+| Safety | Knee ≥ 4/10 during or next morning → next step is to stop and rest |
+
+## Opt-in conditions retrieval (v0.21.0, `weather_fetch.py`)
+| Item | Rule |
+|---|---|
+| Consent | Off unless `meta.weather_opt_in = 1` (tool `weather_retrieval(enable=True)` or `garmin-mcp-weather --enable`) |
+| Sent | First recorded GPS point rounded to 2 decimals (~1.1 km) and the run's UTC date(s). Nothing else |
+| Endpoint | Run within 60 days: Open-Meteo forecast API (recent past); older: archive API. Air quality: Open-Meteo air-quality API (`us_aqi`) |
+| Stored | One window per UTC hour that overlaps the FIT timeline; kind `model`; values outside `conditions.FIELDS` limits are dropped; AQI rounded to an integer, US-EPA scale |
+| Scope | Outdoor runs from the last 14 days without existing condition windows, at most 10 per sync |
+
 ## Implemented in v0.13.0 (Phase 13): exact rules
 | Metric | Rule | Result on your data |
 |---|---|---|
