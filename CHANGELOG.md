@@ -19,6 +19,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **Today:** a "Your experiment" card with the last attempt, the next step and the verdict so far. It also shows when the data snapshot is older, because it is about past runs.
   - **Run pages:** a "Your experiment on this run" card with the changes versus your usual.
 
+- **Opt-in weather and air quality** (`weather_fetch.py`, tool `weather_retrieval`, command `garmin-mcp-weather --enable | --disable | --fetch | --clear | --status`).
+  - **Off by default.**
+  - **When on:** each sync fills hourly modelled temperature, humidity, wind, rain and US AQI for outdoor runs from the last 14 days that have no conditions yet.
+  - **Source:** Open-Meteo forecast, archive and air-quality APIs (free, no account).
+  - **What leaves the Mac:** only the run's start position rounded to 2 decimals (~1 km) and its date.
+  - **Storage:** the same format as imported windows, so the run timeline and matched-run comparisons use it. Imported windows are never overwritten, and `--clear` removes only fetched data.
+  - **Failure handling:** a rate limit or network failure is reported and never fails the sync.
+
 ### Changed
 - **Dashboard file about 40 % smaller** (2.4 MB → 1.4 MB on the owner's data):
   - Second-by-second run timelines are kept for the 3 latest runs (older runs keep their summary and pacing pages).

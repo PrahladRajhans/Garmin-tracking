@@ -281,6 +281,12 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
         from garmin_mcp.normalize import rebuild
 
         out["tidy_tables"] = rebuild(conn)
+        try:  # opt-in only; never blocks or fails a sync
+            from garmin_mcp import weather_fetch
+
+            out["weather"] = weather_fetch.fill_recent(conn)
+        except Exception as exc:  # noqa: BLE001
+            out["weather"] = {"error": f"{type(exc).__name__}"}
         complete = all("run_id" in r and not r.get("errors") and not r.get("aborted")
                        for r in out["sources"].values())
         complete = complete and not out["tidy_tables"].get("loads_error")

@@ -23,6 +23,7 @@ garmin-mcp-import = "garmin_mcp.importer:main"
 garmin-mcp-verify = "garmin_mcp.verify:main"
 garmin-mcp-conditions = "garmin_mcp.conditions:main"
 garmin-mcp-dashboard = "garmin_mcp.dashboard:main"
+garmin-mcp-weather = "garmin_mcp.weather_fetch:main"
 
 [build-system]
 requires = ["hatchling"]

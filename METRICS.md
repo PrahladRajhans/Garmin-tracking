@@ -181,6 +181,15 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Verdict | < 3 attempts: "early". From 3 attempts: median efficiency change and median next-morning knee score |
 | Safety | Knee ≥ 4/10 during or next morning → next step is to stop and rest |
 
+## Opt-in conditions retrieval (v0.21.0, `weather_fetch.py`)
+| Item | Rule |
+|---|---|
+| Consent | Off unless `meta.weather_opt_in = 1` (tool `weather_retrieval(enable=True)` or `garmin-mcp-weather --enable`) |
+| Sent | First recorded GPS point rounded to 2 decimals (~1.1 km) and the run's UTC date(s). Nothing else |
+| Endpoint | Run within 60 days: Open-Meteo forecast API (recent past); older: archive API. Air quality: Open-Meteo air-quality API (`us_aqi`) |
+| Stored | One window per UTC hour that overlaps the FIT timeline; kind `model`; values outside `conditions.FIELDS` limits are dropped; AQI rounded to an integer, US-EPA scale |
+| Scope | Outdoor runs from the last 14 days without existing condition windows, at most 10 per sync |
+
 ## Implemented in v0.13.0 (Phase 13): exact rules
 | Metric | Rule | Result on your data |
 |---|---|---|

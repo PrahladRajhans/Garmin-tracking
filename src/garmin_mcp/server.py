@@ -647,6 +647,25 @@ def _mark_dashboard_stale(conn: sqlite3.Connection) -> None:
 
 
 @mcp.tool()
+def weather_retrieval(enable: bool | None = None, fetch_now: bool = False) -> dict[str, Any]:
+    """Opt-in weather and air quality for outdoor runs from Open-Meteo (free, no account).
+    Off by default. enable=True/False turns it on or off; fetch_now fills the last 14 days.
+    When on, only each run's start position rounded to ~1 km and its date are sent."""
+    from garmin_mcp import weather_fetch
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if enable is not None:
+            out.update(weather_fetch.set_enabled(c, enable))
+        out["enabled"] = weather_fetch.enabled(c)
+        if fetch_now:
+            out["fetch"] = weather_fetch.fill_recent(c)
+        return out
+
+    return _with_db(run)
+
+
+@mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the
     tidy tables. Use when data looks stale."""
