@@ -40,6 +40,7 @@ from garmin_mcp import (
     running,
     scores,
     signal_context,
+    trials,
 )
 from garmin_mcp.dashboard_interaction import CONTENT_POLICY, SCRIPT
 
@@ -126,7 +127,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "month": health.monthly_report(conn, _prev_month(end)),
         "calendar": dashboard_history.collect(conn, end, zone),
         "last_full_sync": _last_full_sync(conn, zone),
-        "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
+        "trial": trials.status(conn), "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
         "explore": explore,
         "tests": running.test_runs(conn, read_metrics=read_run),
         "vo2_reference": norms.comparison(conn, end),
@@ -540,6 +541,42 @@ def _insight(item: dict[str, Any]) -> str:
             f'{basis}</li>')
 
 
+def _trial_card(trial: dict[str, Any]) -> str:
+    """Today: the experiment you're running, how the last attempt went, and what's next."""
+    t = trial["trial"]
+    attempts = trial.get("attempts") or []
+    last = attempts[-1] if attempts else None
+    body = f'<p class="say">{_e(t["title"])}</p>'
+    if last:
+        link = (f'<a class="flow-link" href="#run-{last["activity_id"]}">'
+                f'Last attempt · {_e(_short(last["date"] or ""))}{icon("chev")}</a>')
+        body += f'<p>{_e(last["summary"])}</p>{link}'
+    body += (f'<p class="sub"><b>Next:</b> {_e(trial["next"])}</p>'
+             f'<details><summary>So far</summary><p class="sub">{_e(trial["verdict"])} '
+             'Compared with your own steady runs at a similar pace and duration from before '
+             'the experiment. Changes smaller than normal day-to-day variation count as '
+             '"about the same".</p></details>')
+    return _card("Your experiment", body, wide=True)
+
+
+def _trial_run_card(trial: dict[str, Any], aid: int) -> str:
+    """Run page: what this run showed for the experiment."""
+    for a in (trial or {}).get("attempts") or []:
+        if a["activity_id"] != aid:
+            continue
+        rows = "".join(_row(trials.LABELS[c["metric"]].capitalize(),
+                            _e(f'{c["this_run"]:g}') + (f' <small>{_e(c["unit"])}</small>'
+                                                         if c.get("unit") else ""),
+                            f'usual {c["usual"]:g} · {c["verdict"]}')
+                       for c in a.get("changes", []))
+        note = a.get("comparison_note")
+        extra = f'<p class="sub">{_e(note)}</p>' if note else ""
+        return _card("Your experiment on this run",
+                     f'<p>{_e(a["summary"])}</p>{extra}<ul class="rows">{rows}</ul>',
+                     _e(trial["trial"]["title"]), wide=True)
+    return ""
+
+
 def _overview_tile(label: str, value: str, note: str, target: str) -> str:
     return (f'<a class="overview-tile" href="#{target}"><span>{_e(label)}{icon("chev")}</span>'
             f'<strong>{_e(value)}</strong><small>{_e(note)}</small></a>')
@@ -588,7 +625,10 @@ def page_today(d: dict[str, Any]) -> str:
                       f'<details><summary>How this was chosen</summary>'
                       f'<p class="sub">{_e(week["basis"])}</p></details>', wide=True)
     findings = list(focus["findings"]) if current else []
-    if current and d["runs"]:
+    trial = d.get("trial") or {}
+    if trial.get("active"):  # about past runs, so useful even on an older snapshot
+        body += _trial_card(trial)
+    if current and d["runs"] and not trial.get("active"):
         latest_run = d["runs"][0]
         cue = latest_run.get("cadence_experiment")
         if cue and focus["title"] != "Pause training today.":
@@ -927,7 +967,7 @@ def _tests(t: dict[str, Any]) -> str:
     return head + chart
 
 
-def page_run(r: dict[str, Any]) -> str:
+def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None) -> str:
     rows = ""
     units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
              "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
@@ -961,7 +1001,8 @@ def page_run(r: dict[str, Any]) -> str:
     if cue:
         followup = (f'<p class="sub">{_e(cue["check"])} '
                     f'<a href="{_e(cue["source"])}" class="source-link">Cadence study</a></p>')
-    body = (_card("What to try next", work + followup, wide=True)
+    body = (_trial_run_card(d_trial, r["activity_id"])
+            + _card("What to try next", work + followup, wide=True)
             + _card("Running form", rows + '<p class="legend"><i class="mk"></i>This run <i class='
                     '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True)
             + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
@@ -1742,7 +1783,7 @@ def render(d: dict[str, Any]) -> str:
                  page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
-            pages.extend((page_run(r), page_run_pacing(r), page_run_trace(r)))
+            pages.extend((page_run(r, d.get("trial")), page_run_pacing(r), page_run_trace(r)))
             if r["comparable_effort"]["available"]:
                 pages.append(page_run_compare(r, run_ids))
         calendar = d["calendar"]
