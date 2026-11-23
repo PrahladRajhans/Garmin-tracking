@@ -79,14 +79,33 @@ def test_pair_points_lag():
     assert engine._pearson([p[1] for p in pts], [p[2] for p in pts]) > 0.9
 
 
-def test_scatter_and_sure():
+def test_scatter_shows_units_and_lagged_measurement_dates():
     from garmin_mcp import dashboard
 
-    svg = dashboard.scatter([("d1", -1.0, -2.0), ("d2", 0.0, 0.0), ("d3", 1.0, 2.0)],
-                            "x", "y", 2.0)
+    svg = dashboard.scatter([("2026-01-01", -1.0, -2.0), ("2026-01-02", 0.0, 0.0),
+                             ("2026-01-03", 1.0, 2.0)], "x", "y", 2.0,
+                            x_unit="h", y_unit="ms", lag=1)
     assert svg.count('class="pt"') == 3 and 'class="fit"' in svg
-    assert dashboard._sure({"notable": False})[1].startswith("not sure")
-    assert dashboard._sure({"notable": True, "r_ci95": [0.4, 0.6]})[1] == "very sure"
+    assert "x (h)" in svg and "y (ms)" in svg and "2026-01-04" in svg
+
+
+def test_monthly_report_combines_hrv_once_per_night_and_shows_coverage(conn):
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    conn.execute("INSERT INTO hrv(day,last_night_avg) VALUES ('2024-02-01',60), ('2024-02-03',80)")
+    conn.execute("INSERT INTO health_status(day,hrv) VALUES "
+                 "('2024-02-01',20), ('2024-02-02',40), ('2024-01-31',30)")
+    conn.execute("INSERT INTO sleep(day,sleep_s) VALUES ('2024-02-01',28800), ('2024-02-02',3600)")
+    report = health.monthly_report(conn, "2024-02")
+    assert report["this_month"]["avg_hrv"] == 60
+    assert report["previous_month"]["avg_hrv"] == 30 and report["change"]["avg_hrv"] == 30
+    assert report["coverage"]["this_month"]["hrv_nights"] == 3
+    assert report["coverage"]["this_month"]["sleep_nights"] == 1
+    assert report["coverage"]["this_month"]["calendar_days"] == 29
+    history = health.monthly_history(conn, "2024-02", 3)
+    assert [m["month"] for m in history] == ["2023-12", "2024-01", "2024-02"]
+    assert history[0]["values"]["avg_hrv"] is None
 
 
 def test_heart_rate_difference_uses_utc_and_has_no_health_cutoff(conn, monkeypatch):

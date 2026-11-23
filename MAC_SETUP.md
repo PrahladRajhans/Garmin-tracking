@@ -58,8 +58,9 @@ The default local dashboard, sync schedule, and analytics work without Cloudflar
 ### One-time actions for the owner
 
 1. Create a Cloudflare account and select the free Pages and Zero Trust plans. Confirm the
-   current Access free-plan allowance in the account UI before activating hosting; its live
-   pricing page was unavailable in the cloud review. No paid domain is required.
+   current Access allowance in the account UI before activating hosting. Cloudflare setup
+   docs confirm a Zero Trust Free plan. The published plan content we retrieved did not
+   specify the current Access seat allowance. No paid domain is required.
 2. With the local assistant, create a **dedicated Direct Upload** Pages project and deploy
    only an empty, non-health placeholder. In Pages settings enable Access for previews, then
    follow [Cloudflare's production-domain instructions](https://developers.cloudflare.com/pages/platform/known-issues/#enable-access-on-your-pagesdev-domain).
@@ -99,3 +100,11 @@ the assistant to execute, rather than a terminal sequence the owner needs to cop
   **all existing deployments**; disabling publishing does not remove cloud copies.
 
 Hosting rationale and sources: [private_dashboard_hosting.md](research_notes/Garmin%20connector%20feature%20research/private_dashboard_hosting.md).
+
+### Archive timing comparison
+
+After the normal Mac update has installed v0.14.3, run one command from the repo:
+`.venv/bin/garmin-mcp-verify --run-timing`. It compares paired run timings and heart rate
+with the stored Garmin summaries by year. It opens SQLite read-only and prints only group
+counts and aggregate differences. Keep the report local unless you choose to share it.
+Investigate large residuals alongside a few corresponding Garmin Connect activities.

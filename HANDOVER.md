@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.14.2, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.14.3, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -110,11 +110,11 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 |---|---|---|---|---|
 | Pace of ageing | `health.pace_of_ageing` | Theil-Sen slope of fitness age × 365; needs ≥ 90-day span | Whoop scale | M § v0.12.0 |
 | Shifts | `health.detect_shift`, `health.shifts` | Best two-segment split ≥ 1 SD, ≥ 14 days each side | Simple changepoint | M § v0.12.0 |
-| Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
+| Monthly report | `health.monthly_report` | Month vs previous month with observation counts and one HRV reading per day | Fitbit/Whoop; source precedence as in recovery | M § v0.12.0, v0.14.3 |
 | Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
 | Constant signals | `engine.relationship` | Returns unavailable with a reason instead of indexing an empty bootstrap result | No change to formulas or statistical thresholds | M § v0.13.1 |
 | Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; current-day Garmin bands or preceding 60-day ± 1 SD with minimum observations; no stale values | Fitbit "in your range" | M § v0.9.0, Personal-range freshness v0.14.1 |
-| Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, plus per-day points; "how sure" from CI and FDR (`dashboard._sure`) | — | M § v0.13.0 |
+| Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, with paired dates, sample size, evidence rule and visible fit only for qualifying pairs | — | M § v0.13.0 |
 | Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
 | Recovery weighting study | `scores.weight_study` | Each signal and composite vs next-night ln-HRV z and vs Garmin readiness; change weights only if better on both by > 0.05 r | — | M § v0.13.0 |
 | Goal verdict | `goals.goal_check` | Median of prediction methods vs target | — | M § v0.6.0 |
@@ -130,7 +130,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 ## 7. Dashboard references
 - **Code:** `dashboard.py`.
   - `collect` gathers the data; the `page_*` functions build each page.
-  - Chart kit: `dial`, `line_chart`, `bar_chart`, `gauge`, `meter`, `both` (separate phone and desktop drawings).
+  - Chart kit: `dial`, `line_chart`, `bar_chart`, `gauge`, `both` (separate phone and desktop drawings).
   - `CSS` holds the design tokens.
 - **Design:** `DASHBOARD_PLAN.md` §6 is the page map, §7 the type scale, spacing, shapes, icons, line weights and colour, §8 hosting.
 - **Colour:** palette and rules from the dataviz skill. Categorical blue `#2a78d6` and orange `#eb6834` (dark: `#3987e5`, `#d95926`) passed its validator in both modes. Status colours are reserved for state and always shown with a word.
@@ -162,10 +162,14 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | CTL/ATL smoothing | TrainingPeaks λ = 1/N | λ = 1 − e^(−1/N) (true exponential); numbers differ slightly | M § v0.5.0 |
 | Recovery / strain | Whoop proprietary | Whoop *scale and bands* only; formulas are ours and published | M § v0.11.0 |
 | Readiness bands | Oura 85/70/60 | Dropped in favour of Whoop's 3 colours | `ROADMAP.md` dropped list |
-| Correlations | Whoop/Bevel show associations without uncertainty | Bootstrap CIs, false-discovery control, "how sure" meter | M § v0.9.0 |
+| Correlations | Whoop/Bevel show associations without uncertainty | Bootstrap CIs, false-discovery control and paired-day evidence | M § v0.9.0 |
 | Connectors | Fitness AI Connector, AthleteData: cloud, paid | Local, free, formulas visible | `research_notes/.../ai_connectors.md` |
 
 ## 9. Known issues and open questions
+**Validation status:** CI and browser evidence use synthetic data. The Mac archive still needs
+verification. The read-only `garmin-mcp-verify --run-timing` report compares paired watch and
+stream timing/HR values by year. Monthly coverage exposes gaps and the Patterns policy stays
+exploratory. Historical coefficients below are dated observations.
 1. **Max HR is uncertain** (188 vs 209). It moves zones, TRIMP, effective VO2max and race predictions. Fix: user's hard-effort test, then `update_athlete_setting("hr_max_override", value)`.
 2. **Recovery % disagrees with Garmin readiness on some days** (overall r = 0.36; on 22 Nov ours was 34 %, Garmin's 90). *Studied in v0.13 (`recovery_weight_study`):*
    - Sleep drives Garmin's score (r = 0.47) but barely predicts next-night HRV (0.07).
@@ -198,7 +202,9 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
     on real data before using them to propose a weight change. Actual weights remain equal.
 
 ## 10. What is left (pick up here)
-In order. Each item says where it goes and what "done" means.
+The next checks are the Mac archive, then private phone hosting. Code for the VO₂max bar,
+pacing and monthly drill-downs, and evidence-first Patterns is on the GitHub delivery track.
+The table below describes the rest of the work. ROADMAP owns ordering and status.
 
 | # | Item | Where | Done when |
 |---|---|---|---|

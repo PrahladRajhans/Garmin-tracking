@@ -478,7 +478,7 @@ def long_term_health(day: str | None = None) -> dict[str, Any]:
 @mcp.tool()
 def monthly_report(month: str | None = None) -> dict[str, Any]:
     """Month summary (YYYY-MM, default last full month) vs the month before: sessions, hours,
-    run km, sleep, resting HR, steps, HRV."""
+    run km, sleep, resting HR, steps, HRV and observation counts."""
     from garmin_mcp import health
 
     def run(c: sqlite3.Connection) -> dict[str, Any]:

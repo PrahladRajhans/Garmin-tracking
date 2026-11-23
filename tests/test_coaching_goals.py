@@ -62,6 +62,11 @@ def test_smart_recording_and_pause_use_timestamp_intervals(conn):
     timing = running.running_breakdown(conn, 500)["pacing"]
     assert timing["garmin_timer_s"] == 900 and timing["garmin_elapsed_s"] == 1500
     assert timing["recorded_moving_s"] == 895 and timing["recorded_elapsed_s"] == 1500
+    from garmin_mcp.verify import run_timing
+
+    pairs = run_timing(conn)["years"]["2026"]["pairs"]
+    assert pairs["record_span_minus_watch_elapsed_s"]["median_difference"] == 0
+    assert pairs["recorded_moving_minus_watch_timer_s"]["median_difference"] == -5
 
 
 def test_equal_distance_halves_include_partial_final_kilometre(conn):

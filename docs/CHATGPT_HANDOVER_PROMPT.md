@@ -79,7 +79,7 @@ You are taking over an existing, working software project from another AI assist
   - Settings come from `config/athlete.json`.
   - After syncing, the dashboard is rebuilt and copied to `iCloud Drive/Garmin/dashboard.html` (only if iCloud Drive exists; not yet confirmed on my Mac).
 - **Quality gates:**
-  - `pytest` (59 tests) and `ruff check .` must pass. CI runs both on Python 3.12 and 3.13 (`.github/workflows/ci.yml`).
+  - `pytest` and `ruff check .` must pass. CI runs both on Python 3.12 and 3.13 (`.github/workflows/ci.yml`).
   - Real-data checks live in `verify.py`, `loads.sense_checks` and `scores.sense_checks`.
   - Current real-data agreement with Garmin:
     - Acute load r = 0.81.
@@ -112,7 +112,11 @@ You are taking over an existing, working software project from another AI assist
 - **Statistics rules for patterns:** baseline-adjust, bootstrap CI, Benjamini-Hochberg q < 0.10 and |r| ≥ 0.15. Measured false-positive rate 1.7 %. Don't loosen this.
 - **Recovery weights:** stay equal unless `recovery_weight_study` shows a variant better on both outcomes by > 0.05 r.
 
-## 5. What I need from you now (in this order)
+## 5. Original continuation brief
+
+As of v0.14.3, Task A's publisher exists and awaits account/device activation. The primary-source
+VO₂max bar and dashboard design follow-ups are implemented. Read ROADMAP and HANDOVER for the
+current status and next work. The original brief below records the requirements.
 
 ### Task A: host the dashboard so I can open it on my phone, privately
 - **The problem:** the file is built on my Mac at `~/.garmin-mcp/dashboard/index.html`. That's a hidden folder (press Cmd+Shift+. in Finder to see it). I want to open the dashboard from my phone, anywhere.
@@ -161,4 +165,4 @@ After each change, update `HANDOVER.md` (sections 6, 9, 10), `ROADMAP.md`, `CHAN
 ## 7. How to start
 1. Read the files in section 2, then reply with a short summary: the system as you understand it, the plan, and any contradictions or gaps you found. Cite file and function names.
 2. Ask me at most one clarifying question if something blocks you.
-3. Then start Task A.
+3. Then continue the first actionable item in ROADMAP.

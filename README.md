@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.14.2. The 43 MCP tools and static dashboard include a run pacing drill-down with elapsed kilometre splits, watch timing and a pace-to-heart-rate comparison. Optional private phone hosting is off by default.
+> **Status:** v0.14.3. The 43 MCP tools and static dashboard include run pacing, six-month history, and Patterns with visible evidence and sample sizes. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -335,3 +335,8 @@ Local and iCloud HTML replacement is atomic, and an iCloud failure leaves the lo
 MCP tool results pass to your chosen AI client/model provider when you request them. Optional
 Cloudflare hosting uploads a health-data HTML snapshot to Cloudflare behind Access. Neither
 choice means those providers cannot process the data; keep both opt-ins deliberate.
+
+Open **Body → Month report** for six months of sleep, HRV and running with observation counts,
+or **Running → a run → Pacing and effort** for split times beside watch fields. On the Mac,
+`garmin-mcp-verify --run-timing` reads the stored history and reports aggregate differences by
+year. The command needs a local database and performs no sync or upload.

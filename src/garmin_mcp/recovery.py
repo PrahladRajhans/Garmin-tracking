@@ -41,18 +41,22 @@ def _series(conn: sqlite3.Connection, sql: str, start: str, end: str) -> dict[st
     return {d: v for d, v in conn.execute(sql, (start, end)) if isinstance(v, (int, float))}
 
 
-def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict[str, float]]:
-    start = (date.fromisoformat(end) - timedelta(days=days - 1)).isoformat()
+def nightly_hrv(conn: sqlite3.Connection, start: str, end: str) -> dict[str, float]:
     hrv = _series(conn, "SELECT day, last_night_avg FROM hrv WHERE day BETWEEN ? AND ?",
                   start, end)
     hs_hrv = _series(conn, "SELECT day, hrv FROM health_status WHERE day BETWEEN ? AND ?",
                      start, end)
+    return {**hs_hrv, **hrv}  # HRV status wins; health status fills history
+
+
+def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict[str, float]]:
+    start = (date.fromisoformat(end) - timedelta(days=days - 1)).isoformat()
     resp = _series(conn, "SELECT day, avg_respiration FROM sleep WHERE day BETWEEN ? AND ?",
                    start, end)
     hs_resp = _series(conn, "SELECT day, respiration FROM health_status "
                       "WHERE day BETWEEN ? AND ?", start, end)
     out = {
-        "hrv": {**hs_hrv, **hrv},  # Garmin HRV status value wins; health status fills history
+        "hrv": nightly_hrv(conn, start, end),
         "rhr": _series(conn, "SELECT day, resting_hr FROM daily WHERE day BETWEEN ? AND ?",
                        start, end),
         "resp": {**hs_resp, **resp},
