@@ -11,6 +11,7 @@ own numbers, so priority only matters for freshness; values normally agree.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from collections.abc import Callable, Iterator
@@ -316,9 +317,22 @@ def _grouped_latest(payload: Any, need: str) -> Iterator[tuple[str, dict[str, An
         yield day, _latest(recs)
 
 
+def _status_word(r: dict[str, Any]) -> str | None:
+    """Garmin's export gives the status as a word ("PRODUCTIVE"); the live feed gives a numeric
+    code plus a feedback phrase ("PRODUCTIVE_7"). Store the word; never the bare code."""
+    v = r.get("trainingStatus")
+    if isinstance(v, str) and v and not v.isdigit():
+        return v
+    for key in ("trainingStatus2FeedbackPhrase", "trainingStatusFeedbackPhrase"):
+        phrase = r.get(key)
+        if isinstance(phrase, str) and phrase:
+            return re.sub(r"_\d+$", "", phrase)
+    return None
+
+
 def training_status_rows(payload: Any) -> Rows:
     for day, r in _grouped_latest(payload, "trainingStatus"):
-        yield day, {"status": r.get("trainingStatus"), "fitness_trend": r.get("fitnessLevelTrend")}
+        yield day, {"status": _status_word(r), "fitness_trend": r.get("fitnessLevelTrend")}
 
 
 def acute_load_rows(payload: Any) -> Rows:

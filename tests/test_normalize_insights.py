@@ -135,3 +135,15 @@ def test_provenance_distinguishes_completed_sync_from_successful_request(conn):
     conn.commit()
     assert server._provenance(conn)["last_successful_sync"] == "2026-11-22T12:00:00+00:00"
     assert db.coverage(conn)["last_full_sync"] == "2026-11-22T12:00:00+00:00"
+
+
+def test_training_status_numeric_code_uses_phrase():
+    from garmin_mcp import dashboard
+    from garmin_mcp.normalize import _status_word
+
+    assert _status_word({"trainingStatus": "DETRAINING"}) == "DETRAINING"
+    assert _status_word({"trainingStatus": 7,
+                         "trainingStatusFeedbackPhrase": "PRODUCTIVE_7"}) == "PRODUCTIVE"
+    assert _status_word({"trainingStatus": 4}) is None
+    assert dashboard._status_label(4) == "–"
+    assert dashboard._status_label("NO_STATUS") == "No Status"
