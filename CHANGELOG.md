@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-24
+
+### Added
+- Optional local Ollama narrator, off by default. A background worker can write short summaries
+  from the existing Today, overnight sleep, recent FIT run and active experiment facts. The
+  dashboard keeps every Python recommendation and shows accepted prose with its input facts.
+- `ai_narrator(enable?, model?)` and `garmin-mcp-narrator` configure the feature. The worker
+  requires cloud access to be disabled in Ollama and uses only its loopback HTTP endpoint.
+
+### Fixed
+- The package and snapshot version now match the project version. The previous release
+  installed as v0.21.0 but still stamped its generated HTML v0.20.0.
+
 ## [0.21.0] - 2026-11-24
 
 ### Added

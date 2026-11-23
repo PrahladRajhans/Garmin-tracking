@@ -34,6 +34,7 @@ from garmin_mcp import (
     health,
     insights,
     loads,
+    narrator,
     norms,
     readiness_benchmark,
     recovery,
@@ -550,7 +551,16 @@ def _insight(item: dict[str, Any]) -> str:
             f'{basis}</li>')
 
 
-def _trial_card(trial: dict[str, Any]) -> str:
+def _narration(summary: dict | None) -> str:
+    if not summary:
+        return ""
+    facts = "".join(f'<li>{_e(label.capitalize())}: {_e(value)}</li>'
+                    for label, value in summary["facts"].items())
+    return (f'<p>{_e(summary["text"])}</p><p class="sub">AI summary · facts checked</p>'
+            f'<details><summary>Show the facts</summary><ul>{facts}</ul></details>')
+
+
+def _trial_card(trial: dict[str, Any], summary: dict | None = None) -> str:
     """Today: the experiment you're running, how the last attempt went, and what's next."""
     t = trial["trial"]
     attempts = trial.get("attempts") or []
@@ -565,7 +575,7 @@ def _trial_card(trial: dict[str, Any]) -> str:
              'Compared with your own steady runs at a similar pace and duration from before '
              'the experiment. Changes smaller than normal day-to-day variation count as '
              '"about the same".</p></details>')
-    return _card("Your experiment", body, wide=True)
+    return _card("Your experiment", body + _narration(summary), wide=True)
 
 
 def _trial_run_card(trial: dict[str, Any], aid: int) -> str:
@@ -634,9 +644,10 @@ def page_today(d: dict[str, Any]) -> str:
                       f'<details><summary>How this was chosen</summary>'
                       f'<p class="sub">{_e(week["basis"])}</p></details>', wide=True)
     findings = list(focus["findings"]) if current else []
+    narration = d.get("narration", {})
     trial = d.get("trial") or {}
     if trial.get("active"):  # about past runs, so useful even on an older snapshot
-        body += _trial_card(trial)
+        body += _trial_card(trial, narration.get("trial"))
     if current and d["runs"] and not trial.get("active"):
         latest_run = d["runs"][0]
         cue = latest_run.get("cadence_experiment")
@@ -647,6 +658,8 @@ def page_today(d: dict[str, Any]) -> str:
     if findings:
         rows = "".join(_insight(item) for item in findings[:3])
         body += _card("What to work on", f'<ul class="findings">{rows}</ul>', wide=True)
+    if narration.get("today"):
+        body += _card("Recovery summary", _narration(narration["today"]), wide=True)
     if training_n:
         runs = {r["activity_id"] for r in d["runs"]}
         rows = [_record_link(a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize(),
@@ -731,8 +744,8 @@ def page_sleep(d: dict[str, Any]) -> str:
                 if hours is not None else '<p class="empty">No complete night recorded yet.</p>')
     recorded = f'Wake date {_short(n["day"])}' if n.get("day") else ""
     garmin = f' · Garmin sleep score {_f(score)}/100' if score is not None else ""
-    body = (_card("Latest recorded night", headline + f'<p class="sub">{recorded}{garmin}</p>',
-                  wide=True)
+    body = (_card("Latest recorded night", headline + f'<p class="sub">{recorded}{garmin}</p>'
+                  + _narration(d.get("narration", {}).get("sleep")), wide=True)
             + _card("Sleep duration over 30 nights", _signal_summary("sleep_h", sleep_signal) + durations,
                     f"Grey: {ref_name} {need:.1f} h" + (" · orange: 7-day average" if rolling else ""),
                     wide=True)
@@ -976,7 +989,8 @@ def _tests(t: dict[str, Any]) -> str:
     return head + chart
 
 
-def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None) -> str:
+def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
+             summary: dict | None = None) -> str:
     rows = ""
     units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
              "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
@@ -1016,7 +1030,7 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None) -> str:
                     '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True)
             + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
                     href=f'#run-{r["activity_id"]}-pacing')
-            + _card("Numbers", f'<ul class="rows">{facts}</ul>'))
+            + _card("Numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>'))
     comparison = r["comparable_effort"]
     if comparison["available"]:
         check = run_evidence.next_check(comparison)
@@ -1795,7 +1809,8 @@ def render(d: dict[str, Any]) -> str:
                  page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
-            pages.extend((page_run(r, d.get("trial")), page_run_pacing(r)))
+            summary = d.get("narration", {}).get(f'run-{r["activity_id"]}')
+            pages.extend((page_run(r, d.get("trial"), summary), page_run_pacing(r)))
             if r["trace"].get("stream"):
                 pages.append(page_run_trace(r))
             if r["comparable_effort"]["available"]:
@@ -1877,10 +1892,31 @@ def needs_rebuild(out_dir: Path | None = None) -> bool:
             or (icloud is not None and _snapshot_id(icloud) != snapshot))
 
 
-def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
+def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
+          queue_narration: bool = False, only_if_snapshot: bytes | None = None) -> Path:
     path, icloud = _snapshot_paths(out_dir)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    content = _compact(render(collect(conn)))
+    data = collect(conn)
+    # Keep background writes from replacing a newer snapshot, including its iCloud copy.
+    # The lock covers local rendering and file replacement only.
+    with (path.parent / ".snapshot.lock").open("a") as lock:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        if only_if_snapshot is not None and (
+            _snapshot_id(path) != only_if_snapshot or narrator._sync_in_progress(conn)
+        ):
+            return path
+        data["narration"], pending = narrator.cached(conn, data)
+        _write_copies(path, icloud, _compact(render(data)))
+        snapshot = _snapshot_id(path) if queue_narration and pending else b""
+    if snapshot:
+        narrator.start_worker(conn, path, snapshot)
+    return path
+
+
+def _write_copies(path: Path, icloud: Path | None, content: str) -> None:
     _atomic_write(path, content)
     if icloud is not None:
         try:
@@ -1889,7 +1925,6 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
         except OSError:
             warnings.warn("iCloud copy failed; the local dashboard is available.",
                           RuntimeWarning, stacklevel=2)
-    return path
 
 
 def main() -> None:

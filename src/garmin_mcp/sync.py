@@ -296,13 +296,13 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
                          (db.now_iso(),))
             conn.execute("DELETE FROM meta WHERE key='sync_retry_required'")
             conn.commit()
-        out.update(_rebuild_dashboard(conn))
+        out.update(_rebuild_dashboard(conn, queue_narration=True))
     finally:
         conn.close()
     return out
 
 
-def _rebuild_dashboard(conn) -> dict[str, Any]:
+def _rebuild_dashboard(conn, *, queue_narration: bool = False) -> dict[str, Any]:
     """Retry local rendering independently of Garmin fetches."""
     from garmin_mcp import dashboard
     from garmin_mcp.publish import publish_if_enabled
@@ -310,7 +310,7 @@ def _rebuild_dashboard(conn) -> dict[str, Any]:
     conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('dashboard_rebuild_pending','1')")
     conn.commit()
     try:
-        path = dashboard.build(conn)
+        path = dashboard.build(conn, queue_narration=queue_narration)
     except Exception as exc:  # noqa: BLE001 - a render failure must leave the database usable
         return {"dashboard_error": f"{type(exc).__name__}: {exc}"[:200]}
     conn.execute("DELETE FROM meta WHERE key='dashboard_rebuild_pending'")

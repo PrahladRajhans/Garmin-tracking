@@ -190,6 +190,27 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Stored | One window per UTC hour that overlaps the FIT timeline; kind `model`; values outside `conditions.FIELDS` limits are dropped; AQI rounded to an integer, US-EPA scale |
 | Scope | Outdoor runs from the last 14 days without existing condition windows, at most 10 per sync |
 
+## Optional local narration (v0.22.0)
+
+- Python supplies the same recovery score, recovery band and Garmin readiness used elsewhere on
+  the dashboard. Overnight facts use the complete night ending on the snapshot date and optional
+  Garmin scores and sleep need. Run facts use the displayed distance, FIT pace, average heart rate
+  and cadence. The experiment uses the number of reviewed attempts and the measured cadence
+  target/time available from `trials.py`. No recommendations, location or free-form notes enter
+  the prompt.
+- Output must be 1–3 plain sentences, at most 60 words. Every number must appear in the input
+  values. Decimal formatting such as `5.7` → `5.70` is accepted. Pace and ratio values are checked
+  together as complete tokens. Unverifiable number formats, spelled-out numerals, and language
+  such as “diagnose”, “disease”, “injury risk”, or “guaranteed” are rejected.
+- Ollama receives a JSON schema of permitted sentences, and Python independently checks the
+  response. Each sentence must match a permitted phrasing for its metric, number, unit, and
+  source. This prevents a valid number from being swapped into another measurement or
+  used for new advice, a prediction, or a medical claim. Repeated facts display once.
+  The text and its facts are escaped in HTML.
+- Valid and rejected results are cached locally by a hash of model, prompt rules and input facts.
+  Unavailable Ollama, a timeout or an unfinished response leaves the existing dashboard text
+  available and can be retried on a later complete sync.
+
 ## Implemented in v0.13.0 (Phase 13): exact rules
 | Metric | Rule | Result on your data |
 |---|---|---|
