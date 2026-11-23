@@ -88,3 +88,13 @@ dashboard directories use 0700. Existing paths retain owner-managed permissions.
 write uses a sibling temporary file followed by atomic replacement. iCloud write failure warns
 without discarding the local build. This is file-replacement integrity, not a transaction across
 all destinations. MCP provenance reads full-sync completion, not the latest successful endpoint.
+
+## Run evidence and source windows (v0.17.0)
+
+`run_evidence.matched_effort` uses the same FIT-derived `coaching.run_metrics` for MCP
+and the dashboard. The dashboard reuses a bounded in-memory read cache across its
+analyses. `readiness_benchmark` joins raw timestamped scores and prior-only match results.
+`conditions` stores user-supplied UTC windows under a separate `activity_details` kind,
+alongside existing Garmin weather. No SQLite migration or external client is needed.
+Only rendered readings and their source labels enter the dashboard. CSV inputs and raw
+FIT locations stay on the Mac. Any enabled snapshot publisher also includes that context.

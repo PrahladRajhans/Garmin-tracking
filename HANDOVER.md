@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.16.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.17.0, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -47,7 +47,7 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
 - Male, 29, 76.5 kg.
 - FR955, wrist heart rate only (no chest strap). Max HR not tested.
 - Asia/Kolkata time zone.
-- Right knee a little weak, so cadence advice is gentle (+5 %).
+- Right knee a little weak. Cadence is interpreted against the athlete’s own pace-matched history.
 - No goal race: general fitness, marathon some day.
 - Syncs the phone about twice a day, morning and night.
 - Wants plain language, no jargon on screen, and one consolidated plan (`ROADMAP.md`).
@@ -100,8 +100,11 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Race predictions | `loads.race_predictions` | Effective VO2max/VDOT, best-effort VDOT, Riegel 1.06, Garmin's, side by side | Daniels, Riegel | M § v0.5.0 |
 | Run metrics | `coaching.run_metrics` | Time-weighted speed/HR and equal moving-time efficiency halves, cadence ×2, vertical ratio, interpolated elapsed km splits | Friel, TrainingPeaks | M § v0.6.0 |
 | Running form bands | `running.GAUGES`, `running.rate` | Garmin 5-colour bands (cadence, ground contact, vertical oscillation, vertical ratio) | Garmin manual (`running_form_benchmarks.md`) | M § v0.12.0 |
-| Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed over earlier runs | Moore 2016 | M § v0.12.0 |
-| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 % with confounders; split CV > 8 %; usual-form claims need history | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
+| Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed, within the observed speed range | Moore 2016 | M § v0.12.0, v0.17.0 |
+| Matched effort | `run_evidence.matched_effort` | Moving HR minus the median of 3–8 earlier steady efforts of the same type, similar pace, duration and climb | Within-athlete descriptive comparison | M § v0.17.0 |
+| Readiness benchmark | `readiness_benchmark.benchmark` | Prior-timestamped Garmin score vs matched HR difference; Spearman on ≥20 days | Study design inspired by Gneta | M § v0.17.0 |
+| Workout conditions | `conditions.for_activity`, `conditions.for_samples` | Garmin snapshot plus separate UTC source windows, with units and AQI standard | Environmental feasibility note and endpoint evidence | M § v0.17.0 |
+| What to work on | `running.suggestions` | Cadence and ground contact versus own pace reference; efficiency change and pacing variability with context | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
 | Running effectiveness | `running.running_breakdown` | speed ÷ (W/kg) | Coggan / WKO (Palladino) | M § v0.12.0 |
 | Marathon shape | `health.marathon_shape` | Runalyze: weekly target V^1.135, long-run target 12·ln(V/4) | Runalyze source code | M § v0.12.0 |
 
@@ -115,7 +118,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Constant signals | `engine.relationship` | Returns unavailable with a reason instead of indexing an empty bootstrap result | No change to formulas or statistical thresholds | M § v0.13.1 |
 | Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; current-day Garmin bands or preceding 60-day ± 1 SD with minimum observations; no stale values | Fitbit "in your range" | M § v0.9.0, Personal-range freshness v0.14.1 |
 | Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, with paired dates, sample size, evidence rule and visible fit only for qualifying pairs | — | M § v0.13.0 |
-| Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
+| Test-run tracking | `running.test_runs` | Steady outdoor runs within ±10 % of their median distance, on at least three dates; efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
 | Recovery weighting study | `scores.weight_study` | Each signal and composite vs next-night ln-HRV z and vs Garmin readiness; change weights only if better on both by > 0.05 r | — | M § v0.13.0 |
 | Goal verdict | `goals.goal_check` | Median of prediction methods vs target | — | M § v0.6.0 |
 
@@ -135,7 +138,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 - **Design:** `DASHBOARD_PLAN.md` §6 is the page map, §7 the type scale, spacing, shapes, icons, line weights and colour, §8 hosting.
 - **Colour:** palette and rules from the dataviz skill. Categorical blue `#2a78d6` and orange `#eb6834` (dark: `#3987e5`, `#d95926`) passed its validator in both modes. Status colours are reserved for state and always shown with a word.
 - **How it works:**
-  - No JavaScript; pages switch with CSS `:target` (`body:has(.page:target) #today:not(:target)`).
+  - Pages switch with CSS `:target` (`body:has(.page:target) #today:not(:target)`).
   - Tooltips use SVG `<title>`.
   - Rebuilt after every sync (`sync.py`) and copied to iCloud Drive.
 - **Tests:** `tests/test_dashboard.py`.
@@ -208,8 +211,11 @@ exploratory. Historical coefficients below are dated observations.
 
 The request audit in `docs/PROGRESS_AUDIT.md` tracks completed UI work and remaining
 validation. Use ROADMAP for order. Start by verifying the signal comparisons against
-the Mac archive and testing the two optional run overlays on real runs. Environmental
-context remains a research item.
+the Mac archive and testing the two optional run overlays on real runs. v0.17.0 adds
+matched effort evidence, a retrospective Garmin readiness benchmark and an optional local
+weather/AQI window import. Automatic geolocation, station/model comparison and sleep
+exposure remain open. Use README to import or remove windows and METRICS to review the
+selection and timing rules.
 The next checks are the Mac archive, iPhone interaction, then private phone hosting. Code for the VO₂max bar,
 pacing and monthly drill-downs, and evidence-first Patterns is on the GitHub delivery track.
 The table below describes the rest of the work. ROADMAP owns ordering and status.
@@ -219,7 +225,7 @@ The table below describes the rest of the work. ROADMAP owns ordering and status
 | ✅ | Correlations explorer, test-run tracking, recovery weighting study | Done in v0.13.0 | See CHANGELOG 0.13.0 |
 | A (first) | **Activate private phone hosting** | `publish.py`, `MAC_SETUP.md` | Account/free-plan check, both Access apps, local token, anonymous denial, owner OTP, phone links, next scheduled upload all verified |
 | 1 | **Add more pairs to the explorer** if useful: e.g. alcohol/travel tags → HRV is already in `tag_impact`; respiration → HRV | `engine.PAIRS` | New pairs pass the same FDR rule |
-| 2 | **Test runs with more data**: add route matching (start/end GPS within 200 m) once the FIT session start position is parsed | `fit.py` (session `start_position_lat/long`), `running.test_runs` | Runs on the same route are grouped |
+| 2 | **Test runs with more data**: validate comparable efforts on the archive, then assess route matching | `run_evidence.py`, `fit_records`, `running.test_runs` | Check individual matches, coverage and GPS path similarity. Shared endpoints alone do not establish the same route. |
 | 3 | **Race readiness and taper** (8.12): once a goal race is set | `goals.py` + `health.marathon_shape` + fitness/form | Only when the user sets a race |
 | ✅ 4 | **VO2max range bar by age and sex** (10.8) | Body page, v0.14.0 | Exact FRIEND 2015 Table 3 values, full citation, separate estimates and caveats; live profile/data verification remains on Mac |
 | 5 | **Re-run the recovery weighting study** every ~3 months (`recovery_weight_study`) | `scores.weight_study` | Weights change only by its rule |
@@ -276,3 +282,12 @@ The screenshot and input checks are in `docs/UI_REVIEW.md`.
 
 The v0.15.1 environmental research is linked in ROADMAP. Source coverage and sleep exposure
 limits are open. No weather or air-quality collection change is enabled.
+
+### Review handoff for v0.17.0
+
+Follow the same run through `coaching.run_analysis`, `running.running_breakdown` and its
+dashboard comparison page. Check that future activities, markedly different sessions and
+missing ascent/heart rate are excluded. Check raw Garmin readiness's recorded time before
+the run and that AQI stops at the exclusive end of its imported interval. The synthetic
+regressions are in `tests/test_run_evidence.py`. For the live follow-up see
+[MAC_SETUP](MAC_SETUP.md#archive-timing-comparison) and [ROADMAP](ROADMAP.md).

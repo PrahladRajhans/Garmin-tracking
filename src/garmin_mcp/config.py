@@ -13,7 +13,8 @@ def data_dir() -> Path:
 
 
 def db_path() -> Path:
-    return Path(os.getenv("GARMIN_DB_PATH", str(data_dir() / "garmin.db"))).expanduser()
+    path = os.getenv("GARMIN_DB_PATH")
+    return Path(path).expanduser() if path else data_dir() / "garmin.db"
 
 
 def fit_dir() -> Path:

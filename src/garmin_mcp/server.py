@@ -182,11 +182,23 @@ def sense_checks(end: str | None = None) -> dict[str, Any]:
 def run_analysis(activity_id: int) -> dict[str, Any]:
     """Deep dive into one run: pacing and km splits, efficiency factor, aerobic decoupling, HR
     drift, running form (cadence, step length, ground contact, vertical oscillation/ratio,
-    power) compared with YOUR norm at the same pace, similar past runs, personal heat effect,
-    Garmin training effect, and facts for an activity recap."""
+    power) at a similar pace, moving heart rate versus comparable past runs, saved weather
+    and optional timed AQI, Garmin training effect, and recap facts."""
     from garmin_mcp import coaching
 
     return _with_db(lambda c: coaching.run_analysis(c, activity_id))
+
+
+@mcp.tool()
+def readiness_run_benchmark(end: str | None = None) -> dict[str, Any]:
+    """Test whether timestamped Garmin readiness lined up with heart rate on similar runs.
+    Returns the past year's paired days and descriptive rank correlation when enough exist."""
+    from functools import lru_cache
+
+    from garmin_mcp import coaching, readiness_benchmark
+
+    return _with_db(lambda c: readiness_benchmark.benchmark(
+        c, _end(c, end), read_metrics=lru_cache(maxsize=320)(coaching.run_metrics)))
 
 
 @mcp.tool()
@@ -496,7 +508,7 @@ def monthly_report(month: str | None = None) -> dict[str, Any]:
 def running_breakdown(activity_id: int | None = None) -> dict[str, Any]:
     """One run, coach-style: cadence, stride, ground contact, bounce and vertical ratio with
     Garmin's colour rating AND versus your own usual at the same pace; pacing, HR drift,
-    running effectiveness; and 1-3 specific things to work on. Default: latest run."""
+    running effectiveness, matched effort evidence and saved conditions. Default: latest run."""
     from garmin_mcp import athlete, running
 
     def run(c: sqlite3.Connection) -> dict[str, Any]:
@@ -534,8 +546,8 @@ def explore_relationships(days: int = 365, top: int = 8) -> dict[str, Any]:
 
 @mcp.tool()
 def test_runs() -> dict[str, Any]:
-    """Standardised test tracking: your comparable steady runs (same usual distance, or named
-    'test'/'calibration') and the trend in efficiency (speed per heartbeat)."""
+    """Steady outdoor runs near your median distance and the descriptive trend in
+    grade-adjusted speed per heartbeat, once at least three dates qualify."""
     from garmin_mcp import running
 
     return _with_db(running.test_runs)

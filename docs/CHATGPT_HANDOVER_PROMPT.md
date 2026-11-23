@@ -35,7 +35,7 @@ You are taking over an existing, working software project from another AI assist
 5. `METRICS.md`: every formula, grouped by version, plus the sense-check table, the HRmax policy and the open max-HR question.
 6. `DASHBOARD_PLAN.md`: platform decision, what we copied from which app, design rules, UI map (§6), design system (§7), hosting (§8).
 7. `CHANGELOG.md`: every change per version, including real-data findings.
-8. `README.md`: install, the table of all 43 MCP tools, sync, configuration.
+8. `README.md`: install, the table of all 44 MCP tools, sync, configuration.
 9. `research_notes/Garmin connector feature research/`: the research behind decisions.
    - Start with `FINDINGS.md`.
    - Then `running_form_benchmarks.md` (Garmin form bands, Runalyze Marathon-shape source, running effectiveness, cadence and knee studies).
@@ -56,7 +56,8 @@ You are taking over an existing, working software project from another AI assist
   - `garmin-mcp-import <zip>`: import the account export.
   - `garmin-mcp-verify`: checks.
   - `garmin-mcp-dashboard`: build the dashboard.
-- **Data flow:** sources (`sources/personal_api.py`, `sources/garminconnect_source.py`, `importer.py`) → raw tables (`raw_daily`, `raw_range`, `activities`, `fit_*`; stored verbatim) → `normalize.py` (tidy tables: `daily`, `sleep`, `hrv`, `health_status`, `readiness`, `training`, `race_predictions`, `fitness_age`, `fitness`; Personal API > unofficial > export, merged field by field) → analytics modules → `server.py` (43 tools) and `dashboard.py`.
+  - `garmin-mcp-conditions ACTIVITY_ID --csv PATH`: import optional local weather/AQI windows.
+- **Data flow:** sources (`sources/personal_api.py`, `sources/garminconnect_source.py`, `importer.py`) → raw tables (`raw_daily`, `raw_range`, `activities`, `fit_*`; stored verbatim) → `normalize.py` (tidy tables: `daily`, `sleep`, `hrv`, `health_status`, `readiness`, `training`, `race_predictions`, `fitness_age`, `fitness`; Personal API > unofficial > export, merged field by field) → analytics modules → `server.py` (44 tools) and `dashboard.py`.
 - **Analytics modules:**
 
   | Module | What it covers |
@@ -114,9 +115,11 @@ You are taking over an existing, working software project from another AI assist
 
 ## 5. Original continuation brief
 
-As of v0.14.3, Task A's publisher exists and awaits account/device activation. The primary-source
-VO₂max bar and dashboard design follow-ups are implemented. Read ROADMAP and HANDOVER for the
-current status and next work. The original brief below records the requirements.
+As of v0.17.0, the private publisher awaits account/device activation. The primary-source
+VO₂max bar, direct chart interaction, History and personal signal context are implemented.
+Run comparisons, the readiness benchmark and local weather/AQI context are documented in
+HANDOVER and METRICS. ROADMAP tracks the archive checks and remaining work. The original
+brief below records the requirements.
 
 ### Task A: host the dashboard so I can open it on my phone, privately
 - **The problem:** the file is built on my Mac at `~/.garmin-mcp/dashboard/index.html`. That's a hidden folder (press Cmd+Shift+. in Finder to see it). I want to open the dashboard from my phone, anywhere.

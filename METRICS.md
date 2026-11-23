@@ -344,3 +344,48 @@ FIT SDK gives step length in mm (÷ 1000 for m) and running cadence per foot (×
 steps/min). Overlay visibility and scaling do not establish correlation or causation.
 Hourly day pulse averages observed raw samples grouped by local hour in the configured
 time zone for the latest seven days.
+
+## Matched run evidence and outdoor conditions (v0.17.0)
+
+- **Moving heart rate on comparable runs.** Use the existing time-weighted FIT moving
+  heart rate (≥90% HR coverage). The target and candidates must be steady (≥20 recorded
+  moving minutes and speed variation under 15% across complete one-minute windows) and
+  moving samples must cover at least 80% of the FIT record span. Select the eight most
+  recent earlier runs at most, in the previous 180 days, of the same outdoor activity
+  type. Match pace within 15 s/km, moving time within ±20% of the target and Garmin
+  total ascent divided by Garmin distance within 5 m/km. A confirmed zero ascent is
+  valid. Missing ascent cannot establish a match. Use GMT start time when both runs
+  have it, otherwise local start times. Report the target minus the median in bpm and
+  the min–max of the earlier measurements when at least three qualify. The span is an
+  observed reference, with no clinical threshold. These are matching rules to validate
+  on the archive. Pace and ascent density do not identify the route, grade pattern,
+  effort, weather, surface or sensor accuracy.
+- **Pace and form.** A regression-based form reference stays within the observed speed
+  range for that metric and the matched-pace median needs three values per metric.
+  The cadence check uses a change from personal form at the observed pace (below −3%),
+  a display heuristic. Garmin colour gauges are shown as descriptive comparisons.
+- **Steady-run efficiency trend.** Restrict the existing Theil-Sen trend to steady
+  outdoor runs within 10% of their median distance and on at least three dates.
+  Workout names no longer bypass those checks. The output describes grade-adjusted speed
+  per heartbeat rather than a direct measure of fitness.
+- **Readiness benchmark.** In the last 365 days, use each day’s earliest valid Garmin
+  readiness record with a raw Garmin UTC timestamp. The snapshot must precede the
+  qualifying run’s GMT start. Join at most the first qualifying run per local date.
+  Outcome is its moving bpm minus the median of earlier matched efforts. Compute
+  Spearman rank correlation with tied ranks averaged after at least 20 paired days
+  and with both quantities varying. The minimum is a coverage gate. Repeated courses,
+  shared reference runs, season and training decisions can affect the result.
+  A negative value means higher recorded readiness tended to accompany lower HR at
+  comparable pace. This is retrospective and does not modify either readiness score.
+- **Conditions.** The unofficial Garmin activity-weather DTO supplies a saved
+  `temp` in °F, converted to °C as `(°F − 32) × 5/9`, and `relativeHumidity` in %.
+  `issueDate` is displayed only as an upstream reference string. Garmin wind units can
+  depend on account settings, so only unit-explicit local wind is displayed in m/s.
+  Source windows preserve supplied temperature in °C, relative humidity in %, wind
+  in m/s, precipitation in mm over its window and reported AQI with its named standard.
+  UTC-aligned windows cover FIT timestamps from start inclusive to end exclusive.
+  Gaps are blank. Zero is a valid reading. The observed interval belongs to the source,
+  so AQI may describe a rolling or daily measurement. Weather and AQI do not adjust HR,
+  efficiency or coaching. The earlier wrist-temperature heat slope was withdrawn.
+
+[Source methods, unit evidence and scope](research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md#implemented-in-v0170).

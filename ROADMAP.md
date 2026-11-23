@@ -62,6 +62,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.15.0 | Direct chart controls, visible findings, training/sleep context and theme switch | Implemented with phone and laptop browser checks |
 | 0.15.1 | Smaller chart cursor, smoother scrub and scroll, environmental feasibility note | Checked in browser, no environmental data collection |
 | 0.16.0 | Personal signal context, date drill-downs and two run overlay trials | Browser and synthetic data checks |
+| 0.17.0 | Matched effort evidence, readiness benchmark, saved weather and optional local timed conditions | Synthetic checks completed; archive, device and hosting checks pending |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -113,7 +114,8 @@ until the owner dataset is checked again.
 | 1 | Daily briefing, personal signals and History | Verify dated raw readings, resting pulse trend/range, overnight breathing and Pulse Ox, and coverage at each time scale |
 | 1a | Optional run overlay trial | Check cadence/step length and speed/HR on comparable real workouts. Seek feedback before broader rollout |
 | 2 | Verify daily guidance and run comparisons on the Mac archive | Compare with dated Garmin records and inspect missing nights, unusual runs and completed syncs |
-| 3 | Weekly coaching priorities and training response | Use comparable runs and later time periods to check whether a pattern repeats. Require coverage and holdout evidence before making predictive recommendations |
+| 3 | Weekly coaching priorities and training response | v0.17.0 ships matched efforts and a descriptive readiness benchmark. Validate coverage, repeat on later weeks and check weather/terrain before predictive use |
+| 3a | Finer workout detail across sports | Expand older activity traces and sport-specific comparisons after real-data review. Test route matching from full paths before claiming the same route |
 | 4 | Feedback from iPhone and laptop use | Check Files preview and Safari, adjust the most-used interactions, verify private phone delivery |
 
 [Request audit](docs/PROGRESS_AUDIT.md) and
@@ -122,12 +124,13 @@ record sources and checks. Competitor benchmarks guide which questions to answer
 and device-only measurements are separate evidence. Report matched coverage and the
 limits of wrist HR, HRV, and training comparisons before expanding coaching claims.
 
-### Later research: environmental context
+### Environmental context
 
 [Weather, air quality and sleep feasibility](research_notes/Garmin%20connector%20feature%20research/environmental_context_feasibility.md)
-records the sources, evidence gaps and trial criteria. Environmental collection and
-recommendations wait for owner agreement, local coverage checks and a matched validation
-study. Outdoor workout context is the first candidate. Indoor sleep exposure needs
+records sources and trial criteria. v0.17.0 shows existing Garmin snapshots and optional
+source windows supplied locally for outdoor runs. Next, corroborate local Indian station
+coverage and reporting windows using public stations, then assess opt-in coarse-location
+fetching and separately validate any training interpretation. Indoor sleep exposure needs
 its own input and validation.
 
 ### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
@@ -163,7 +166,7 @@ Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 | 5.2 | Running form trends (cadence, stride, GCT, vertical oscillation/ratio vs pace) | METRICS §Workout |
 | 5.3 | Activity recap: comparison with similar past sessions, pacing, HR drift, what it trained | Athlete Intelligence style |
 | 5.4 | Downsampled activity stream tool | R11 |
-| 5.5 | Heat effect on HR (weather/FIT temperature) | R29 |
+| 5.5 | Outdoor conditions shown separately. Retired the wrist-temperature HR slope in v0.17.0; estimates of a heat effect require verified exposure and a held-out study | R29 |
 | 5.6 | Metric glossary: meaning, healthy range, how to improve | goal: coaching |
 | 5.7 | Fitness age: Garmin's value + Garmin's own levers and potential ages. Our own norm-based estimate not built (formula unverified) → Phase 8 | goal: fitness age |
 | 5.8 | Running deep-dive: form at matched pace, cadence/stride strategy, GCT/VO/vertical ratio trends, power vs pace, HR drift; deeper swim/strength insights | your request; research in running_and_sport_metrics.md |

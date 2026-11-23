@@ -18,3 +18,17 @@ The open issue for coaching quality is evidence. Short-term associations can ori
 toward a useful check. Advice that predicts response or prescribes a change needs realistic
 coverage, comparable workouts and a held-out period. A product feature inventory alone cannot
 establish performance parity with Garmin, Whoop or Apple.
+
+## Follow-up implementation, v0.17.0
+
+| Request | Shipped | Next evidence |
+|---|---|---|
+| Learn from the websites and apply their methods | Prior-only matched-effort calculation, evidence drill-down and readiness benchmark. [Source-to-implementation ledger](../research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md#implemented-in-v0170) | Check which of the owner’s runs qualify and compare them with Garmin; repeat the benchmark on later weeks. |
+| Show weather and AQI at workout points | Garmin snapshot and optional timestamped observations/models in the run chart cursor, with AQI standard and source. Retired prior watch-temperature slope. | Validate local provider coverage and timestamps before an automatic outdoor fetch trial. Sleep conditions are a separate research question. |
+| Make insights concise and inspectable | One sentence per run comparison, median and observed span, dated record links, and expandable evidence on Training. | Use actual laptop, iPhone Safari and Files to check scrolling, contrast and navigation. Before publishing health data, verify private access on the account. |
+
+The owner’s original handover also called for the exact FRIEND VO₂max bar and a private
+phone path. The bar is on Body. The private publisher exists and requires the account
+and device checks in [MAC_SETUP](../MAC_SETUP.md#private-phone-access-optional).
+The original synthetic findings are historical. [ROADMAP](../ROADMAP.md) owns the order
+of outstanding work.

@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.16.0. The 43 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.17.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -69,7 +69,8 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `performance(days=90)` | Pace curve, critical speed, effective VO2max, race predictions (several methods + Garmin's) |
 | `weekly_review(end?)` | Last 7 days vs previous 4 weeks: volume, load, intensity, form, recovery |
 | `sense_checks(end?)` | Self-checks of our calculations against Garmin's values and physics |
-| `run_analysis(activity_id)` | Run deep dive: splits, efficiency, decoupling, HR drift, running form vs your norm at the same pace, similar runs, heat effect, recap facts |
+| `run_analysis(activity_id)` | Run deep dive: splits, heart-rate drift, form at a similar pace, matched effort evidence, outdoor conditions and recap facts |
+| `readiness_run_benchmark(end?)` | Past-year check of recorded Garmin readiness against heart rate on later comparable runs, with paired dates and coverage |
 | `running_form_trends(days=365)` | Monthly form and efficiency within your usual pace band |
 | `activity_stream(activity_id, every_s=10)` | Downsampled HR/pace/cadence/altitude/power series |
 | `sport_trends(sport='swim'\|'strength')` | Swim pace/SWOLF by stroke, or strength sessions/sets/reps |
@@ -85,7 +86,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `sleep_breakdown(day?)` | Garmin sleep score parts (stages, awakenings, restlessness, stress) with ratings and optimal ranges, plus the day-to-night heart-rate dip |
 | `long_term_health(day?)` | Pace of ageing, Marathon shape (Runalyze), lasting shifts in resting HR/HRV/sleep, sick/injured days |
 | `monthly_report(month?)` | Month vs previous month: sessions, hours, run km, sleep, resting HR, steps, HRV |
-| `running_breakdown(activity_id?)` | One run: form vs Garmin's colour bands and vs your usual at that pace, pacing, HR drift, running effectiveness, what to work on |
+| `running_breakdown(activity_id?)` | One run: form vs Garmin's colour bands and vs your usual at that pace, pacing, heart-rate drift, matched efforts, saved conditions and what to check |
 | `running_form_history(runs=60)` | Per-run form series with your cadence/stride-vs-speed lines |
 | `explore_relationships(days=365, top=8)` | Every tested pair ranked, with r, CI, notable flag and per-day points |
 | `test_runs()` | Comparable steady runs and the efficiency (speed per heartbeat) trend |
@@ -172,7 +173,30 @@ No age/sex is assumed when profile data are missing. See [the primary-table tran
 **History** opens day, week, month and year. Date links reveal the underlying recorded
 readings and workouts. **Recovery** shows usual ranges and seven-day changes for resting
 pulse and overnight metrics when enough readings exist. Open **Running → a recent run
-→ Run timeline** to try the optional heart-rate and step-length overlays.
+→ Run timeline** to try the optional heart-rate and step-length overlays. **Heart rate
+on similar runs** shows the earlier efforts behind your personal reference. The **Training**
+page can show whether Garmin readiness lined up with lower or higher heart rate on comparable
+runs in your records. See [the method and limits](METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
+
+### Local workout weather and AQI
+
+Saved Garmin activity weather appears as a snapshot when available. You can add dated source
+windows to an outdoor run with a local FIT timeline. Match each source record to the workout
+location locally and use the reporting interval from that source. Supply columns in a CSV:
+
+```csv
+start_utc,end_utc,source,kind,temperature_c,humidity_pct,wind_m_s,precipitation_mm,aqi,aqi_standard
+2026-11-20T01:30:00Z,2026-11-20T02:30:00Z,Example station,observation,24.1,67,1.2,0,105,IN-CPCB
+```
+
+Use `observation` or `model`. Leave unknown readings empty. For a reported AQI, record its
+standard as `IN-CPCB` or `US-EPA` and preserve the source’s reporting or averaging window.
+Use `garmin-mcp-conditions ACTIVITY_ID --csv PATH` to replace that run’s local windows or
+`garmin-mcp-conditions ACTIVITY_ID --clear` to remove them. Rebuild with
+`garmin-mcp-dashboard`. Charts show readings in the source window and leave gaps blank.
+Use `GARMIN_DB_PATH` for an explicit database location. The importer and dashboard
+do not contact an environmental provider. Enabled private
+hosting includes the same visible windows in its HTML snapshot.
 
 See [the progress audit](docs/PROGRESS_AUDIT.md) for validation and remaining work.
 

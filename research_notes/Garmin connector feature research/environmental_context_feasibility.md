@@ -50,3 +50,12 @@ no data collection, provider integration, release date or model change.
    outcomes such as HR at comparable pace and HR drift. Show sample size, uncertainty and
    missingness. A weather correction belongs in coaching only if it replicates and adds
    useful information beyond the existing matched-run baseline.
+
+## Implemented pilot
+
+v0.17.0 displays saved Garmin weather and optionally joins owner-supplied UTC source windows
+to a run. The window provenance distinguishes observations from models, India CPCB AQI from
+US EPA AQI, and a zero observation from missing coverage. No provider lookup runs from the
+app. The next research task is to verify local station availability, interval and elevation
+alignment, and agreement across independent products before introducing automatic fetching.
+The pilot does not change analytics scores or estimate a weather effect. See [method and units](../../METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
