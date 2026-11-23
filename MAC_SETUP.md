@@ -139,3 +139,13 @@ log and check which checkout and virtual environment launchd uses. If auto-updat
 because of local work or Git authentication, resolve that on the Mac while preserving local
 changes. Use the existing “Update code and environment” steps from the clean checkout, then
 verify the next scheduled run advances the complete-sync timestamp.
+
+### If the checkout is current but the dashboard looks old
+
+The footer reports four distinct facts: the latest Garmin date in the file, the last
+completed data sync, the HTML build time and its code version. As of v0.19.0, even a
+scheduled run that skips its Garmin fetch can rebuild missing, old or failed HTML.
+Compare the local file at `~/.garmin-mcp/dashboard/index.html` (or the configured
+data directory) with the iCloud copy you opened. Their build time and version should
+agree after a successful copy. A manually rebuilt file does not confirm the scheduled
+job’s config. Verify the launchd checkout and database path if they still differ.

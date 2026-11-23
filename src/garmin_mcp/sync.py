@@ -18,7 +18,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from garmin_mcp import db, fit
@@ -291,18 +290,42 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
                          (db.now_iso(),))
             conn.execute("DELETE FROM meta WHERE key='sync_retry_required'")
             conn.commit()
-        try:
-            from garmin_mcp import dashboard
-
-            out["dashboard"] = str(dashboard.build(conn))
-            from garmin_mcp.publish import publish_if_enabled
-
-            out["dashboard_publish"] = publish_if_enabled(Path(out["dashboard"]))
-        except Exception as exc:  # noqa: BLE001 - dashboard must never break a sync
-            out["dashboard_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        out.update(_rebuild_dashboard(conn))
     finally:
         conn.close()
     return out
+
+
+def _rebuild_dashboard(conn) -> dict[str, Any]:
+    """Retry local rendering independently of Garmin fetches."""
+    from garmin_mcp import dashboard
+    from garmin_mcp.publish import publish_if_enabled
+
+    conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('dashboard_rebuild_pending','1')")
+    conn.commit()
+    try:
+        path = dashboard.build(conn)
+    except Exception as exc:  # noqa: BLE001 - a render failure must leave the database usable
+        return {"dashboard_error": f"{type(exc).__name__}: {exc}"[:200]}
+    conn.execute("DELETE FROM meta WHERE key='dashboard_rebuild_pending'")
+    conn.commit()
+    try:
+        result = publish_if_enabled(path)
+    except Exception as exc:  # noqa: BLE001 - a publishing failure must preserve the local build
+        result = {"status": "failed", "error": f"{type(exc).__name__}: {exc}"[:200]}
+    return {"dashboard": str(path), "dashboard_publish": result}
+
+
+def _refresh_dashboard_if_needed() -> dict[str, Any]:
+    from garmin_mcp import dashboard
+
+    conn = db.connect(db_path())
+    try:
+        pending = conn.execute(
+            "SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
+        return _rebuild_dashboard(conn) if pending or dashboard.needs_rebuild() else {}
+    finally:
+        conn.close()
 
 
 def main() -> None:
@@ -333,6 +356,9 @@ def main() -> None:
         decision = gate()
         print(json.dumps({"gate": decision}))
         if not decision["sync"]:
+            result = _refresh_dashboard_if_needed()
+            if result:
+                print(json.dumps(result))
             return
     print(json.dumps(run_sync(args.days, args.since, args.source, args.delay), indent=2))
 

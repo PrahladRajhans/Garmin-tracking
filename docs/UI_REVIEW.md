@@ -165,3 +165,26 @@ and MCP smoke checks cover data, coverage, charts and the updated tool responses
 - MCP stdio advertised 44 tools. A populated fixture returned the same effort evidence
   through both run tools and returned 27 readiness pairs. Empty data returned
   insufficient coverage and still built a usable HTML file.
+
+## Today-first flow (v0.19.0)
+
+1. **Today.** The previous screen put three gauges, the training cue and a wide recovery
+   chart in the same overview. The new screen leads with a dated action, then readings
+   and the seven-day plan. The first-viewport check passed on the synthetic example.
+2. **Recovery and Trends.** A named link opens the relevant detail. The 14-day chart
+   starts closed and its SVG is capped at 168 pixels. The shorter navigation stays on
+   one row. History links also work in a script-disabled view.
+3. **Running.** The prior comparison only graphed percentage change from the workout
+   median. The new timeline labels pace and the optional heart-rate track in actual
+   units. Keyboard selection and the condition readout use the same elapsed point.
+
+The source audit used the current Garmin public app screenshots. The signed-in app
+was not accessible to the browser tools. No owner account data was copied. Chromium
+and WebKit exercised 228 synthetic viewport/theme/page states, including a small
+320 × 568 viewport, and checked missing-data and incomplete-sync handling. These
+checks do not establish native iPhone Files performance or ease of use on real data.
+See the [reference-to-build table](../research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md).
+
+Synthetic comparison screenshots: [Today on a phone](screenshots/today-flow/phone-today.png),
+[Today on a laptop](screenshots/today-flow/desktop-today.png) and
+[the aligned workout tracks in Dark](screenshots/today-flow/phone-run-comparison.png).

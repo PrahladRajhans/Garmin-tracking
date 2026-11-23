@@ -99,3 +99,12 @@ analyses. `readiness_benchmark` joins raw timestamped scores and prior-only matc
 alongside existing Garmin weather. No SQLite migration or external client is needed.
 Only rendered readings and their source labels enter the dashboard. CSV inputs and raw
 FIT locations stay on the Mac. Any enabled snapshot publisher also includes that context.
+
+## Dashboard refresh and daily coaching (v0.19.0)
+
+`daily_focus.py` turns the same recovery and recent sleep measurements into the linked
+focus returned by `daily_brief` and rendered on Today. The dashboard stays independent
+of a model or network query. Sync persists a local render-pending flag before building
+HTML. The Garmin fetch gate and HTML refresh are separate decisions. It compares the
+version/build stamp of local and available iCloud snapshots, and retries rendering
+without advancing the completed Garmin sync time.

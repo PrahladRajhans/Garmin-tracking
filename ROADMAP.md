@@ -64,6 +64,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.16.0 | Personal signal context, date drill-downs and two run overlay trials | Browser and synthetic data checks |
 | 0.17.0 | Matched effort evidence, readiness benchmark, saved weather and optional local timed conditions | Synthetic checks completed; archive, device and hosting checks pending |
 | 0.18.0 | Week-ahead coaching, calibration gate and lighter daily history | First action and underlying evidence verified on synthetic records; Mac scheduled rollout pending |
+| 0.19.0 | Today-first coaching, five navigation tabs, true-unit workout comparisons and HTML refresh repair | Browser and synthetic checks; Mac and real iPhone acceptance pending |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)

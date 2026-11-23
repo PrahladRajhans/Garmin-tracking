@@ -32,7 +32,9 @@ SCRIPT = r"""
   function markPage() {
     const id = location.hash.slice(1) || 'today';
     const section = id.startsWith('run-') ? 'running'
-      : id.startsWith('day-') || id.startsWith('month-') ? 'history' : id;
+      : id === 'recovery' ? 'today'
+      : id.startsWith('day-') || id.startsWith('month-') ||
+        ['body', 'patterns', 'history'].includes(id) ? 'trends' : id;
     for (const link of document.querySelectorAll('.top a')) {
       if (link.hash === '#' + section) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
@@ -129,8 +131,13 @@ SCRIPT = r"""
     }
 
     figure.dataset.ready = 'true';
+    const compactHeight = svg.viewBox.baseVal.height;
+    const primaryBottom = vertical.getAttribute('y2');
     if (overlayControl) overlayControl.addEventListener('click', () => {
       overlay = !overlay;
+      svg.viewBox.baseVal.height = overlay ? Number(overlayControl.dataset.openHeight) : compactHeight;
+      vertical.setAttribute('y2', overlay ? overlayControl.dataset.openBottom : primaryBottom);
+      overlayControl.textContent = (overlay ? 'Hide ' : 'Show ') + overlayControl.dataset.trackName;
       figure.classList.toggle('has-overlay', overlay);
       overlayControl.setAttribute('aria-pressed', String(overlay));
       const index = selected;

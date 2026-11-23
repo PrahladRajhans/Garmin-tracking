@@ -37,3 +37,21 @@ Synthetic tests cover future runs, unlike pace/duration/terrain, missing measure
 form evidence, exact HR differences, readiness recorded after a run, Fahrenheit conversion,
 window boundaries, blank periods, zeros, and both AQI standards. Live validation against the
 owner’s archive and measurement disagreement across providers remain in [ROADMAP](../../ROADMAP.md).
+
+## 24 November 2026 · Today flow and cross-domain references
+
+| Reference | Observed public pattern | Application here |
+|---|---|---|
+| [Garmin Connect](https://apps.apple.com/us/app/garmin-connect/id583446403) | Short Home summaries lead to a dated measurement and its details; Sleep factors follow the result. Garmin has its own [Coach plans](https://www.garmin.com/en-US/garmin-coach/overview/). | Compact readings on Today, expandable Recovery history and five navigation entries. |
+| [WHOOP](https://apps.apple.com/us/app/whoop/id933944389) | Today puts a short action near scores. Recovery names contributors and has a separate breakdown. | Place the action and its reason first, with the linked measurements behind them. |
+| [Google Health / Fitbit](https://apps.apple.com/us/app/google-health-fitbit/id462638897) and [readiness help](https://support.google.com/googlehealth/answer/14236710?hl=en) | Concise range deviations and a useful setup state while readings accumulate. | An unscored “Still learning” tile and personal comparisons. Keep local evidence rules. |
+| [Apple Health](https://apps.apple.com/us/app/apple-health/id1242545199) | Highlights describe change in minutes before showing the charts. | Put sleep change and its timeframe into a sentence, then link the evidence. |
+| [Apple Fitness+](https://www.apple.com/apple-fitness-plus/) | Plan preview is separate from starting a workout. | Show the next seven days separately from any action to send workouts to a device. |
+| [Stripe Dashboard](https://docs.stripe.com/dashboard/basics) and [balance report](https://docs.stripe.com/reports/balance) | Summary periods and underlying records are distinct. | Compact “Why this?” and direct evidence links for Today’s findings. |
+| [GitHub Actions run summary](https://github.com/actions/runner/actions/runs/45238787221) | Process status, trigger time and artifacts are separate. | Show the data date, completed sync, HTML build and version independently. |
+| [Apple Weather](https://apps.apple.com/us/app/weather/id1069513131) and [Transit](https://transitapp.com/) | Current conditions or the immediate trip decision comes first. Time windows and maps sit in detail. | Today, the next seven days and longer trends have named places. Weather stays on the workout. |
+
+Public screenshots and documentation establish presentation patterns. They do not test the
+signed-in workflows or watch delivery. Independent review reproduced the skipped HTML build,
+missing Garmin score failure, broken intraday History link and initially low weekly plan.
+The release fixes those issues and checks the smaller phone layout using synthetic records.
