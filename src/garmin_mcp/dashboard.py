@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from garmin_mcp import coaching, engine, health, insights, loads, recovery, running, scores
+from garmin_mcp import coaching, engine, health, insights, loads, norms, recovery, running, scores
 
 W = 340  # SVG viewBox width: phone-first, text stays ~11-16 px from phone to desktop
 
@@ -80,6 +80,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "runs": runs, "form": running.form_trends(conn, 40),
         "explore": engine.explore(conn, end, 365, 8),
         "tests": running.test_runs(conn),
+        "vo2_reference": norms.comparison(conn, end),
         "feed": engine.insight_feed(conn, end)["insights"],
     }
 
@@ -619,7 +620,55 @@ def page_body(d: dict[str, Any]) -> str:
             + _card("Pace of ageing", ag_html, "Trend in fitness age per calendar year")
             + _card(f"Month report · {mo['month']}", f'<ul class="rows">{mrows}</ul>',
                     wide=True))
+    if "vo2_reference" in d:
+        body += _card("VO₂max reference", vo2_reference(d["vo2_reference"]),
+                      "Garmin and our effective estimate, shown separately", wide=True)
     return _page("body", "Body & long term", "Slow signals that change over months.", body)
+
+
+def vo2_reference(r: dict[str, Any]) -> str:
+    facts = (_row("Garmin VO₂max", _f(r.get("garmin"), 1),
+                  f'Recorded {_e(r.get("garmin_as_of") or "date unavailable")}')
+             + _row("Effective VO₂max", _f(r.get("effective"), 1),
+                    f'{r.get("effective_runs", 0)} qualifying runs over 180 days'))
+    caveat = r.get("caveat", "")
+    if not r.get("hr_max_user_override"):
+        caveat += " Effective estimate depends on your untested max HR."
+    else:
+        caveat += f' Effective estimate uses your max-HR setting ({_f(r.get("hr_max"))} bpm).'
+    if not r.get("available"):
+        return (f'<ul class="rows">{facts}</ul><p class="empty">{_e(r.get("reason"))}</p>'
+                f'<p class="sub">{_e(caveat)}</p>')
+    v = r["values"]
+    markers = [(name, value, cls) for name, value, cls in (
+        ("Garmin", r.get("garmin"), "vo2-garmin"),
+        ("Effective", r.get("effective"), "vo2-effective")) if isinstance(value, (int, float))]
+    lo, hi = _scale(list(v.values()) + [x[1] for x in markers], 0.05)
+
+    def x(value):
+        return 20 + 300 * (value - lo) / (hi - lo)
+
+    marks = "".join(f'<circle cx="{x(value):.1f}" cy="{22 if cls == "vo2-garmin" else 46}" '
+                    f'r="5" class="{cls}"><title>{name}: {value:.1f} mL/kg/min</title></circle>'
+                    for name, value, cls in markers)
+    ticks = "".join(f'<text x="{x(v[p]):.1f}" y="72" class="tick" text-anchor="middle">'
+                    f'{p}th · {v[p]:.1f}</text>' for p in (5, 50, 95))
+    svg = (f'<svg class="chart" viewBox="0 0 340 82" role="img" aria-label="VO2max estimates '
+           f'and FRIEND reference in mL/kg/min"><title>FRIEND population reference</title>'
+           f'<line x1="{x(v[5]):.1f}" x2="{x(v[95]):.1f}" y1="34" y2="34" class="vo2-range"/>'
+           f'<line x1="{x(v[25]):.1f}" x2="{x(v[75]):.1f}" y1="34" y2="34" class="vo2-middle"/>'
+           f'{marks}{ticks}</svg>')
+    rows = "".join(f'<tr><th scope="row">{p}th</th><td>{value:.1f}</td></tr>'
+                   for p, value in v.items())
+    return (f'{svg}<p class="sub">Filled grey dot: Garmin · hollow blue dot: effective estimate. '
+            f'Line: 5th–95th; thick centre: 25th–75th reference percentiles. mL/kg/min.</p>'
+            f'<ul class="rows">{facts}</ul><p class="sub">{_e(caveat)}</p>'
+            f'<details><summary>Reference values and source</summary><p class="sub">'
+            f'{_e(r["sex"].title())}, age {_e(r["age_group"])}. {_e(r["cohort"])}</p>'
+            f'<table><caption>FRIEND 2015 reference in mL/kg/min</caption><thead><tr>'
+            f'<th scope="col">Percentile</th><th scope="col">VO₂max</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table><p><a href="{norms.SOURCE}" rel="noreferrer">'
+            f'Kaminsky et al. 2015, Table 3</a></p></details>')
 
 
 def _sure(r: dict[str, Any]) -> tuple[float, str]:
@@ -740,6 +789,9 @@ border-top:1px solid var(--grid)}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
 .hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.45}
 .fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
+.vo2-range{stroke:var(--axis);stroke-width:4}.vo2-middle{stroke:var(--s1);stroke-width:8}
+.vo2-garmin{fill:var(--muted);stroke:var(--surface);stroke-width:2}
+.vo2-effective{fill:var(--surface);stroke:var(--s1);stroke-width:2}
 .bar.s1{fill:var(--s1)}.bar.good{fill:var(--good)}.bar.warn{fill:var(--warn)}
 .bar.bad{fill:var(--bad)}.bar.muted{fill:var(--muted)}
 .gauge{position:relative;height:20px;margin:8px 0 6px}

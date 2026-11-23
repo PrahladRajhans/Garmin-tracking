@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.13.3: 43 tools, a script-free dashboard, safer sync/update recovery, corrected sleep/data-sufficiency handling, and optional private hosting (off by default).
+> **Status:** v0.14.0: 43 tools, a script-free dashboard with a cited VO₂max reference bar, safer sync/update recovery, corrected data-sufficiency handling, and optional private hosting (off by default).
 
 ## What this is, in one minute
 
@@ -161,6 +161,11 @@ Running (→ each run), Body, Patterns. No JavaScript, no internet needed.
   depend on the host. It does not update itself after a sync.
 
 Design and page map: [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md).
+
+The Body page compares Garmin VO₂max and the separate effective pace/HR estimate with the
+published FRIEND 2015 age/sex reference. It shows the exact table/source and explains that
+neither estimate is a laboratory measurement; the effective estimate depends on HRmax.
+No age/sex is assumed when profile data are missing. See [the primary-table transcription](research_notes/Garmin%20connector%20feature%20research/friend_2015_reference.md).
 
 ### Import your full history (one time)
 

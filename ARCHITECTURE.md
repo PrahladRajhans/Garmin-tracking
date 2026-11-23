@@ -60,6 +60,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 | `engine.py` | Insight engine: relationships with bootstrap CIs and FDR control, trends, patterns, feed |
 | `goals.py`, `workouts.py`, `athlete.py` | Goals, structured workouts to the watch, athlete settings and notes |
 | `dashboard.py` | Static multi-page dashboard (inline SVG, no JS) |
+| `norms.py` | Exact FRIEND 2015 age/sex reference lookup and comparison; no inferred profile or percentile interpolation |
 | `publish.py` | Opt-in Pages upload, Access checks, check-only CLI; no account configuration writes |
 | `server.py` | MCP server: every tool reads the local DB; only `refresh_data` calls Garmin |
 | `verify.py`, `autoupdate.py` | Checks; self-update |

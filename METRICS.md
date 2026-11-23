@@ -213,3 +213,36 @@ table before implementing this item. Existing Garmin and effective VO2max calcul
   measurement can influence it. Fitness-age slope is a trend in Garmin's score, not biological age.
 - See [accuracy review](research_notes/Garmin%20connector%20feature%20research/accuracy_review_2026-11.md)
   for source access, limitations and the further verification queue.
+
+
+## v0.14.0: VO₂max population reference
+
+Source: Kaminsky LA, Arena R, Myers J. *Mayo Clin Proc.* 2015;90(11):1515–1523.
+[doi:10.1016/j.mayocp.2015.07.026](https://doi.org/10.1016/j.mayocp.2015.07.026).
+[Primary Table 3](https://pmc.ncbi.nlm.nih.gov/articles/PMC4919021/#T3), exact measured FRIEND rows
+below, mL O₂/kg/min. Unused Cooper predicted rows are retained in the research CSV, not mixed in.
+
+| Sex | Age | 5th | 10th | 25th | 50th | 75th | 90th | 95th |
+|---|---|---|---|---|---|---|---|---|
+| male | 20–29 | 29.0 | 32.1 | 40.1 | 48.0 | 55.2 | 61.8 | 66.3 |
+| male | 30–39 | 27.2 | 30.2 | 35.9 | 42.4 | 49.2 | 56.5 | 59.8 |
+| male | 40–49 | 24.2 | 26.8 | 31.9 | 37.8 | 45.0 | 52.1 | 55.6 |
+| male | 50–59 | 20.9 | 22.8 | 27.1 | 32.6 | 39.7 | 45.6 | 50.7 |
+| male | 60–69 | 17.4 | 19.8 | 23.7 | 28.2 | 34.5 | 40.3 | 43.0 |
+| male | 70–79 | 16.3 | 17.1 | 20.4 | 24.4 | 30.4 | 36.6 | 39.7 |
+| female | 20–29 | 21.7 | 23.9 | 30.5 | 37.6 | 44.7 | 51.3 | 56.0 |
+| female | 30–39 | 19.0 | 20.9 | 25.3 | 30.2 | 36.1 | 41.4 | 45.8 |
+| female | 40–49 | 17.0 | 18.8 | 22.1 | 26.7 | 32.4 | 38.4 | 41.7 |
+| female | 50–59 | 16.0 | 17.3 | 19.9 | 23.4 | 27.6 | 32.0 | 35.9 |
+| female | 60–69 | 13.4 | 14.6 | 17.2 | 20.0 | 23.8 | 27.0 | 29.4 |
+| female | 70–79 | 13.1 | 13.6 | 15.6 | 18.3 | 20.8 | 23.1 | 24.1 |
+
+`norms.reference` selects the published age decade and recorded sex. No interpolation,
+extrapolation, default sex/age, exact personal percentile, or population-based fitness age.
+The Body page shows Garmin and effective estimates separately. Effective pace/HR VO₂max is
+not physiologically equivalent to measured CPX VO₂max, and depends on untested HRmax unless
+overridden. These are US cohort reference points, not personal targets or an Indian population norm.
+Source/limits and all 24 transcribed rows: [research note](research_notes/Garmin%20connector%20feature%20research/friend_2015_reference.md).
+
+The v0.13.1 note about blocked primary-table access is historical; access was restored and
+this table retrieved before implementation. No source values were reconstructed from memory.
