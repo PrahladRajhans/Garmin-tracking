@@ -127,3 +127,10 @@ Direct taps provide an alternative to dragging. SVG labels, selection status and
 navigation were checked during the flow. These are scoped checks, not an accessibility
 certification. [W3C dragging guidance](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html)
 · [MDN touch-action behavior](https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action)
+
+### Cursor and scroll polish (v0.15.1)
+
+The selected point and both guide lines have less visual weight. Chromium rechecked the
+200 layouts and actual mouse, keyboard and touch inputs. A vertical gesture started on a
+different bar scrolled the page while retaining the already selected reading. Horizontal
+scrubs continued to select exact points. Mouse updates are synchronized to animation frames.

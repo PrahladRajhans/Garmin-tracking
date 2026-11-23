@@ -60,6 +60,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.14.2 | Run pacing drill-down, timestamp-based timing, elapsed splits and Garmin timer evidence | Merged in PR #13 after both CI jobs passed |
 | 0.14.3 | Monthly coverage drill-down, pattern evidence, mobile navigation, archive comparison command | Implemented and checked with synthetic data |
 | 0.15.0 | Direct chart controls, visible findings, training/sleep context and theme switch | Implemented with phone and laptop browser checks |
+| 0.15.1 | Smaller chart cursor, smoother scrub and scroll, environmental feasibility note | Checked in browser, no environmental data collection |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -116,6 +117,14 @@ until the owner dataset is checked again.
 Competitor benchmarks guide which questions to answer. Proprietary recovery algorithms
 and device-only measurements are separate evidence. Report matched coverage and the
 limits of wrist HR, HRV, and training comparisons before expanding coaching claims.
+
+### Later research: environmental context
+
+[Weather, air quality and sleep feasibility](research_notes/Garmin%20connector%20feature%20research/environmental_context_feasibility.md)
+records the sources, evidence gaps and trial criteria. Environmental collection and
+recommendations wait for owner agreement, local coverage checks and a matched validation
+study. Outdoor workout context is the first candidate. Indoor sleep exposure needs
+its own input and validation.
 
 ### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
 | ID | Item | Backlog/source |

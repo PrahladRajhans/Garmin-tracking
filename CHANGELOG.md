@@ -16,6 +16,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.15.1] - 2026-11-23
+
+- Reduce the selected chart dot and crosshair weight. Coalesce mouse and touch updates
+  per animation frame. A vertical swipe keeps its native scroll and avoids flashing a
+  new value. Taps, keyboard selection and exact point readouts remain available.
+- Record feasibility research for outdoor workout weather, local air quality and sleep
+  exposure. Collection and analytic changes are deferred.
+
 ## [0.15.0] - 2026-11-23
 
 - Replace chart-value dropdowns with an interactive cursor. Hover, tap, drag or use arrow keys
