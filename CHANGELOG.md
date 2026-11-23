@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added (docs)
+- `docs/PRODUCT_REVIEW_2026-11.md`: owner-requested critical product review of v0.17.0, with a specification for an insight and recommendation engine, a weekly plan, a 5-tab redesign, cuts, and acceptance criteria. It is the brief for the next stage of work.
+
 ### Fixed
 - Dashboard build crashed on the Mac (`AttributeError: 'int' object has no attribute 'title'`), so no dashboard or iCloud copy was written. Garmin's live training-status feed sends a numeric code, while the export sends a word. `normalize._status_word` now stores the word (from the feedback phrase, e.g. `PRODUCTIVE_7` → `PRODUCTIVE`) and never the bare code. The Training page shows a dash for anything unreadable instead of crashing.
 
