@@ -268,6 +268,12 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
         from garmin_mcp.normalize import rebuild
 
         out["tidy_tables"] = rebuild(conn)
+        try:
+            from garmin_mcp import dashboard
+
+            out["dashboard"] = str(dashboard.build(conn))
+        except Exception as exc:  # noqa: BLE001 - dashboard must never break a sync
+            out["dashboard_error"] = f"{type(exc).__name__}: {exc}"[:200]
     finally:
         conn.close()
     return out

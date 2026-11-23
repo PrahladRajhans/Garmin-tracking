@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-23
+
+Phase 9: dashboard.
+
+### Added
+- `dashboard.py` + `garmin-mcp-dashboard` + tool `build_dashboard`: one static HTML file (data embedded, Chart.js 4.4.1 from cdnjs), mobile-friendly, light/dark. Rebuilt automatically after every sync.
+  - Panels: today (our readiness and Garmin's), vitals vs personal range, insight feed, HRV with normal band, fitness/fatigue/form with Garmin acute load, sleep, resting HR, race predictions, pace curve, recent runs with form metrics, week, 90-day trends, patterns, 26-week load calendar, swims, strength.
+  - Garmin values carry a "G" badge.
+  - Checked in a headless browser at 1200 px and 390 px: no script errors, no horizontal scroll.
+
+## [0.9.0] - 2026-11-23
+
+Phase 8: analytics and insight engine.
+
+### Added
+- `engine.py` + tools `insight_feed`, `relationships`, `trends_and_patterns`, `records_and_calendar`, `add_tag`, `tag_impact` (34 tools total):
+  - Level 1: calendar, personal-best timeline, streaks, Theil-Sen trends with confidence intervals.
+  - Level 2: baseline-adjusted relationships (14 pairs) with block-bootstrap CIs and Benjamini–Hochberg control; weekday patterns; personal ranges (Fitbit/Oura style); tag impact (Whoop style).
+  - Level 3: HRV-guided advice, load and long-run jump flags, form as % of fitness (intervals.icu).
+- Calibration: false-positive rate measured at 1.7 % on 60 no-effect datasets (target ≤ 5 %); a test now checks it.
+- On your data, four relationships pass the bar:
+  - Sleep → Garmin readiness (r = 0.50).
+  - Daytime stress → next-night HRV (r = −0.26).
+  - Bedtime → sleep duration (r = −0.25).
+  - Sleep → resting HR (r = −0.16).
+  - 90-day trends: HRV rising (+2.0 ms per 30 days), fitness rising.
+- Research: `fitbit_whoop_bevel.md` (Google Health/Fitbit, Whoop, Bevel, with Oura/Runalyze corrections). ROADMAP gains Phase 10 from it.
+
+### Fixed
+- Form % of fitness is suppressed below CTL 20. At CTL 7.8 a single run read as "−54 %, high fatigue", which is misleading.
+- Dashboard sleep chart excludes incomplete (< 3 h) records.
+
+### Notes
+- Settings saved this round (timezone, knee, goals) exist in the development database only; tell Claude Desktop once on the Mac (ROADMAP "Needs from you" #6).
+
 ### Changed
 - **HRmax policy:** max(repeatable activity peak, Tanaka 208 − 0.7·age), so a one-off optical spike can't set it. On your data:
   - The single 193 bpm treadmill peak (10 Dec 2025) rose 41 bpm in about 60 s at easy pace and dropped 25 bpm in 20 s at the same speed, so it is flagged as a probable spike.

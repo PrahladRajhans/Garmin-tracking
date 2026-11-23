@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.8.0: Phases 1–7 done (data, recovery, load & performance, running/swim/strength coaching, goals and memory, workouts to the watch). 27 tools. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.10.0: Phases 1–9 done, including the insight engine and the dashboard. 34 tools. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -54,6 +54,12 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `workout_templates()` | Easy, tempo, VO2 intervals and calibration-test specs from your HR thresholds |
 | `create_workout(spec, upload=False, schedule_date?)` | Validate and build a structured workout; optional upload and schedule to Garmin Connect (Mac) |
 | `garmin_workouts(action='list'\|'delete', workout_id?)` | Workouts saved in Garmin Connect (Mac) |
+| `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
+| `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
+| `trends_and_patterns(days=90)` | Robust trends, weekday patterns, streaks, personal ranges, form % |
+| `records_and_calendar(days=365)` | Personal-best timeline, longest sessions, per-day calendar data |
+| `add_tag(day, tag)` / `tag_impact()` | Tag days (alcohol, travel, illness...) and see next-day effects |
+| `build_dashboard()` | Rebuild the HTML dashboard (also rebuilt after every sync) |
 | `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
 | `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
 | `data_coverage()` | What is stored, date ranges, last sync and errors |
@@ -97,6 +103,11 @@ unofficial library. If either is unavailable it is reported and skipped; the oth
 Use `--source personal_api` for official-only.
 
 After this, the server reuses the saved tokens; your password is not stored.
+
+### Dashboard
+
+`garmin-mcp-dashboard` writes `~/.garmin-mcp/dashboard/index.html` (also rebuilt after every
+sync). Open it with `open ~/.garmin-mcp/dashboard/index.html`; it works on a phone too.
 
 ### Import your full history (one time)
 
@@ -203,6 +214,8 @@ src/garmin_mcp/
   athlete.py  # Phase 6: settings, goals, notes, placeholders
   goals.py    # Phase 6: goal reality check
   workouts.py # Phase 7: structured workouts, validation, upload
+  engine.py   # Phase 8: insight engine (levels 1-3, statistics)
+  dashboard.py# Phase 9: static HTML dashboard
   verify.py   # data-quality checks (garmin-mcp-verify)
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/

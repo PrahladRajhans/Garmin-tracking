@@ -118,6 +118,29 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Fitness age | Garmin's value and Garmin's own levers (target, potential age) |
 | Goal verdict (v0.7.0) | gap = median prediction vs target: ≤ 0 on track · ≤ 3 % within reach · ≤ 8 % ambitious · > 8 % very ambitious (heuristic bands); cautions for > 10 % method spread or volume below the usual range |
 
+## HRmax policy (updated 2026-11-23)
+HRmax = max(repeatable activity peak, Tanaka 208 − 0.7·age), unless you set `hr_max_override`.
+Repeatable peak = highest activity max HR that another activity matched within 3 bpm. On your data:
+- One treadmill peak of 193 (10 Dec 2025) rose 41 bpm in about 60 s at easy pace and fell 25 bpm in 20 s, so it is flagged as an optical spike.
+- Repeatable peak 177; Tanaka 188; so HRmax = 188.
+
+Calibrating from other sports:
+- HRmax already uses every activity.
+- LTHR comes from runs, because thresholds are sport-specific and run HR is typically higher than swim HR.
+- Wrist HR in water is unreliable, and strength sessions never reach sustained threshold.
+- Critical speed needs maximal run efforts, so swims and strength can't calibrate run pace thresholds.
+
+## Implemented in v0.9.0 (Phase 8): statistics
+| Item | Rule |
+|---|---|
+| Baseline adjustment | value − trailing 28-day mean (≥ 10 prior values) |
+| Relationship | Pearson r on adjusted values, ≥ 30 paired days, 95 % moving-block bootstrap CI (block 7 d, 1,000 resamples); BH q < 0.10 and abs(r) ≥ 0.15 = notable; measured false-positive rate 1.7 % |
+| Trend | Theil-Sen slope per 30 days, 95 % bootstrap CI; flat if CI includes 0 |
+| Personal range | Garmin health-status baseline bands; else 60-day mean ± 1 SD |
+| Form % | (CTL − ATL)/CTL × 100 (intervals.icu); suppressed when CTL < 20 |
+| Load flags | 7-day load > 1.3 × 4-week weekly mean; longest run > 1.3 × longest of prior 30 days |
+| Tag impact | next-day baseline-adjusted HRV, sleep score and resting HR, tagged vs untagged days (≥ 5 tagged) |
+
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.
 
