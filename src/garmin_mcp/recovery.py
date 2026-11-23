@@ -286,7 +286,7 @@ def suggestion(r: dict[str, Any]) -> dict[str, str]:
         return {"suggest": "not enough recovery data for a training suggestion",
                 "why": "Need at least three of four recovery signals; " + garmin_note}
     if state == "fresher than usual" and garmin_level in ("HIGH", "PRIME"):
-        return {"suggest": "good day for a key session (intervals, tempo or long run)",
-                "why": "both our readiness and Garmin's are high"}
+        return {"suggest": "follow your planned session if you feel well",
+                "why": "both readiness readings are high; keep the effort you planned"}
     return {"suggest": "planned training is fine",
             "why": summary}

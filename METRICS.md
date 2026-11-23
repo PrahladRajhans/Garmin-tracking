@@ -396,7 +396,7 @@ time zone for the latest seven days.
   to show our composite and colour or set a strain target. Components remain visible in
   MCP and Garmin’s score stays separate. The threshold is a product coverage policy, with
   no claim about its predictive accuracy. The historical agreement figures above predate
-  this gate. An illness pattern or Garmin Low/Poor can still suggest an easy day or rest.
+  this gate. High readings support the session already planned. An illness pattern or Garmin Low/Poor can still suggest an easy day or rest.
 - **Seven-day coaching start.** Use the four complete seven-day blocks preceding the
   requested date. Count distinct run days and the shorter recorded duration on multiple-run
   days. Exclude workouts under five minutes and tagged sick, injured or break days.

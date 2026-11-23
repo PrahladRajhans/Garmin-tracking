@@ -96,3 +96,10 @@ def test_recovery_score_and_strain_target_need_three_signals(conn):
     assert s["recovery"]["calibrating"] and s["recovery"]["pct"] is None
     assert s["recovery"]["band"] is None and s["strain"]["target_range"] is None
     assert "not enough recovery data" in recovery.suggestion(recovery.readiness(conn, day))["suggest"]
+
+
+
+def test_high_readiness_does_not_add_a_hard_session():
+    r = {"ours": {"state": "fresher than usual"}, "garmin": {"level": "HIGH"},
+         "illness_flag": {"raised": False}}
+    assert recovery.suggestion(r)["suggest"] == "follow your planned session if you feel well"
