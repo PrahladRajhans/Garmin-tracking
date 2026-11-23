@@ -78,7 +78,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Training suggestion | `recovery.suggestion` | Rule table; paused if the day is tagged sick/injured/break | — | M § v0.4.0, v0.12.0 |
 | Activity status | `health.status_days`, used in `recovery.load_series` | Tagged days are left out of baselines | Bevel | M § v0.12.0 |
 | Recovery % | `scores.daily_scores`, `scores.phi` | 100·Φ(readiness z); green ≥ 67, yellow 34–66, red ≤ 33 | Whoop bands | M § v0.11.0 |
-| Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need; < 3 h = incomplete | Whoop | M § v0.11.0 |
+| Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need (8 h planning fallback); < 3 h = incomplete | Whoop | M § v0.11.0 |
 | Sleep debt, bedtime | `recovery.sleep_status`, `scores.bedtime_suggestion` | Σ shortfall over 7 valid nights; bedtime = median wake − need − min(60, debt/7) | Garmin sleep coach / Whoop | M § v0.4.0, v0.11.0 |
 | Sleep breakdown | `health.sleep_breakdown` | Garmin `sleepScores` parts with ratings and optimal ranges | Garmin, Fitbit | M § v0.12.0 |
 | Heart-rate difference | `health.heart_rate_dip` | (recorded awake mean − sleep mean) ÷ awake mean; UTC, known sleep windows excluded; no health cutoff | Descriptive; prior BP-derived cutoff removed | M § v0.13.3 |
@@ -101,7 +101,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Run metrics | `coaching.run_metrics` | Efficiency factor, decoupling, HR drift, cadence ×2, vertical ratio, km splits | Friel, TrainingPeaks | M § v0.6.0 |
 | Running form bands | `running.GAUGES`, `running.rate` | Garmin 5-colour bands (cadence, ground contact, vertical oscillation, vertical ratio) | Garmin manual (`running_form_benchmarks.md`) | M § v0.12.0 |
 | Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed over earlier runs | Moore 2016 | M § v0.12.0 |
-| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 %; split CV > 8 % | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
+| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 % with confounders; split CV > 8 %; usual-form claims need history | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
 | Running effectiveness | `running.running_breakdown` | speed ÷ (W/kg) | Coggan / WKO (Palladino) | M § v0.12.0 |
 | Marathon shape | `health.marathon_shape` | Runalyze: weekly target V^1.135, long-run target 12·ln(V/4) | Runalyze source code | M § v0.12.0 |
 
@@ -113,7 +113,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
 | Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
 | Constant signals | `engine.relationship` | Returns unavailable with a reason instead of indexing an empty bootstrap result | No change to formulas or statistical thresholds | M § v0.13.1 |
-| Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; Garmin baseline bands or 60-day ± 1 SD | Fitbit "in your range" | M § v0.9.0 |
+| Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; current-day Garmin bands or preceding 60-day ± 1 SD with minimum observations; no stale values | Fitbit "in your range" | M § v0.9.0, Personal-range freshness v0.14.1 |
 | Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, plus per-day points; "how sure" from CI and FDR (`dashboard._sure`) | — | M § v0.13.0 |
 | Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
 | Recovery weighting study | `scores.weight_study` | Each signal and composite vs next-night ln-HRV z and vs Garmin readiness; change weights only if better on both by > 0.05 r | — | M § v0.13.0 |

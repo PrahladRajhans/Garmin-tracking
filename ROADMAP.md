@@ -207,10 +207,10 @@ Continuation order requested by the owner:
 | A: private phone access | Optional Cloudflare Pages publisher implemented in v0.13.1; disabled | Confirm current Access free plan, configure account and two Access apps, save token locally, verify owner OTP/anonymous denial and next scheduled update on Mac/phone |
 | B: age/sex VO2max bar | Implemented v0.14.0 from primary FRIEND 2015 Table 3 | 84 code values checked against direct transcription; live Mac profile/data check remains |
 | C: dashboard design | Review and small improvements implemented in v0.14.1; see `docs/UI_REVIEW.md` for screenshots and browser evidence | Check Safari/iCloud and private hosted phone navigation on real devices; collect owner feedback |
-| D: docs with every change | Updated for v0.13.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
+| D: docs with every change | Updated through v0.14.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
 
 The constant-signal explorer crash found while validating A is fixed without changing statistical
-thresholds. The empty-database dashboard failure remains recorded for later work. See
+thresholds. The empty-database dashboard failure is resolved in v0.14.1. See
 `docs/CONTINUATION_REVIEW.md` for findings and validation, not a second plan.
 
 ### Deployment track (runs alongside, needs you once)
