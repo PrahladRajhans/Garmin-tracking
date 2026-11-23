@@ -24,7 +24,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
   HRV status     VO2max, races     glossary       trends, feed   ageing, shape
       │          scores.py (Recovery %, Sleep %, Strain)   running.py (form)
       └──────────────┬──────────────────────────────────────┘
-          server.py (44 MCP tools)        dashboard.py (one HTML file, 7+ pages)
+          server.py (45 MCP tools)        dashboard.py (one HTML file, 7+ pages)
                  │                                │
           Claude Desktop / Code           Safari on Mac, iCloud Drive on phone
 ```

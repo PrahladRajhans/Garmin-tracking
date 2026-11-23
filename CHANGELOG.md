@@ -19,6 +19,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.20.0] - 2026-11-24
+
+- Compare moving heart rate and timed ambient temperature, humidity or AQI on similar
+  runs with adequate coverage from the same source. Keep Garmin’s saved snapshot and
+  model readings as workout context.
+- Allow local bedroom sensor imports for an actual sleep interval, with optional
+  morning energy check-ins. Show sleep and energy across the measured conditions when
+  enough comparable nights exist. No automatic location or weather request is made.
+- Mark the dashboard for refresh when conditions are imported or cleared.
+
 ## [0.19.0] - 2026-11-24
 
 - Lead Today with one action, compact readings, a seven-day plan and up to three linked

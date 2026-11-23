@@ -462,6 +462,15 @@ def daily_scores(day: str | None = None, history_days: int = 0) -> dict[str, Any
 
 # ----------------------------------------------------------------- Phase 12: health + running
 @mcp.tool()
+def bedroom_conditions(end: str | None = None) -> dict[str, Any]:
+    """Compare sleep and optional morning energy ratings with measured bedroom conditions.
+    Uses local observation files, a minimum coverage gate and recorded wake dates."""
+    from garmin_mcp import environment_review
+
+    return _with_db(lambda c: environment_review.bedroom(c, _end(c, end)))
+
+
+@mcp.tool()
 def sleep_breakdown(day: str | None = None) -> dict[str, Any]:
     """One night in detail: Garmin sleep score with each part's rating and optimal range
     (duration, deep/REM/light %, awakenings, restlessness, stress) plus the day-to-night

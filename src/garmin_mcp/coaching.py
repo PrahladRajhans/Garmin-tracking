@@ -26,7 +26,7 @@ from bisect import bisect_left
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from garmin_mcp import conditions, run_evidence
+from garmin_mcp import conditions, environment_review, run_evidence
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
@@ -293,6 +293,7 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
         "heat_model": {"available": False, "reason": "Watch temperature does not establish "
                        "outdoor heat exposure. Use separately sourced conditions."},
         "comparable_effort": effort,
+        "conditions_comparison": environment_review.comparable_runs(conn, effort),
         "conditions": conditions.for_activity(conn, aid),
         "facts_for_recap": facts,
         "cadence_experiment": cue,

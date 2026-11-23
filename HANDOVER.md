@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.19.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.20.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -316,3 +316,14 @@ strengthening its wording. Keep uploading workouts a separate approval. Then red
 the remaining file weight and measure Files/Safari load time. The 600 KB review target
 was not reached in this pass. Keep all active work in ROADMAP; audit logs record past
 decisions and do not define a second plan.
+
+### Environmental follow-up in v0.20.0
+
+Run detail can now compare measured temperature, humidity or AQI and moving heart
+rate on the same set of earlier similar runs. Sleep compares actual measured bedroom
+conditions with duration and optional morning self-reports. Use the local import
+commands in README, methods in METRICS, and the roadmap for remaining retrieval,
+location and replication work. Verify coverage on the Mac before interpreting the
+comparisons. The owner offered signed-in Garmin Connect for a read-only review;
+the current cloud tools could not attach to that tab. The source ledger records
+the public screens that were inspected and their limits.

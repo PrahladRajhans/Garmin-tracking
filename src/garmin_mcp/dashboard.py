@@ -10,6 +10,7 @@ Output: $GARMIN_DATA_DIR/dashboard/index.html (+ a copy in iCloud Drive/Garmin i
 from __future__ import annotations
 
 import html
+import json
 import math
 import os
 import sqlite3
@@ -28,6 +29,7 @@ from garmin_mcp import (
     conditions,
     dashboard_history,
     engine,
+    environment_review,
     health,
     insights,
     loads,
@@ -102,6 +104,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "brief": insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"]),
         "night": health.sleep_breakdown(conn, night) if night else None,
         "night_summary": night_summary,
+        "bedroom_conditions": environment_review.bedroom(conn, end),
         "sleep": conn.execute("SELECT day, sleep_s/3600.0, sleep_start FROM sleep WHERE day "
                               "BETWEEN ? AND ? AND sleep_s >= 3*3600 ORDER BY day",
                               (lo(30), end)).fetchall(),
@@ -212,16 +215,18 @@ def _tick_number(value: float, signed: bool = False) -> str:
     return f"{value:+,g}" if signed and value else f"{value:,g}"
 
 
-def _point(x: float, y: float, label: str, value: str, cls: str = "hit", extra: str = "") -> str:
+def _point(x: float, y: float, label: str, value: str, cls: str = "hit", extra: str = "",
+           *, condition_index: int | None = None) -> str:
     overlay = f' data-extra="{_e(extra)}"' if extra else ""
+    context = f' data-condition-index="{condition_index}"' if condition_index is not None else ""
     return (f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3.4" class="{cls}" data-point '
-            f'data-title="{_e(label)}" data-value="{_e(value)}"{overlay}>'
+            f'data-title="{_e(label)}" data-value="{_e(value)}"{overlay}{context}>'
             f'<title data-native>{_e(label)} · {_e(value)}</title></circle>')
 
 
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
            x_label: str, y_label: str, initial: str, controls: str = "",
-           *, readout_below: bool = False) -> str:
+           *, readout_below: bool = False, condition_labels: list[str] | None = None) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
@@ -229,7 +234,8 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
                '<circle r="3.3"/></g>')
     caption = (f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
                f'<span>{_e(initial)}</span></figcaption>')
-    return (f'<figure class="chart-interaction" data-chart="{kind}">'
+    lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
+    return (f'<figure class="chart-interaction" data-chart="{kind}"{lookup}>'
             f'{"" if readout_below else caption}{controls}<span class="sr-only" role="status"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
@@ -605,6 +611,32 @@ def page_today(d: dict[str, Any]) -> str:
     return _page("today", "Today", _date_label(day), body)
 
 
+def _bedroom_card(review: dict) -> str:
+    groups = []
+    for group in review["groups"][:3]:
+        rows = []
+        for band, title in (("lower", "Lower readings"), ("higher", "Higher readings")):
+            data = group[band]
+            energy = data["morning_energy"]
+            note = f'{len(data["nights"])} nights'
+            if energy is not None and all(group[k]["morning_energy"] is not None
+                                          for k in ("lower", "higher")):
+                note += f' · Morning energy {energy:g}/5 ({data["energy_samples"]} check-ins)'
+            rows.append(_row(title,
+                             f'{_f(data["conditions"], 1, " " + group["unit"])} · '
+                             f'{_sleep_time(data["sleep_h"])} asleep', note))
+        dates = "; ".join(f'{title}: {", ".join(row["date"] for row in group[band]["nights"])}'
+                          for band, title in (("lower", "Lower group"), ("higher", "Higher group")))
+        groups.append(f'<section><h4>{_e(group["label"])}</h4><ul class="rows">{"".join(rows)}</ul>'
+                      f'<details><summary>Which nights?</summary><p class="sub">'
+                      f'{_e(group["source"])} · {_e(dates)}</p></details></section>')
+    if not groups:
+        return ""
+    return _card("Room conditions and sleep", "".join(groups),
+                 "Typical sleep time on nights with different measured room conditions.",
+                 wide=True)
+
+
 def page_sleep(d: dict[str, Any]) -> str:
     n = d["night"] or {}
     parts = n.get("parts") or {}
@@ -663,6 +695,7 @@ def page_sleep(d: dict[str, Any]) -> str:
     debt = d["scores"]["sleep"].get("debt_7d_h")
     lede = (f"Seven-night sleep shortfall <b>{_f(debt, 1)} h</b>" if debt is not None else
             "Sleep shortfall needs more nights of data.")
+    body += _bedroom_card(d["bedroom_conditions"])
     return _page("sleep", "Sleep", lede, body)
 
 
@@ -941,7 +974,14 @@ def page_run(r: dict[str, Any]) -> str:
         body += _card("Heart rate on similar runs", note, _e(run_evidence.headline(comparison)),
                       wide=True, href=f'#run-{r["activity_id"]}-compare')
     if r["trace"].get("stream"):
-        body += _card("Run timeline", "", "Explore effort, form and elevation",
+        context = r["conditions"]
+        snapshot = context["garmin_snapshot"] or {}
+        temperature = snapshot.get("temperature_c")
+        description = ("Pace, form and elevation" if temperature is None else
+                       f'Garmin saved weather · {_f(temperature, 1, " °C")}')
+        if context["windows"]:
+            description = "Pace, form and time-stamped conditions"
+        body += _card("Run timeline", "", description,
                       href=f'#run-{r["activity_id"]}-trace', wide=True)
     return _page(f'run-{r["activity_id"]}', _run_label(r),
                  _date_label(r["date"]), body, back="#running")
@@ -980,8 +1020,27 @@ def page_run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
               f'{c["climb_window_m_per_km"]} m/km. Route and conditions can still differ.')
     body = (_card("Matched efforts", chart + f'<ul class="record-list">{"".join(rows)}</ul>',
                   _e(method), wide=True))
+    body += _run_conditions_comparison(r["conditions_comparison"])
     return _page(f"run-{aid}-compare", "Heart rate on similar runs",
                  _e(run_evidence.headline(c)), body, back=f"#run-{aid}")
+
+
+def _run_conditions_comparison(records: list[dict]) -> str:
+    if not records:
+        return ""
+    rows = []
+    for item in records:
+        current = item["recorded"]
+        unit = (" " + item["unit"]) if item["unit"] else ""
+        left = f'{_f(current["value"], 1, unit)} · {_f(current["hr_bpm"], 1)} bpm'
+        right = f'{_f(item["earlier_value"], 1, unit)} · {_f(item["earlier_hr_bpm"], 1)} bpm'
+        standard = conditions.AQI_STANDARDS.get(current["standard"], "")
+        label = item["label"] + (f" ({standard})" if standard else "")
+        note = f'Earlier median {right} across {len(item["earlier_runs"])} runs · {current["source"]}'
+        rows.append(_row(label, _e(left), note))
+    return _card("Conditions on similar runs", f'<ul class="rows">{"".join(rows)}</ul>',
+                 "This run and earlier efforts, with weather readings covering most of each run.",
+                 wide=True)
 
 
 def page_run_pacing(r: dict[str, Any]) -> str:
@@ -1097,13 +1156,16 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, secondary: tuple
 
     g, y_a = track(a, axis_a, top, bottom, afmt if faster_at_top else _tick_number,
                    "s1", faster_at_top)
+    context_labels: dict[str, int] = {}
     for i, (t, v) in enumerate(a):
         starts_segment = i == 0 or t - a[i - 1][0] > 2 * interval
         context = _condition_readout((context_by_second or {}).get(t))
-        value = " · ".join(item for item in (f"{alabel} {afmt(v)}", context) if item)
+        index = context_labels.setdefault(context, len(context_labels)) if context else None
+        reading = f"{alabel} {afmt(v)}" + ("/km" if faster_at_top else "")
         extra = f"{blabel} {bfmt(paired[t])}" if compare and t in paired else ""
-        g.append(_point(x(t), y_a(v), loads._hms(t), value,
-                        cls="context-dot" if starts_segment else "hit", extra=extra))
+        g.append(_point(x(t), y_a(v), loads._hms(t), reading,
+                        cls="context-dot" if starts_segment else "hit", extra=extra,
+                        condition_index=index))
     ticks_at = [start, (end + start) // 2, end]
     labels = [loads._hms(t) for t in ticks_at]
     g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W)
@@ -1119,7 +1181,8 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, secondary: tuple
                    f'data-track-name="{_e(blabel.lower())}" aria-pressed="false">'
                    f'Show {_e(blabel.lower())}</button>')
     return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
-                  "Tap or hover for readings", controls=control, readout_below=True)
+                  "Tap or hover for readings", controls=control, readout_below=True,
+                  condition_labels=list(context_labels))
 
 
 def page_run_trace(r: dict[str, Any]) -> str:
@@ -1139,8 +1202,7 @@ def page_run_trace(r: dict[str, Any]) -> str:
                          lambda v: _f(v, 2, " m")), interval)
     elevation = both(line_chart, [(loads._hms(pt["t_s"]), pt["altitude_m"]) for pt in stream],
                      " m", x_label="Elapsed time", y_label="Elevation (m)",
-                     elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream},
-                     details={loads._hms(t): _condition_readout(w) for t, w in near_sample.items()})
+                     elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream})
     drift = r["pacing"].get("hr_drift_bpm")
     cue = ("Show heart rate to compare it with pace at the same point in the run."
            if drift is None else

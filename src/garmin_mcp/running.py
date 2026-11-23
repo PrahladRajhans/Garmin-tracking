@@ -20,7 +20,7 @@ from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
-from garmin_mcp import conditions, run_evidence
+from garmin_mcp import conditions, environment_review, run_evidence
 
 # (metric, higher_is_better, [(upper bound exclusive or None, colour, label)]) low -> high
 GAUGES: dict[str, list[tuple[float | None, str, str]]] = {
@@ -124,6 +124,7 @@ def running_breakdown(
     sessions = json.loads(session[0]) if session and session[0] else []
     recorded = sessions[0] if len(sessions) == 1 else {}
     cue = knee_cadence_experiment(conn, start[1], m) if start else None
+    effort = run_evidence.matched_effort(conn, aid, m, read_metrics)
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,
@@ -137,7 +138,8 @@ def running_breakdown(
                        "decoupling_pct": m.get("decoupling_pct")},
             "work_on": suggestions(m, form, eff, cadence_experiment=cue),
             "cadence_experiment": cue,
-            "comparable_effort": run_evidence.matched_effort(conn, aid, m, read_metrics),
+            "comparable_effort": effort,
+            "conditions_comparison": environment_review.comparable_runs(conn, effort),
             "conditions": conditions.for_activity(conn, aid),
             "comparison_runs": len(hist)}
 

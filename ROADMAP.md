@@ -65,6 +65,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.17.0 | Matched effort evidence, readiness benchmark, saved weather and optional local timed conditions | Synthetic checks completed; archive, device and hosting checks pending |
 | 0.18.0 | Week-ahead coaching, calibration gate and lighter daily history | First action and underlying evidence verified on synthetic records; Mac scheduled rollout pending |
 | 0.19.0 | Today-first coaching, five navigation tabs, true-unit workout comparisons and HTML refresh repair | Browser and synthetic checks; Mac and real iPhone acceptance pending |
+| 0.20.0 | Measured workout and bedroom comparisons | Local coverage validation and automatic provider retrieval remain open |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -325,3 +326,20 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 ## Side-quest rule
 Research or fixes outside the current phase are done only when they feed an item above; each is
 logged in CHANGELOG under the item it serves, then work returns to the current phase.
+
+### Follow-up after the coach-first review
+
+1. Verify the scheduled Mac, local HTML and iCloud/private iPhone copies using their
+   separate version and sync timestamps. Run the five-second test on real data.
+2. Record which coaching cue was tried, how it felt and the next comparable effort.
+   Include real-data checks for bedtime windows, sleep findings and the weekly plan.
+3. Reduce remaining file size and confirm Safari/Files rendering on the actual phone.
+   Keep detailed tool evidence available even when an overview is shorter.
+4. Validate local station and logger coverage, then add opt-in local provider retrieval
+   and cross-source checking. Exercise, sleep and daytime energy use separate evidence.
+   Automatic retrieval for the broader weather project is still open.
+
+Use [the product review](docs/PRODUCT_REVIEW_2026-11.md) for the original critique and
+[the source ledger](research_notes/Garmin%20connector%20feature%20research/owner_reference_review_2026-11.md)
+for what changed because of the research. Keep decisions and active work in this roadmap;
+older audits, checks and screenshots document what was tested.
