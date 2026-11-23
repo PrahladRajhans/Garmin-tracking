@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from garmin_mcp import (
+    __version__,
     coaching,
     conditions,
     dashboard_history,
@@ -67,6 +68,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
                 "your history on the Mac to build your dashboard."}
     end = end or insights._latest_day(conn)
     e = date.fromisoformat(end)
+    zone = engine._tz(conn)
 
     def lo(n: int) -> str:
         return (e - timedelta(days=n - 1)).isoformat()
@@ -95,7 +97,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
             runs.append(b)
     return {
         "_conn": conn, "end": end, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
-        "older_snapshot": (datetime.now(engine._tz(conn)).date() - e).days > 1,
+        "older_snapshot": (datetime.now(zone).date() - e).days > 1,
         "history": scores.history(conn, end, 14),
         "brief": insights.daily_brief(conn, end),
         "ranges": engine.personal_ranges(conn, end)["metrics"],
@@ -120,7 +122,8 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "fitness_age": coaching.fitness_age(conn),
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
-        "calendar": dashboard_history.collect(conn, end, engine._tz(conn)),
+        "calendar": dashboard_history.collect(conn, end, zone),
+        "last_full_sync": _last_full_sync(conn, zone),
         "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
         "explore": engine.explore(conn, end, 365, 8),
         "tests": running.test_runs(conn, read_metrics=read_run),
@@ -130,6 +133,19 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "feed": engine.insight_feed(conn, end, include_relationships=False,
                                     signals=signals)["insights"],
     }
+
+
+def _last_full_sync(conn: sqlite3.Connection, zone) -> str | None:
+    row = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        timestamp = datetime.fromisoformat(row[0])
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None or timestamp > datetime.now(UTC):
+        return None
+    return timestamp.astimezone(zone).strftime("%-d %b %Y, %H:%M %Z")
 
 
 def _has(conn: sqlite3.Connection, t: str) -> bool:
@@ -527,9 +543,8 @@ def _row(label: str, value: str, note: str = "", state: str = "") -> str:
 _TREND_LABELS = {
     "hrv": ("Overnight HRV", "ms", "recovery"),
     "rhr": ("Resting heart rate", "bpm", "recovery"),
-    "sleep_h": ("Sleep duration", "h", "sleep"),
+    "sleep_h": ("Sleep duration", "min", "sleep"),
     "vo2max": ("Garmin VO₂max", "mL/kg/min", "body"),
-    "ctl": ("Training load trend", "load units", "training"),
     "steps": ("Daily steps", "steps", "training"),
 }
 
@@ -559,10 +574,10 @@ def _standouts(d: dict[str, Any]) -> str:
     for item in d["feed"]:
         if item["kind"] == "trend" and item["per_30_days"] and item["metric"] in _TREND_LABELS:
             name, unit, link = _TREND_LABELS[item["metric"]]
-            direction = "trending up" if item["direction"] == "rising" else "trending down"
-            rows.append(_insight(f"{name} is {direction}",
-                                 f'{item["per_30_days"]:+g} {unit} per 30 days · '
-                                 f'{item["points"]} readings in the last 90 days', link))
+            change = abs(item["per_30_days"]) * (60 if item["metric"] == "sleep_h" else 1)
+            direction = "rose" if item["direction"] == "rising" else "fell"
+            rows.append(_insight(f"{name} {direction} about {change:.2g} {unit} per month",
+                                 f'{item["points"]} readings over the last 90 days', link))
         elif item["kind"] == "hrv_guided":
             direction = "below" if "below" in item["title"] else "above"
             rows.append(_insight(f"Overnight HRV is {direction} your usual range",
@@ -625,9 +640,16 @@ def page_today(d: dict[str, Any]) -> str:
     garmin = (f'<span class="chip">Garmin readiness {_f(rec["garmin_readiness"])}'
               f'{_e(" · " + rec["garmin_level"].title()) if rec.get("garmin_level") else ""}</span>'
               if rec.get("garmin_readiness") is not None else "")
+    week_ahead = d["brief"]["week_ahead"]
+    week_card = _card("Next seven days", f'<p class="say">{_e(week_ahead["plan"])}</p>'
+                      f'<p class="sub">{_e(week_ahead["basis"])}</p>', wide=True)
+    if d.get("older_snapshot") or d.get("sync_retry_required"):
+        week_card = ""
     if d.get("older_snapshot"):
         today = (f'<p class="say">Sync for current training guidance.</p>'
                  f'<p class="sub">This snapshot uses your records through {_short(d["end"])}.</p>')
+    elif d.get("sync_retry_required"):
+        today = '<p class="say">Finish syncing for current training guidance.</p>'
     rows = []
     for k, (lab, unit, nd) in _VITAL_LABELS.items():
         m = d["ranges"].get(k)
@@ -647,6 +669,7 @@ def page_today(d: dict[str, Any]) -> str:
             + f'<section class="card hero"><div class="dials">{dials}</div>'
               f'<p class="hero-note">Recovery uses {rec.get("signals_used", 0)} of '
               f'{rec.get("signals_total", 4)} signals. Strain covers recorded workouts.</p></section>'
+            + week_card
             + _card("What stands out", _standouts(d)
                     + '<a class="source-link" href="#history">Open your history</a>')
             + _card("Your measurements", why, "Latest readings against your usual range")
@@ -818,8 +841,7 @@ def _status_label(st: Any) -> str:
 
 def _readiness_benchmark(b: dict, run_ids: set[int]) -> str:
     if not b["available"]:
-        return _card("Do readiness scores line up with your runs?",
-                     f'<p class="empty">{_e(b["reason"])}</p>', wide=True)
+        return ""
     rho = b["spearman_rho"]
     points = [(p["date"], p["readiness_score"], p["hr_vs_matches_bpm"]) for p in b["pairs"]]
     chart = both(scatter, points, "Garmin readiness", "Heart rate vs matched runs", None,
@@ -840,11 +862,11 @@ def _readiness_benchmark(b: dict, run_ids: set[int]) -> str:
 
 
 def page_training(d: dict[str, Any]) -> str:
-    fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " load units", nd=1,
-               y_label="Smoothed training load")
+    fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " points", nd=1,
+               y_label="Smoothed training load (points)")
     completed = [v for _, v in d["weekly_load"][-5:-1] if v is not None]
     four_week_avg = sum(completed) / 4 if len(completed) == 4 else None
-    wl = both(bar_chart, d["weekly_load"], " load units", y_label="Weekly training load",
+    wl = both(bar_chart, d["weekly_load"], " points", y_label="Weekly training load (points)",
               x_label="Week beginning", ref=four_week_avg)
     week_card = ""
     review = d["weekly_review"]
@@ -959,20 +981,24 @@ def page_run(r: dict[str, Any]) -> str:
              + _row("Power (wrist)", f'{_f(r.get("power_w"))}<small> W</small>')
              + _row("Running effectiveness", _f(r.get("running_effectiveness"), 2),
                     "speed per W/kg; compare only with yourself"))
-    comparison = r["comparable_effort"]
-    headline = _e(run_evidence.headline(comparison))
-    check = run_evidence.next_check(comparison)
-    count = f'<p class="sub">{_e(check)}</p>' if check else ""
-    href = f'#run-{r["activity_id"]}-compare' if comparison["matches"] else ""
-    body = (_card("Heart rate on similar runs", count, headline, wide=True, href=href)
-            + _card("What to work on", f'<ol class="work">{work}</ol>', "From this run's data",
-                  wide=True)
+    cue = r.get("cadence_experiment")
+    followup = ""
+    if cue:
+        followup = (f'<p class="sub">{_e(cue["check"])} '
+                    f'<a href="{_e(cue["source"])}" class="source-link">Cadence study</a></p>')
+    body = (_card("What to try next", f'<ol class="work">{work}</ol>' + followup, wide=True)
             + _card("Form", rows + '<p class="legend"><i class="mk"></i>this run <i class='
                     '"mk2"></i>your usual at this pace · colours = Garmin rating</p>',
                     "Garmin's colour bands, plus how this run compares with you", wide=True)
             + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
                     href=f'#run-{r["activity_id"]}-pacing')
             + _card("Numbers", f'<ul class="rows">{facts}</ul>'))
+    comparison = r["comparable_effort"]
+    if comparison["available"]:
+        check = run_evidence.next_check(comparison)
+        note = f'<p class="sub">{_e(check)}</p>' if check else ""
+        body += _card("Heart rate on similar runs", note, _e(run_evidence.headline(comparison)),
+                      wide=True, href=f'#run-{r["activity_id"]}-compare')
     if r["trace"].get("stream"):
         body += _card("Run timeline", "", "Explore effort, form and elevation",
                       href=f'#run-{r["activity_id"]}-trace', wide=True)
@@ -1204,7 +1230,9 @@ def _date_label(day: str) -> str:
 def _history_nav(d: dict[str, Any], current: str, *, day: str | None = None,
                  month: str | None = None) -> str:
     calendar = d["calendar"]
-    day = day or max(calendar["days"], default=None)
+    day = day or max(calendar["detail_days"], default=None)
+    if day and day < calendar["detail_start"]:
+        day = None
     month = month or calendar["current_month"]
     controls = (
         ("Day", f"#day-{day}" if day else None),
@@ -1238,10 +1266,16 @@ def _date_list(days: list[str], calendar: dict[str, Any]) -> str:
             notes.append(_f(daily["steps"]) + " steps")
         if (sleep.get("sleep_s") or 0) >= 10800:
             notes.append(_f(sleep["sleep_s"] / 3600, 1) + " h sleep")
+        if day < calendar["detail_start"]:
+            if daily.get("resting_hr") is not None:
+                notes.append(_f(daily["resting_hr"]) + " bpm resting")
+            if row.get("hrv") is not None:
+                notes.append(_f(row["hrv"], 1) + " ms HRV")
         if row.get("activities"):
             count = len(row["activities"])
             notes.append(f'{count} {"workout" if count == 1 else "workouts"}')
-        rows.append(_record_link(_date_label(day), " · ".join(notes), f"#day-{day}"))
+        href = f"#day-{day}" if day >= calendar["detail_start"] else None
+        rows.append(_record_link(_date_label(day), " · ".join(notes), href))
     return f'<ul class="record-list">{"".join(rows)}</ul>'
 
 
@@ -1269,9 +1303,13 @@ def page_history_month(d: dict[str, Any], month: str) -> str:
         seconds = c["days"].get(day, {}).get("sleep", {}).get("sleep_s") or 0
         sleep.append((day, seconds / 3600 if seconds >= 10800 else None))
     chart = both(bar_chart, sleep, " h", nd=1, x_label="Wake date", y_label="Sleep duration (h)")
+    recent = any(day >= c["detail_start"] for day in days)
+    days_label = "Daily readings" if not recent else "Open a recent day"
     body = (_history_nav(d, "Month", month=month, day=days[0] if days else None)
             + _card("Sleep by night", chart, wide=True)
-            + _card("Open a day", _date_list(days, c), wide=True))
+            + _card(days_label, _date_list(days, c),
+                    "Full day pages cover the last 30 days. Ask Claude for older daily detail.",
+                    wide=True))
     return _page(f"month-{month}", _month_label(month),
                  "Month to date" if month == c["current_month"] else "Recorded days",
                  body, back="#month-detail")
@@ -1404,25 +1442,34 @@ def page_patterns(d: dict[str, Any]) -> str:
     explore = d["explore"]
     cards = ""
     for p in explore["pairs"]:
+        if not p["notable"]:
+            continue
         x, y = lab.get(p["x"], p["x"]), lab.get(p["y"], p["y"])
         when = "same day" if p["lag_days"] == 0 else "next day"
-        trend = p.get("slope") if p["notable"] else None
-        status = "Pattern found" if p["notable"] else "No clear pattern"
-        plot = both(scatter, p["points"], x, y, trend, x_unit=engine.UNITS[p["x"]],
-                    y_unit=engine.UNITS[p["y"]], lag=p["lag_days"])
-        statement = p["statement"].partition(" (r =")[0] if p["notable"] else ""
-        comment = f'<p class="sub">{_e(statement)}.</p>' if statement else ""
-        body = (f'<p class="sub"><strong>{status}</strong> · {p["n"]} paired days</p>'
-                f'{comment}{plot}<p class="chart-note">Zero is your recent average. '
+        ux = "points" if p["x"] == "trimp" else engine.UNITS[p["x"]]
+        uy = "points" if p["y"] == "trimp" else engine.UNITS[p["y"]]
+        plot = both(scatter, p["points"], x, y, p.get("slope"),
+                    x_unit=ux, y_unit=uy, lag=p["lag_days"])
+        statement = p["statement"].partition(" (r =")[0]
+        statement = statement.replace("TRIMP more training load", "more training load points")
+        statement = statement.replace("TRIMP", "training load points")
+        body = (f'<p class="sub">{_e(statement)}.</p>{plot}'
+                f'<p class="chart-note">{p["n"]} paired days · Zero is your recent average.</p>'
+                f'<details><summary>How sure is this?</summary><p class="sub">'
                 f'Correlation {p["r"]:+.2f} · 95% range '
-                f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}.</p>')
+                f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}.'
+                ' This relationship alone cannot establish a cause.</p></details>')
         cards += _card(f"{x} & {y} ({when})", body, wide=True)
-    count = ("No clear patterns yet" if not explore["notable"] else
-             f'{explore["notable"]} patterns found')
-    lede = (f'{count} · {explore["eligible"]} comparisons had enough data. '
-            f'Values show differences from your recent averages.')
-    return _page("patterns", "Patterns", lede, cards or _card(
+    shown = sum(p["notable"] for p in explore["pairs"])
+    checked = explore["eligible"] - explore["notable"]
+    if checked:
+        cards += _card("Other comparisons",
+                       f'<p class="sub">{checked} had enough data but showed no clear pattern.</p>',
+                       wide=True)
+    count = "No clear patterns yet" if not shown else f"{shown} patterns shown"
+    return _page("patterns", "Patterns", count, cards or _card(
         "Patterns", '<p class="empty">Not enough data yet.</p>'))
+
 
 
 # =============================================================================== render
@@ -1541,7 +1588,7 @@ font-size:13px;line-height:1.35}
 .ln.s1{stroke:var(--s1)}.ln.s2{stroke:var(--s2)}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
 .context-dot{fill:var(--s1);r:1.7}
-.hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.8}
+.hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.8;r:4px}
 .fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
 .moving-average{fill:none;stroke:var(--s2);stroke-width:1.8;stroke-dasharray:5 3}
 .overlay-secondary{display:none}
@@ -1631,13 +1678,15 @@ def render(d: dict[str, Any]) -> str:
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
             pages.extend((page_run(r), page_run_pacing(r), page_run_trace(r)))
-            if r["comparable_effort"]["matches"]:
+            if r["comparable_effort"]["available"]:
                 pages.append(page_run_compare(r, run_ids))
         calendar = d["calendar"]
         pages.extend(page_history_month(d, month) for month in
                      sorted({calendar["current_month"], *calendar["by_month"]}))
-        pages.extend(page_history_day(d, day) for day in calendar["days"])
+        pages.extend(page_history_day(d, day) for day in calendar["detail_days"])
         freshness = f'Data through {_e(d["end"])} from your own Garmin records.'
+    sync = d.get("last_full_sync") or "none recorded"
+    status = f'Last complete sync {_e(sync)} · Code v{__version__}.'
     nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -1651,7 +1700,7 @@ def render(d: dict[str, Any]) -> str:
         '</div></header><p class="sr-only" id="chart-help">Use arrow keys to explore chart values. '
         'Home and End move to the first and last readings. Escape clears the selection.</p>'
         '<nav class="top" '
-        f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} '
+        f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status} '
         'Our scores are estimates; Garmin values shown in grey for comparison. Not '
         f'medical advice.</footer></main><script>{SCRIPT}</script></body></html>')
 

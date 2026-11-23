@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.17.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.18.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -62,7 +62,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `daily_summary(day?)` | Every stored metric for one day |
 | `activities(days=30, activity_type?, end?)` | Activities with a per-type summary |
 | `activity_detail(activity_id)` | Laps with pace, HR zones, weather, Garmin training effect, load (TRIMP/rTSS, zones), running form from FIT (cadence, ground contact, vertical oscillation, power), swim (pace/100 m, SWOLF by stroke) or strength (sets, reps, volume) |
-| `daily_brief(day?)` | Morning report: how recovered and why, a training suggestion with its reason, yesterday, week so far |
+| `daily_brief(day?)` | Morning report: how recovered and why, today’s suggestion and a conservative plan for the next seven days |
 | `readiness_today(day?)` | Our transparent readiness (HRV, resting HR, sleep, respiration vs your baselines, each shown) next to Garmin's; HRV normal band; sleep debt; illness/strain flag |
 | `recovery_trend(days=28)` | Day-by-day readiness, HRV vs normal band, sleep, Garmin readiness |
 | `training_load(days=42)` | Fitness/fatigue/form (CTL/ATL/TSB), ramp, monotony, strain, thresholds (ours + Garmin's) |
@@ -170,8 +170,11 @@ published FRIEND 2015 age/sex reference. It shows the exact table/source and exp
 neither estimate is a laboratory measurement; the effective estimate depends on HRmax.
 No age/sex is assumed when profile data are missing. See [the primary-table transcription](research_notes/Garmin%20connector%20feature%20research/friend_2015_reference.md).
 
-**History** opens day, week, month and year. Date links reveal the underlying recorded
-readings and workouts. **Recovery** shows usual ranges and seven-day changes for resting
+**Today** shows a starting plan for the next seven days, based on recent running and
+available recovery. Recovery stays in calibration until three signals are usable. The
+footer gives the last complete sync and the code version that built the file.
+**History** opens day, week, month and year. Full day pages cover the last 30 days.
+Older months retain day-by-day summaries. For older full detail use the daily MCP tools. **Recovery** shows usual ranges and seven-day changes for resting
 pulse and overnight metrics when enough readings exist. Open **Running → a recent run
 → Run timeline** to try the optional heart-rate and step-length overlays. **Heart rate
 on similar runs** shows the earlier efforts behind your personal reference. The **Training**

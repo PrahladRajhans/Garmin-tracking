@@ -200,3 +200,19 @@ In Run timeline, outdoor temperature and AQI are secondary information in the po
 readout, with units, source and standard. They add no axis and are present only for
 covered sample times. Outdoor conditions lists the Garmin snapshot and expandable
 source windows. The dashboard remains an offline file with the current bundled controls.
+
+## Coaching-first overview (v0.18.0)
+
+Today offers the next seven days, using recent run frequency and duration, recovery state
+and status tags. A stale snapshot or incomplete sync hides the plan. Recovery stays
+muted during calibration. Running starts with “What to try next” and offers the optional
+knee-aware trial when measured cadence and context qualify. Stats that need more history
+stay queryable in MCP. Patterns renders qualifying plots and summarizes other comparisons.
+The dashboard keeps 30 detailed day pages with prior days summarized in their month.
+The footer shows the time of the last completed sync and the build’s code version.
+
+A representative year-long synthetic dashboard dropped from 424 sections to 83 and
+from 3.07 MB to 2.02 MB. Chromium and WebKit checks exercised 190 page, width, theme
+and coverage combinations. A script-disabled browser could still open an older month
+and read its day summaries. Test the scheduled Mac output on a physical iPhone before
+drawing conclusions about Files preview speed or script support.

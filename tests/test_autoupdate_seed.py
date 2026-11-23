@@ -80,3 +80,30 @@ def test_sync_cli_stops_after_failed_update_install(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         sync.main()
     assert exc.value.code == 1
+
+
+def test_diverged_checkout_does_not_write_install_marker(tmp_path, monkeypatch):
+    import subprocess
+
+    from garmin_mcp import config
+
+    monkeypatch.setattr(autoupdate, "repo_dir", lambda: tmp_path)
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    monkeypatch.delenv("GARMIN_AUTO_UPDATED", raising=False)
+    monkeypatch.delenv("GARMIN_AUTO_UPDATE", raising=False)
+
+    def git(repo, *args):
+        if args == ("rev-parse", "HEAD"):
+            return "unmerged-local"
+        if args == ("rev-parse", "origin/main"):
+            return "upstream"
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            raise subprocess.CalledProcessError(1, args)
+        assert args[0] not in ("checkout", "merge")
+        return "topic" if "--abbrev-ref" in args else ""
+
+    monkeypatch.setattr(autoupdate, "_git", git)
+    result = autoupdate.update(reexec=False)
+    assert "commits outside origin/main" in result["skipped"]
+    assert not result["requires_repair"]
+    assert not list(tmp_path.glob("pending-install-*.json"))

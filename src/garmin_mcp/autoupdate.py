@@ -53,19 +53,24 @@ def update(reexec: bool = True) -> dict[str, Any]:
                     "requires_repair": marker.exists()}
         before = _git(repo, "rev-parse", "HEAD")
         _git(repo, "fetch", "--quiet", "origin", BRANCH)
-        target = _git(repo, "rev-parse", f"origin/{BRANCH}")
+        upstream = f"origin/{BRANCH}"
+        target = _git(repo, "rev-parse", upstream)
+        current = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        has_main = current != BRANCH and _has_branch(repo)
+        candidates = ("HEAD", BRANCH) if has_main else ("HEAD",)
+        for ref in candidates:
+            if not _is_ancestor(repo, ref, upstream):
+                return {"skipped": f"{ref} has commits outside {upstream}; left it in place",
+                        "requires_repair": marker.exists()}
         # Persist before changing files: even an interrupted update must retry installation.
         if before != target:
             marker.write_text(json.dumps({"repo": str(repo), "commit": target}), encoding="utf-8")
-        current = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
         if current != BRANCH:
-            # Earlier setups checked out a feature branch; move to main if it only fast-forwards.
-            _git(repo, "merge-base", "--is-ancestor", "HEAD", f"origin/{BRANCH}")
-            if _has_branch(repo):
+            if has_main:
                 _git(repo, "checkout", "--quiet", BRANCH)
             else:
-                _git(repo, "checkout", "--quiet", "-b", BRANCH, f"origin/{BRANCH}")
-        _git(repo, "merge", "--ff-only", "--quiet", f"origin/{BRANCH}")
+                _git(repo, "checkout", "--quiet", "-b", BRANCH, upstream)
+        _git(repo, "merge", "--ff-only", "--quiet", upstream)
         after = _git(repo, "rev-parse", "HEAD")
     except (subprocess.SubprocessError, OSError) as exc:
         return {"error": f"{type(exc).__name__}: {str(exc)[:200]}",
@@ -85,6 +90,16 @@ def update(reexec: bool = True) -> dict[str, Any]:
         os.environ["GARMIN_AUTO_UPDATED"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "garmin_mcp.sync", *sys.argv[1:]])
     return result
+
+
+def _is_ancestor(repo: Path, ref: str, upstream: str) -> bool:
+    try:
+        _git(repo, "merge-base", "--is-ancestor", ref, upstream)
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode == 1:
+            return False
+        raise
+    return True
 
 
 def _has_branch(repo: Path) -> bool:

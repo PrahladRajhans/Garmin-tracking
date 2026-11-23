@@ -17,7 +17,7 @@ import math
 import sqlite3
 import statistics
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from garmin_mcp import conditions, run_evidence
@@ -98,7 +98,7 @@ def running_breakdown(
     m = read_metrics(conn, aid)
     if not m:
         return {"available": False, "reason": "no second-by-second data for this run"}
-    start = conn.execute("SELECT start_time_local FROM activities WHERE activity_id=?",
+    start = conn.execute("SELECT start_time_local, type FROM activities WHERE activity_id=?",
                          (aid,)).fetchone()
     hist = _history(conn, start[0], read_metrics=read_metrics) if start and start[0] else []
     lines = personal_lines(hist)
@@ -123,6 +123,7 @@ def running_breakdown(
     session = conn.execute("SELECT payload FROM fit_sessions WHERE activity_id=?", (aid,)).fetchone()
     sessions = json.loads(session[0]) if session and session[0] else []
     recorded = sessions[0] if len(sessions) == 1 else {}
+    cue = knee_cadence_experiment(conn, start[1], m) if start else None
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,
@@ -134,16 +135,45 @@ def running_breakdown(
                        "garmin_elapsed_s": recorded.get("total_elapsed_time"),
                        "hr_drift_bpm": m.get("hr_drift_bpm"),
                        "decoupling_pct": m.get("decoupling_pct")},
-            "work_on": suggestions(m, form, eff),
+            "work_on": suggestions(m, form, eff, cadence_experiment=cue),
+            "cadence_experiment": cue,
             "comparable_effort": run_evidence.matched_effort(conn, aid, m, read_metrics),
             "conditions": conditions.for_activity(conn, aid),
             "comparison_runs": len(hist)}
 
 
-def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None) -> list[str]:
-    out = []
+def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics: dict
+                            ) -> dict[str, Any] | None:
+    """An optional change at the runner's own cadence for an easy, comfortable run."""
+    from garmin_mcp import athlete, engine, health, loads
+
+    measured = metrics.get("cadence_spm")
+    if (kind not in loads.RUN_TYPES or not metrics.get("steady") or not measured
+            or (metrics.get("cadence_coverage_pct") or 0) < 80):
+        return None
+    limits = str(athlete.get(conn, "injuries_or_limits") or "")
+    if "knee" not in limits.lower():
+        return None
+    today = datetime.now(engine._tz(conn)).date().isoformat()
+    if today in health.status_days(conn):
+        return None
+    target = round(measured * 1.05)
+    return {"recorded_steps_per_min": measured, "trial_steps_per_min": target,
+            "suggestion": f"If your knee feels comfortable on an easy run, try about {target} "
+                          "steps/min for 1 minute at the same easy pace. Use shorter steps, "
+                          "then return to your usual stride. Skip it if it feels worse.",
+            "check": "Note knee comfort after the run and the next morning.",
+            "basis": "Step-rate studies found lower per-step knee load at higher cadence "
+                     "without increasing speed. The trial is optional and does not establish "
+                     "a change in pain, injury risk or cumulative load.",
+            "source": "https://pubmed.ncbi.nlm.nih.gov/20581720/"}
+
+
+def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None, *,
+                cadence_experiment: dict[str, Any] | None = None) -> list[str]:
+    out = [cadence_experiment["suggestion"]] if cadence_experiment else []
     cad = form.get("cadence_spm") or {}
-    if cad.get("vs_usual_pct", 0) < -3:
+    if not cadence_experiment and cad.get("vs_usual_pct", 0) < -3:
         out.append("Cadence was below your usual at this pace. Check terrain and how your "
                    "stride felt on another easy run at the same pace.")
     gct = form.get("ground_contact_ms")
@@ -154,7 +184,8 @@ def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None) -> l
         out.append(f"Speed per heartbeat fell {m['decoupling_pct']:.1f}% in the second half. Compare "
                    "another steady run and check heat, hills, fuelling and sensor fit.")
     if m.get("split_cv_pct") and m["split_cv_pct"] > 8:
-        out.append("Pacing was uneven across kilometres: start slower and hold a steady effort.")
+        out.append("For your next steady run, start the first kilometre at an easy effort "
+                   "and aim to hold it on level ground.")
     if not out:
         if any("vs_usual_pct" in value for value in form.values()):
             out.append("No large changes in the form measures we could compare at this pace.")

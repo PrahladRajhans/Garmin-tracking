@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.17.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.18.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -73,11 +73,12 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | What | Code | Formula / rule | Source | Spec |
 |---|---|---|---|---|
 | HRV status | `recovery.hrv_status` | 7-day mean of ln RMSSD vs 60-day mean ± 0.5 SD | Plews/Buchheit-style smallest worthwhile change | M § v0.4.0 |
+| Seven-day plan | `training_plan.week` | Prior four weekly run volumes and current recovery/status guide an easy starting plan | Conservative planning heuristic | M § v0.18.0 |
 | Our readiness | `recovery.readiness` | Mean of signed z-scores clipped ±3: HRV +, sleep +, resting HR −, respiration − | Heuristic (documented) | M § v0.4.0 |
 | Illness flag | `recovery.illness_flag` | ≥ 2 of {HRV z < −1, RHR z > +1, resp z > +1} on 2 days | Heuristic | M § v0.4.0 |
 | Training suggestion | `recovery.suggestion` | Rule table; paused if the day is tagged sick/injured/break | — | M § v0.4.0, v0.12.0 |
 | Activity status | `health.status_days`, used in `recovery.load_series` | Tagged days are left out of baselines | Bevel | M § v0.12.0 |
-| Recovery % | `scores.daily_scores`, `scores.phi` | 100·Φ(readiness z); green ≥ 67, yellow 34–66, red ≤ 33 | Whoop bands | M § v0.11.0 |
+| Recovery % | `scores.daily_scores`, `scores.phi` | 100·Φ(readiness z) with ≥3 signals; green ≥ 67, yellow 34–66, red ≤ 33 | Whoop bands | M § v0.11.0 |
 | Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need (8 h planning fallback); < 3 h = incomplete | Whoop | M § v0.11.0 |
 | Sleep debt, bedtime | `recovery.sleep_status`, `scores.bedtime_suggestion` | Σ shortfall over 7 valid nights; bedtime = median wake − need − min(60, debt/7) | Garmin sleep coach / Whoop | M § v0.4.0, v0.11.0 |
 | Sleep breakdown | `health.sleep_breakdown` | Garmin `sleepScores` parts with ratings and optimal ranges | Garmin, Fitbit | M § v0.12.0 |
@@ -104,7 +105,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Matched effort | `run_evidence.matched_effort` | Moving HR minus the median of 3–8 earlier steady efforts of the same type, similar pace, duration and climb | Within-athlete descriptive comparison | M § v0.17.0 |
 | Readiness benchmark | `readiness_benchmark.benchmark` | Prior-timestamped Garmin score vs matched HR difference; Spearman on ≥20 days | Study design inspired by Gneta | M § v0.17.0 |
 | Workout conditions | `conditions.for_activity`, `conditions.for_samples` | Garmin snapshot plus separate UTC source windows, with units and AQI standard | Environmental feasibility note and endpoint evidence | M § v0.17.0 |
-| What to work on | `running.suggestions` | Cadence and ground contact versus own pace reference; efficiency change and pacing variability with context | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
+| What to work on | `running.suggestions` | Optional measured cadence trial with a knee note; personal form, pacing and effort comparisons | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
 | Running effectiveness | `running.running_breakdown` | speed ÷ (W/kg) | Coggan / WKO (Palladino) | M § v0.12.0 |
 | Marathon shape | `health.marathon_shape` | Runalyze: weekly target V^1.135, long-run target 12·ln(V/4) | Runalyze source code | M § v0.12.0 |
 
@@ -211,7 +212,12 @@ exploratory. Historical coefficients below are dated observations.
 
 The request audit in `docs/PROGRESS_AUDIT.md` tracks completed UI work and remaining
 validation. Use ROADMAP for order. Start by verifying the signal comparisons against
-the Mac archive and testing the two optional run overlays on real runs. v0.17.0 adds
+the scheduled Mac checkout and rebuild. A review reported that v0.17.0 built successfully
+on a copy of the real archive, while the scheduled Mac checkout had fallen behind.
+Confirm both the footer’s code version and an advancing complete-sync timestamp.
+v0.18.0 adds an easy weekly starting plan, a sourced cadence trial, a three-signal score
+gate and a lighter archive view. Detailed daily readings older than 30 days stay available
+through MCP. The next coaching step is to record a trial and compare the later experience. v0.17.0 adds
 matched effort evidence, a retrospective Garmin readiness benchmark and an optional local
 weather/AQI window import. Automatic geolocation, station/model comparison and sleep
 exposure remain open. Use README to import or remove windows and METRICS to review the

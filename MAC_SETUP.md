@@ -130,3 +130,12 @@ archive timing command above. If the iCloud folder is missing, the local assista
 run `open ~/.garmin-mcp/dashboard/index.html` and check whether iCloud Drive is enabled
 for the same macOS account running sync. For optional local weather/AQI import, follow
 the CSV requirements in README. No environmental account is needed.
+
+### Check the scheduled build version
+
+Open Today and check the footer’s code version and last complete sync. A dashboard can be
+old even when a manually rebuilt copy works. Compare the footer with the scheduled sync
+log and check which checkout and virtual environment launchd uses. If auto-update skipped
+because of local work or Git authentication, resolve that on the Mac while preserving local
+changes. Use the existing “Update code and environment” steps from the clean checkout, then
+verify the next scheduled run advances the complete-sync timestamp.

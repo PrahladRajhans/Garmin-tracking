@@ -117,3 +117,17 @@ The required shape works out as: 5K 7.2%, 10K 17.0%, HM 42.5%, M 99.8%. These ma
 2. Report each metric's residual at a reference pace, for example easy pace or 5:00/km. That shows drift in form independent of pace.
 3. Flag changes greater than the 2×SD of the residuals.
 4. Report GCT balance only when a strap is present.
+
+### Applied in v0.18.0
+
+The optional one-minute trial uses +5% of the athlete’s measured cadence at the same
+comfortable easy pace, with an explicit knee note and adequate cadence coverage.
+Heiderscheit et al. studied 45 recreational runners at constant speed and found lower
+knee energy absorption per step at +5% and +10%. Lenhart measured per-step joint forces.
+Willy provides an important limit: cumulative load per kilometre did not decline.
+The dashboard asks the runner to note comfort later that day and the next morning.
+The one-minute duration and 80% sample gate are product rules. The research does not
+establish how this trial affects the owner’s pain or injury risk.
+[Heiderscheit full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC3022995/) ·
+[Lenhart](https://pubmed.ncbi.nlm.nih.gov/23917470/) ·
+[Willy](https://pubmed.ncbi.nlm.nih.gov/26679058/)

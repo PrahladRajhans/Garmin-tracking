@@ -24,7 +24,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
   HRV status     VO2max, races     glossary       trends, feed   ageing, shape
       │          scores.py (Recovery %, Sleep %, Strain)   running.py (form)
       └──────────────┬──────────────────────────────────────┘
-          server.py (43 MCP tools)        dashboard.py (one HTML file, 7+ pages)
+          server.py (44 MCP tools)        dashboard.py (one HTML file, 7+ pages)
                  │                                │
           Claude Desktop / Code           Safari on Mac, iCloud Drive on phone
 ```
@@ -56,6 +56,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 | `coaching.py` | Per-run metrics, run analysis, form trends, glossary, fitness age levers |
 | `running.py` | Running breakdown: Garmin form bands, pace-matched form, what to work on |
 | `health.py` | Sleep breakdown, HR dip, activity status, pace of ageing, shifts, monthly report, Marathon shape |
+| `training_plan.py` | Seven-day starting plan shared by the daily MCP brief and Today |
 | `scores.py` | Recovery %, Sleep %, Strain 0–21, bedtime suggestion |
 | `engine.py` | Insight engine: relationships with bootstrap CIs and FDR control, trends, patterns, feed |
 | `goals.py`, `workouts.py`, `athlete.py` | Goals, structured workouts to the watch, athlete settings and notes |
