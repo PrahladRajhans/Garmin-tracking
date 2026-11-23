@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+- **HRmax policy:** max(repeatable activity peak, Tanaka 208 − 0.7·age), so a one-off optical spike can't set it. On your data:
+  - The single 193 bpm treadmill peak (10 Dec 2025) rose 41 bpm in about 60 s at easy pace and dropped 25 bpm in 20 s at the same speed, so it is flagged as a probable spike.
+  - Your repeatable peak is 177 bpm (7 runs); the Tanaka estimate for age 29 is 188.
+  - Result: HRmax 188 bpm. Garmin's own setting rose from 193 to 211 over time with no matching recorded HR, so it is an internal estimate.
+- "Today" follows a saved `timezone` athlete setting when `GARMIN_TZ` is not set.
+- Workout templates add cautions when `injuries_or_limits` mentions the knee.
+
 ## [0.8.0] - 2026-11-23
 
 Phase 7: workouts to the watch (ROADMAP 7.1).

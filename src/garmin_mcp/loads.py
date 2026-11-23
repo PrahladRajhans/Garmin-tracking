@@ -107,6 +107,15 @@ def _records(conn: sqlite3.Connection, activity_id: int) -> list[tuple]:
         "ORDER BY ts", (activity_id,)).fetchall()
 
 
+def _age(conn: sqlite3.Connection) -> float | None:
+    try:
+        row = conn.execute("SELECT chronological_age FROM fitness_age WHERE chronological_age IS "
+                           "NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return row[0] if row else None
+
+
 def _sex(conn: sqlite3.Connection) -> tuple[str, str]:
     row = conn.execute("SELECT gender FROM fit_profile WHERE gender IN ('male','female') "
                        "ORDER BY activity_id DESC LIMIT 1").fetchone()
@@ -169,7 +178,18 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         if v and (best20 is None or v > best20):
             best20 = v
 
-    hrmax = observed_max
+    # Robust observed peak: the highest value reached in at least two activities (within 3 bpm),
+    # so a single optical spike cannot set HRmax. Then never below the Tanaka age estimate
+    # (208 - 0.7 * age; Tanaka et al. 2001, SD ~10 bpm), because training runs are submaximal.
+    peaks = sorted((r[0] for r in conn.execute(
+        "SELECT max_hr FROM activities WHERE max_hr IS NOT NULL AND "
+        "substr(start_time_local,1,10) <= ?", (asof,))), reverse=True)
+    robust = next((p for i, p in enumerate(peaks) if any(abs(p - q) <= 3 for q in peaks[i + 1:])),
+                  None)
+    age = _age(conn)
+    tanaka = round(208 - 0.7 * age) if age else None
+    candidates = [v for v in (robust, tanaka) if v]
+    hrmax = max(candidates) if candidates else observed_max
     lthr = round(best20) if best20 else (garmin_lthr[0] if garmin_lthr else None)
     notes = []
     from garmin_mcp import athlete
@@ -180,11 +200,15 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
     if (v := athlete.get(conn, "lthr_override")) is not None:
         lthr, overrides["lthr"] = float(v), "your setting"
     tp = athlete.get(conn, "threshold_pace_override")
+    if observed_max and robust and observed_max - robust >= 8:
+        notes.append(f"Single-activity peak of {observed_max:.0f} bpm was never repeated (next "
+                     f"repeatable peak {robust:.0f}); treated as a probable optical spike.")
     if garmin_max and observed_max and garmin_max[0] - observed_max >= 8 and \
             "hr_max" not in overrides:
         notes.append(f"Garmin's max-HR setting ({garmin_max[0]:.0f}) is {garmin_max[0] - observed_max:.0f}"
                      f" bpm above the highest HR recorded in the last year ({observed_max:.0f}); "
-                     "using the observed value. Override if you have tested a higher max.")
+                     f"using {hrmax:.0f} (repeatable peak vs age estimate). Override if you have "
+                     "tested a higher max.")
     if garmin_lthr and best20 and abs(garmin_lthr[0] - best20) >= 5:
         notes.append(f"Garmin's lactate-threshold HR ({garmin_lthr[0]:.0f}) differs from your best "
                      f"sustained 20-min HR on a run ({best20:.0f}); using the 20-min value "
@@ -194,9 +218,11 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         "hr_max": hrmax, "hr_rest": round(rest, 1) if rest else None, "lthr": lthr,
         "garmin": {"hr_max_setting": garmin_max[0] if garmin_max else None,
                    "lthr": garmin_lthr[0] if garmin_lthr else None},
-        "observed_hr_max": observed_max, "overrides": overrides,
+        "observed_hr_max": observed_max, "repeatable_peak": robust, "tanaka_estimate": tanaka,
+        "age": age, "overrides": overrides,
         "threshold_speed_override": athlete.pace_to_speed(tp) if tp else None,
-        "sources": {"hr_max": "highest activity max HR, last 365 days",
+        "sources": {"hr_max": "max(repeatable activity peak, Tanaka 208-0.7*age); your override "
+                              "wins",
                     "hr_rest": "median daily resting HR, last 60 days",
                     "lthr": "best 20-min rolling HR on a run >= 25 min, last 365 days"},
         "notes": notes,

@@ -149,11 +149,21 @@ def templates(conn: sqlite3.Connection) -> dict[str, Any]:
     lthr = th.get("lthr")
     if not lthr:
         return {"error": "no LTHR estimate yet"}
+    from garmin_mcp import athlete
+
+    limits = str(athlete.get(conn, "injuries_or_limits") or "")
+    cautions = []
+    if "knee" in limits.lower():
+        cautions = [("Knee: prefer flat routes and soft surfaces; avoid steep downhills and jumps; "
+                    "raise weekly volume gradually; stop if pain changes your stride."),
+                    ("Strength work that supports knees: glute bridges, step-ups, split squats, "
+                    "calf raises (pain-free range).")]
     easy_hi = round(0.85 * lthr)
     tempo = f"{round(0.95 * lthr)}-{round(lthr)}"
     return {
         "basis": {"lthr": lthr, "hr_max": th.get("hr_max"),
                   "note": "HR targets from your LTHR estimate; set lthr_override for accuracy"},
+        "cautions": cautions,
         "easy_run": {"name": "Easy 40", "steps": [
             {"type": "warmup", "duration": "5:00"},
             {"type": "interval", "duration": "30:00", "hr": f"{round(0.75 * lthr)}-{easy_hi}",
