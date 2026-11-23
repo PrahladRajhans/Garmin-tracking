@@ -194,7 +194,8 @@ standard as `IN-CPCB` or `US-EPA` and preserve the source’s reporting or avera
 Use `garmin-mcp-conditions ACTIVITY_ID --csv PATH` to replace that run’s local windows or
 `garmin-mcp-conditions ACTIVITY_ID --clear` to remove them. Rebuild with
 `garmin-mcp-dashboard`. Charts show readings in the source window and leave gaps blank.
-The importer and dashboard do not contact an environmental provider. Enabled private
+Use `GARMIN_DB_PATH` for an explicit database location. The importer and dashboard
+do not contact an environmental provider. Enabled private
 hosting includes the same visible windows in its HTML snapshot.
 
 See [the progress audit](docs/PROGRESS_AUDIT.md) for validation and remaining work.

@@ -146,3 +146,14 @@ def test_efficiency_trend_needs_distinct_days_and_ignores_test_name(conn):
         seed(conn, 5 + i, CLOCK + timedelta(days=2 + i))
     result = running.test_runs(conn)
     assert result["available"] and result["ef_change_per_90d_pct"] == 0
+
+
+def test_explicit_database_path_does_not_create_default_directory(tmp_path, monkeypatch):
+    from garmin_mcp.config import db_path
+
+    explicit = tmp_path / "explicit.db"
+    default_dir = tmp_path / "data"
+    monkeypatch.setenv("GARMIN_DB_PATH", str(explicit))
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(default_dir))
+    assert db_path() == explicit
+    assert not default_dir.exists()

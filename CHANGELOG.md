@@ -30,7 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   extrapolation and target-run comparisons against later same-day runs, and require three
   recorded values for each pace-matched form reference. Replace universal cadence and
   bounce prescriptions with measured personal comparisons. Require comparable runs on
-  three dates for the descriptive steady-run trend.
+  three dates for the descriptive steady-run trend. Honor an explicit database path
+  without trying to create the default data directory.
 
 ## [0.16.0] - 2026-11-23
 

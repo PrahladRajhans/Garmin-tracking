@@ -7,6 +7,7 @@ import csv
 import json
 import math
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
@@ -166,9 +167,8 @@ def main() -> None:
     options.add_argument("--clear", action="store_true")
     args = parser.parse_args()
     load_dotenv()
-    conn = db.connect(db_path())
     try:
-        with conn:
+        with closing(db.connect(db_path())) as conn, conn:
             if args.clear:
                 cursor = conn.execute("DELETE FROM activity_details WHERE activity_id=? AND kind=?",
                                       (args.activity_id, DETAIL_KIND))
@@ -176,7 +176,5 @@ def main() -> None:
             else:
                 count = import_windows(conn, args.activity_id, args.csv)
                 print(f"Saved {count} observation window(s). Rebuild the dashboard to view them.")
-    except (OSError, ValueError, csv.Error) as error:
+    except (OSError, ValueError, csv.Error, sqlite3.Error) as error:
         parser.exit(2, f"{error}\n")
-    finally:
-        conn.close()
