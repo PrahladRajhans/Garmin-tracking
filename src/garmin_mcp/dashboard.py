@@ -306,7 +306,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                averages: dict[str, float] | None = None, break_gaps: bool = False,
                elapsed: dict[str, float] | None = None, *, connect_points: bool = True,
                reference: float | None = None, band_label: str = "Your usual range",
-               rate_range: bool = False,
+               rate_range: bool = False, zone_metric: str | None = None,
                details: dict[str, str] | None = None) -> str:
     """Date spacing reflects elapsed days. Missing observations stay out of the cursor."""
     bounds = band_series if band_series and len(band_series) == len(points) else [band] * len(points)
@@ -386,6 +386,9 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                 colour, status = "green", "within usual range"
             marker = f"zone-dot zone-{colour}"
             display += f" · {status}"
+        if zone_metric and (zone := _trace_rating(zone_metric, value, ())):
+            marker = f"zone-dot zone-{zone[0]}"
+            display += f" · {zone[1]}"
         g.append(_point(x(i), y(value), label, display, marker))
     g += _x_ticks(labels, x, bottom, w > W)
     return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label,
@@ -1059,16 +1062,16 @@ def page_running(d: dict[str, Any]) -> str:
                   f'per week and long runs of {ms["long_run_target_km"]:.0f} km.</p>')
     fs = d["form"]["series"]
     cad = both(line_chart, [(s["date"], s["cadence_spm"]) for s in fs], " spm",
-               y_label="Cadence (steps/min)")
+               y_label="Cadence (steps/min)", zone_metric="cadence_spm")
     body = (f'<nav class="card tiles wide">{lst or "<p class=empty>No runs with detail yet.</p>"}'
             f'</nav>'
             + _card("Steady run efficiency over time", _tests(d["tests"]),
                     "Similar-distance outdoor runs · grade-adjusted speed per heartbeat", wide=True)
             + _card("Marathon shape", mshape, "Endurance readiness (Runalyze method)")
             + _card("Race time estimates", races, "Recorded efforts, endurance and max HR affect accuracy.")
-            + _card("Cadence over your runs", cad, "Steps per minute. Rises with pace, so "
-                    "compare runs on each run's page.", wide=True))
-    return _page("running", "Running", "Tap a run for a coach-style breakdown.", body)
+            + _card("Cadence over your runs", cad, "Garmin bands: red/orange below average, green average, blue/purple above. "
+                    "Compare cadence at a similar pace.", wide=True))
+    return _page("running", "Running", "Open a run for splits, the timeline and comparisons.", body)
 
 
 def _tests(t: dict[str, Any]) -> str:
