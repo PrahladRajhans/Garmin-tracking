@@ -635,16 +635,11 @@ def page_run(r: dict[str, Any]) -> str:
         rows += (f'<div class="form-row"><div class="fr-head"><span>{_e(fm["label"])}</span>'
                  f'<b>{fm["value"]}</b></div>{g}<p class="sub">{_e(vs_txt)}</p></div>')
     p = r["pacing"]
-    splits = []
-    for i, s in enumerate(p.get("km_splits") or []):
-        mm, ss = s.split(":")[-2:]
-        splits.append((f"km {i + 1}", int(mm) + int(ss) / 60))
-    split_chart = line_chart(splits, " min/km", nd=2, h=120)
     work = "".join(f'<li>{_e(w)}</li>' for w in r["work_on"])
     facts = (_row("Pace", f'{_e(r["pace"])}<small>/km</small>')
              + _row("Average heart rate", f'{_f(r.get("avg_hr"))}<small> bpm</small>')
-             + _row("Heart-rate drift", f'{_f(p.get("decoupling_pct"), 1)}<small> %</small>',
-                    "Descriptive only; heat, terrain, pacing and sensor noise can affect drift.")
+             + _row("Heart-rate change", f'{_f(p.get("hr_drift_bpm"), 1)}<small> bpm</small>',
+                    "Second half of recorded moving time versus the first")
              + _row("Power (wrist)", f'{_f(r.get("power_w"))}<small> W</small>')
              + _row("Running effectiveness", _f(r.get("running_effectiveness"), 2),
                     "speed per W/kg; compare only with yourself"))
@@ -653,10 +648,44 @@ def page_run(r: dict[str, Any]) -> str:
             + _card("Form", rows + '<p class="legend"><i class="mk"></i>this run <i class='
                     '"mk2"></i>your usual at this pace · colours = Garmin rating</p>',
                     "Garmin's colour bands, plus how this run compares with you", wide=True)
-            + _card("Pacing", split_chart, "Minutes per kilometre (lower = faster)")
+            + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
+                    href=f'#run-{r["activity_id"]}-pacing')
             + _card("Numbers", f'<ul class="rows">{facts}</ul>'))
     return _page(f'run-{r["activity_id"]}', _run_label(r),
                  f'Compared with {r["comparison_runs"]} earlier runs.', body, back="#running")
+
+
+def page_run_pacing(r: dict[str, Any]) -> str:
+    p = r["pacing"]
+    splits = [(f"km {i}", seconds) for i, seconds in enumerate(p["km_split_s"], 1)]
+    chart = both(line_chart, splits, " elapsed/km", fmt=loads._hms, h=145)
+    delta = p["half_split_delta_s"]
+    half_note = "Needs at least 4 km of usable distance data"
+    if delta is not None:
+        half_note = ("About the same time in both halves" if abs(delta) <= 1 else
+                     f"Second half {_f(abs(delta), 1)} seconds "
+                     f'{"faster" if delta < 0 else "slower"} over equal recorded distance')
+    moving, elapsed = p["recorded_moving_s"], p["recorded_elapsed_s"]
+    timing = (_row("Recorded moving time", _e(loads._hms(moving)),
+                   "Between nearby FIT samples with running speed")
+              + _row("Recorded elapsed time", _e(loads._hms(elapsed)),
+                     "From the first to the last FIT sample, including pauses and gaps")
+              + _row("Garmin timer time", _e(loads._hms(p["garmin_timer_s"]) or "—"),
+                     "Watch session timer, excluding pauses")
+              + _row("Garmin elapsed time", _e(loads._hms(p["garmin_elapsed_s"]) or "—"),
+                     "Watch session start to finish"))
+    dc = p["decoupling_pct"]
+    effort = (_row("Heart-rate change", f'{_f(p["hr_drift_bpm"], 1)}<small> bpm</small>')
+              + _row("Efficiency change", f'{_f(-dc if dc is not None else None, 1)}<small> %</small>',
+                     "Lower means less grade-adjusted speed per heartbeat in the second half"))
+    body = (_card("Kilometre splits", chart + f'<p class="sub">{_e(half_note)}</p>',
+                  "Elapsed time for each full recorded kilometre. "
+                  "Pauses count toward these splits.", wide=True)
+            + _card("Timing", f'<ul class="rows">{timing}</ul>')
+            + _card("Pace and heart rate", f'<ul class="rows">{effort}</ul>',
+                    "Equal moving-time halves. Needs a steady run with enough heart-rate data."))
+    aid = r["activity_id"]
+    return _page(f"run-{aid}-pacing", "Pacing and effort", _e(_run_label(r)), body, back=f"#run-{aid}")
 
 
 def page_body(d: dict[str, Any]) -> str:
@@ -914,7 +943,8 @@ def render(d: dict[str, Any]) -> str:
         freshness = "No Garmin measurements are available yet."
     else:
         pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
-                 page_running(d), *(page_run(r) for r in d["runs"]), page_body(d),
+                 page_running(d), *(page for r in d["runs"]
+                                    for page in (page_run(r), page_run_pacing(r))), page_body(d),
                  page_patterns(d)]
         freshness = f'Data through {_e(d["end"])} from your own Garmin records.'
     nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)

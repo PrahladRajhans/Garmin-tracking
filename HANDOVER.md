@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.14.1, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.14.2, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -98,7 +98,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | VO2max reference bar | `norms.reference`, `norms.comparison`, `dashboard.vo2_reference` | Exact seven FRIEND percentile thresholds for recorded sex and age decade; separate estimate markers, no percentile interpolation | Kaminsky et al. 2015, primary Table 3 | M § v0.14.0 |
 | Critical speed | `loads.critical_speed` | 2-parameter fit, 3–20 min efforts; flagged submaximal unless 50 ≤ D′ ≤ 400 m | Monod & Scherrer | M § v0.5.0 |
 | Race predictions | `loads.race_predictions` | Effective VO2max/VDOT, best-effort VDOT, Riegel 1.06, Garmin's, side by side | Daniels, Riegel | M § v0.5.0 |
-| Run metrics | `coaching.run_metrics` | Efficiency factor, decoupling, HR drift, cadence ×2, vertical ratio, km splits | Friel, TrainingPeaks | M § v0.6.0 |
+| Run metrics | `coaching.run_metrics` | Time-weighted speed/HR and equal moving-time efficiency halves, cadence ×2, vertical ratio, interpolated elapsed km splits | Friel, TrainingPeaks | M § v0.6.0 |
 | Running form bands | `running.GAUGES`, `running.rate` | Garmin 5-colour bands (cadence, ground contact, vertical oscillation, vertical ratio) | Garmin manual (`running_form_benchmarks.md`) | M § v0.12.0 |
 | Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed over earlier runs | Moore 2016 | M § v0.12.0 |
 | What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 % with confounders; split CV > 8 %; usual-form claims need history | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
@@ -249,3 +249,8 @@ provenance also includes derived-load success. See `docs/UI_REVIEW.md` and `docs
 Do not treat historical recovery-study figures as rerun results. The owner's real database,
 Mac/iCloud behavior, watch writes, untested maximum HR and live hosting still require their
 respective checks. MCP results go to the user's chosen AI provider; hosted HTML goes to Cloudflare.
+
+The v0.14.2 Running drill-down separates our recorded moving and elapsed times from Garmin's
+FIT session timer and elapsed times. See METRICS for gaps, coverage and split interpolation.
+Tests exercise older stored FIT rows and known timing cases. Comparison with the owner's
+actual Garmin history still belongs to the Mac rollout in ROADMAP.

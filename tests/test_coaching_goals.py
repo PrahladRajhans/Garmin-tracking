@@ -1,6 +1,6 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from garmin_mcp import athlete, coaching, goals
+from garmin_mcp import athlete, coaching, goals, running
 
 
 def _seed_runs(conn, n=6):
@@ -38,8 +38,45 @@ def test_run_analysis_matched_pace_and_glossary(conn):
     r = coaching.run_analysis(conn, 505)
     assert r["compared_with_your_norm_at_matched_pace"]["cadence_spm"]["diff"] == 0
     assert "runs within" in r["norm_basis"]
-    assert any("decoupling" in f.lower() for f in r["facts_for_recap"])
+    assert any("pace-to-heart-rate efficiency changed" in f.lower() for f in r["facts_for_recap"])
     assert set(coaching.GLOSSARY) >= {"cadence", "vertical_ratio", "aerobic_decoupling", "swolf"}
+
+
+def test_smart_recording_and_pause_use_timestamp_intervals(conn):
+    _seed_runs(conn, 1)
+    conn.execute("DELETE FROM fit_records WHERE activity_id=500")
+    start = datetime(2026, 10, 1, 7, tzinfo=UTC)
+    rows = []
+    for i in range(181):  # 15 minutes sampled every five seconds, with a ten-minute gap
+        elapsed = 5 * i + (600 if i >= 100 else 0)
+        rows.append((500, (start + timedelta(seconds=elapsed)).isoformat(), 150, 3, 15 * i))
+    conn.executemany("INSERT INTO fit_records(activity_id,ts,heart_rate,speed,distance) "
+                     "VALUES (?,?,?,?,?)", rows)
+    m = coaching.run_metrics(conn, 500)
+    assert m["moving_s"] == 895 and m["recorded_elapsed_s"] == 1500
+    assert m["avg_speed"] == 3 and m["avg_hr"] == 150
+    assert m["steady"] is False and m["decoupling_pct"] is None
+    assert m["km_split_s"] == [333.3, 933.3]  # interpolated crossings, pause in kilometre two
+    conn.execute("INSERT INTO fit_sessions VALUES (500,'running','generic',?)",
+                 ('[{"total_timer_time":900,"total_elapsed_time":1500}]',))
+    timing = running.running_breakdown(conn, 500)["pacing"]
+    assert timing["garmin_timer_s"] == 900 and timing["garmin_elapsed_s"] == 1500
+    assert timing["recorded_moving_s"] == 895 and timing["recorded_elapsed_s"] == 1500
+
+
+def test_equal_distance_halves_include_partial_final_kilometre(conn):
+    _seed_runs(conn, 1)
+    conn.execute("DELETE FROM fit_records WHERE activity_id=500")
+    start = datetime(2026, 10, 1, 7, tzinfo=UTC)
+    # 4.5 km at steady distance/time, on an older stream whose first distance is nonzero.
+    rows = [(500, (start + timedelta(seconds=5 * i)).isoformat(), 150, 3, 20 + 15 * i)
+            for i in range(301)]
+    conn.executemany("INSERT INTO fit_records(activity_id,ts,heart_rate,speed,distance) "
+                     "VALUES (?,?,?,?,?)", rows)
+    m = coaching.run_metrics(conn, 500)
+    assert m["km_splits"] == ["5:33"] * 4
+    assert m["half_split_delta_s"] == 0 and m["negative_split"] is False
+    assert m["steady"] is True and m["decoupling_pct"] == 0
 
 
 def test_athlete_placeholders_and_goal(conn):

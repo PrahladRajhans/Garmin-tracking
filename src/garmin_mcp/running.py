@@ -15,6 +15,7 @@ Sources and conventions (see METRICS.md "Running breakdown"):
 
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 import statistics
@@ -113,11 +114,18 @@ def running_breakdown(conn: sqlite3.Connection, aid: int, weight_kg: float | Non
     eff = None
     if m.get("power_w") and weight_kg:
         eff = round(speed / (m["power_w"] / weight_kg), 3)
+    session = conn.execute("SELECT payload FROM fit_sessions WHERE activity_id=?", (aid,)).fetchone()
+    sessions = json.loads(session[0]) if session and session[0] else []
+    recorded = sessions[0] if len(sessions) == 1 else {}
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,
             "pacing": {"km_splits": m.get("km_splits"), "split_variation_pct":
                        m.get("split_cv_pct"), "negative_split": m.get("negative_split"),
+                       "km_split_s": m["km_split_s"], "half_split_delta_s": m["half_split_delta_s"],
+                       "recorded_moving_s": m["moving_s"], "recorded_elapsed_s": m["recorded_elapsed_s"],
+                       "garmin_timer_s": recorded.get("total_timer_time"),
+                       "garmin_elapsed_s": recorded.get("total_elapsed_time"),
                        "hr_drift_bpm": m.get("hr_drift_bpm"),
                        "decoupling_pct": m.get("decoupling_pct")},
             "work_on": suggestions(m, form, eff),

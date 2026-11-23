@@ -9,6 +9,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.14.2] - 2026-11-23
+
+- Run analysis uses FIT timestamps for moving duration, minute pace variation, time-weighted
+  speed and equal moving-time efficiency halves. Pauses and gaps cannot qualify a short run
+  as steady. Pace-to-HR comparison requires at least 90% HR coverage in each interval span.
+- Elapsed kilometre splits use recorded distance crossings, preserve pauses and compare
+  equal-distance halves including a partial final kilometre. The pacing drill-down labels both
+  bpm change and pace-to-HR efficiency separately and compares recorded timing with Garmin
+  FIT session fields when present. Legacy formatted splits remain in MCP output.
+- Recap copy describes observed differences and possible confounders. No training-load
+  change or physiological threshold was inferred from these fixes.
+
 ## [0.14.1] - 2026-11-23
 
 - Empty databases render an honest waiting state across all seven pages. Today shows signal

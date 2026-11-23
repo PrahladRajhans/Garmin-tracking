@@ -7,8 +7,8 @@ easy and fast runs is misleading).
 Rules (see METRICS.md §Phase 5):
 - Steady run: >= 20 min moving, coefficient of variation of 1-min speeds < 15 %.
 - Efficiency factor (EF) = graded speed (m/min, Minetti) / average HR (Allen & Coggan).
-- Aerobic decoupling (Pa:HR) = (EF first half - EF second half) / EF first half * 100 (Friel);
-  < 5 % is a coaching heuristic for good aerobic durability, not a validated cutoff.
+- Aerobic decoupling (Pa:HR) = (EF first half - EF second half) / EF first half * 100 (Friel).
+  This comparison is descriptive and depends on course, conditions and sensor quality.
 - Matched-pace norms: medians of your runs in the last 180 days within +/- 15 s/km of this run's
   pace (min 3 runs), compared per metric.
 - Vertical ratio = vertical oscillation / step length * 100 (Garmin's definition).
@@ -20,18 +20,22 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 import sqlite3
 import statistics
-from datetime import date, datetime, timedelta
+from bisect import bisect_left
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
+MAX_SAMPLE_GAP_S = 10
 
 
 def _ts(v: str) -> float:
-    return datetime.fromisoformat(v).timestamp()
+    t = datetime.fromisoformat(v)
+    return (t if t.tzinfo else t.replace(tzinfo=UTC)).timestamp()
 
 
 def _pace(speed: float | None) -> str | None:
@@ -56,7 +60,7 @@ def _rows(conn: sqlite3.Connection, aid: int) -> list[dict[str, Any]]:
 
 
 def _moving(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [r for r in rows if r["speed"] and r["speed"] > 1.0]
+    return [r for r in rows if r["speed"] and math.isfinite(r["speed"]) and r["speed"] > 1.0]
 
 
 def _mean(vals: list[float]) -> float | None:
@@ -64,61 +68,121 @@ def _mean(vals: list[float]) -> float | None:
     return statistics.fmean(vals) if vals else None
 
 
-def _graded_speed(rows: list[dict[str, Any]]) -> float | None:
-    num = den = 0.0
+def _moving_intervals(rows: list[dict[str, Any]]) -> list[tuple[float, float, float, float | None]]:
+    intervals = []
     for a, b in itertools.pairwise(rows):
-        dt = min(b["t"] - a["t"], 10)
-        if not b["speed"] or b["distance"] is None or a["distance"] is None:
+        dt = b["t"] - a["t"]
+        if not 0 < dt <= MAX_SAMPLE_GAP_S or not all(
+                isinstance(r["speed"], (int, float)) and math.isfinite(r["speed"])
+                and r["speed"] > 1.0 for r in (a, b)):
             continue
-        dd = b["distance"] - a["distance"]
-        da = (b["altitude"] - a["altitude"]) if b["altitude"] is not None and \
-            a["altitude"] is not None else 0
-        g = da / dd if dd > 2 else 0
-        num += b["speed"] * dt * minetti_cost(g) / minetti_cost(0)
-        den += dt
-    return num / den if den else None
+        dd = b["distance"] - a["distance"] if None not in (a["distance"], b["distance"]) else 0
+        da = b["altitude"] - a["altitude"] if None not in (a["altitude"], b["altitude"]) else 0
+        grade = da / dd if dd > 2 and math.isfinite(da) else 0
+        hr = b["heart_rate"]
+        valid_hr = hr if isinstance(hr, (int, float)) and math.isfinite(hr) and hr > 0 else None
+        speed = b["speed"]
+        intervals.append((dt, speed, speed * minetti_cost(grade) / minetti_cost(0), valid_hr))
+    return intervals
+
+
+def _minute_speeds(intervals: list[tuple[float, float, float, float | None]]) -> list[float]:
+    speeds = []
+    seconds = metres = 0.0
+    for dt, speed, _, _ in intervals:
+        part = min(dt, 60 - seconds)
+        seconds += part
+        metres += speed * part
+        if seconds >= 60:
+            speeds.append(metres / 60)
+            seconds = dt - part
+            metres = speed * seconds
+    return speeds
+
+
+def _half_efficiency(intervals: list[tuple[float, float, float, float | None]],
+                     start: float, end: float) -> tuple[float, float] | None:
+    elapsed = valid = speed_sum = hr_sum = 0.0
+    for dt, _, graded, hr in intervals:
+        overlap = max(0.0, min(end, elapsed + dt) - max(start, elapsed))
+        if hr is not None and overlap:
+            valid += overlap
+            speed_sum += overlap * graded
+            hr_sum += overlap * hr
+        elapsed += dt
+        if elapsed >= end:
+            break
+    if valid < 0.9 * (end - start) or not hr_sum:
+        return None
+    return speed_sum * 60 / hr_sum, hr_sum / valid
+
+
+def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | None]:
+    """Interpolate elapsed crossings from recorded distance, with pauses included."""
+    points = [(r["distance"], r["t"]) for r in rows
+              if isinstance(r["distance"], (int, float)) and math.isfinite(r["distance"])
+              and r["distance"] >= 0]
+    distances = [d for d, _ in points]
+    if len(points) < 2 or any(not 0 <= b - a < 1000 for a, b in itertools.pairwise(distances)):
+        return [], None
+    origin, t0 = points[0]
+    total = distances[-1] - origin
+
+    def crossing(target: float) -> float | None:
+        i = bisect_left(distances, target)
+        before, ta = points[i - 1]
+        after, tb = points[i]
+        if after == target and tb > ta:
+            return tb
+        if not 0 < tb - ta <= MAX_SAMPLE_GAP_S:
+            return None
+        return ta + (target - before) / (after - before) * (tb - ta)
+
+    times = [t0]
+    for km in range(1, int(total // 1000) + 1):
+        t = crossing(origin + 1000 * km)
+        if t is None or t <= times[-1]:
+            return [], None
+        times.append(t)
+    midpoint = crossing(origin + total / 2) if total >= 4000 else None
+    split_delta = (points[-1][1] - midpoint) - (midpoint - t0) if midpoint is not None else None
+    return [b - a for a, b in itertools.pairwise(times)], split_delta
 
 
 def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
     rows = _rows(conn, aid)
     mov = _moving(rows)
-    if len(mov) < 120:
+    intervals = _moving_intervals(rows)
+    dur = sum(dt for dt, _, _, _ in intervals)
+    if dur < 120:
         return None
-    dur = mov[-1]["t"] - mov[0]["t"]
-    minute_speeds = []
-    for i in range(0, len(mov) - 60, 60):
-        chunk = mov[i:i + 60]
-        minute_speeds.append(statistics.fmean(r["speed"] for r in chunk))
+    minute_speeds = _minute_speeds(intervals)
     cv = (statistics.stdev(minute_speeds) / statistics.fmean(minute_speeds) * 100
           if len(minute_speeds) > 2 else None)
     steady = dur >= 1200 and cv is not None and cv < 15
-    hr = _mean([r["heart_rate"] for r in mov])
-    gs = _graded_speed(mov)
-    ef = gs * 60 / hr if gs and hr else None
-    half = len(mov) // 2
+    gs = sum(dt * graded for dt, _, graded, _ in intervals) / dur
+    avg_speed = sum(dt * speed for dt, speed, _, _ in intervals) / dur
+    whole = _half_efficiency(intervals, 0, dur)
+    ef, hr = whole if whole else (None, None)
     decoupling = drift = None
     if steady:
-        g1, g2 = _graded_speed(mov[:half]), _graded_speed(mov[half:])
-        h1, h2 = _mean([r["heart_rate"] for r in mov[:half]]), \
-            _mean([r["heart_rate"] for r in mov[half:]])
-        if g1 and g2 and h1 and h2:
-            ef1, ef2 = g1 / h1, g2 / h2
+        first = _half_efficiency(intervals, 0, dur / 2)
+        second = _half_efficiency(intervals, dur / 2, dur)
+        if first and second:
+            ef1, h1 = first
+            ef2, h2 = second
             decoupling = (ef1 - ef2) / ef1 * 100
             drift = h2 - h1
     cad = _mean([r["cadence"] for r in mov if r["cadence"]])
     step = _mean([r["step_length"] for r in mov if r["step_length"]])
     vo = _mean([r["vertical_oscillation"] for r in mov if r["vertical_oscillation"]])
-    # 1-km splits from the distance stream
-    splits, next_km, t_prev = [], 1000.0, mov[0]["t"]
-    for r in mov:
-        if r["distance"] is not None and r["distance"] >= next_km:
-            splits.append(r["t"] - t_prev)
-            t_prev, next_km = r["t"], next_km + 1000
+    splits, split_delta = _elapsed_splits(rows)
     split_cv = (statistics.stdev(splits) / statistics.fmean(splits) * 100
                 if len(splits) >= 3 else None)
     return {
-        "moving_s": round(dur), "steady": steady, "speed_cv_pct": _r(cv),
-        "avg_speed": _mean([r["speed"] for r in mov]), "graded_speed": gs, "avg_hr": _r(hr),
+        "moving_s": round(dur), "recorded_elapsed_s": round(rows[-1]["t"] - rows[0]["t"]),
+        "steady": steady, "speed_cv_pct": _r(cv),
+        "avg_speed": avg_speed, "graded_speed": gs, "avg_hr": _r(hr),
         "efficiency_factor": _r(ef, 3), "decoupling_pct": _r(decoupling),
         "hr_drift_bpm": _r(drift),
         "cadence_spm": _r(cad * 2) if cad else None,
@@ -129,9 +193,9 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
         "power_w": _r(_mean([r["power"] for r in mov if r["power"]])),
         "temperature_c": _r(_mean([r["temperature"] for r in mov if r["temperature"] is not None])),
         "km_splits": [_hms(s) for s in splits],
+        "km_split_s": [_r(s) for s in splits], "half_split_delta_s": _r(split_delta),
         "split_cv_pct": _r(split_cv),
-        "negative_split": (sum(splits[len(splits) // 2:]) < sum(splits[:len(splits) // 2]))
-        if len(splits) >= 4 else None,
+        "negative_split": split_delta < -1 if split_delta is not None else None,
     }
 
 
@@ -246,16 +310,15 @@ def _facts(m: dict[str, Any], comp: dict[str, Any] | None, similar: list,
     f = []
     if m["steady"] and m["decoupling_pct"] is not None:
         d = m["decoupling_pct"]
-        f.append(f"Aerobic decoupling {d:.1f}% ("
-                 + ("good durability, under the 5% heuristic" if d < 5 else
-                    "HR rose relative to pace in the second half: heat, fatigue, fuelling or "
-                    "pace above aerobic threshold") + ").")
+        f.append(f"Pace-to-heart-rate efficiency changed by {-d:+.1f}% in the second half. "
+                 "Compare similar steady runs and consider heat, terrain, pacing and sensor noise.")
     elif not m["steady"]:
-        f.append(f"Variable-pace session (speed CV {m['speed_cv_pct']}%): decoupling not "
-                 "meaningful.")
-    if m["negative_split"] is not None:
-        f.append("Negative split (second half faster)." if m["negative_split"]
-                 else "Positive split (slowed in the second half).")
+        f.append("Too little steady recorded moving time for an efficiency comparison.")
+    delta = m["half_split_delta_s"]
+    if delta is not None:
+        f.append("Second half faster by recorded distance." if delta < -1 else
+                 "Second half slower by recorded distance." if delta > 1 else
+                 "Both distance halves took about the same elapsed time.")
     if comp:
         ef = comp["efficiency_factor"]
         if ef["diff"] is not None and ef["your_norm_at_this_pace"]:
@@ -270,8 +333,9 @@ def _facts(m: dict[str, Any], comp: dict[str, Any] | None, similar: list,
                                             "vertical_ratio_pct": 0.4}[k]:
                 f.append(f"{label} {d:+.1f} {unit} vs your norm at this pace.")
     if heat and heat.get("available") and m["temperature_c"] is not None:
-        f.append(f"Personal heat effect ~{heat['bpm_per_deg_c']} bpm per deg C (watch temp "
-                 f"{m['temperature_c']} C).")
+        f.append(f"Pace-adjusted heart rate was associated with watch temperature "
+                 f"(~{heat['bpm_per_deg_c']} bpm per °C across these runs). Sun exposure, "
+                 "wearing the watch and other run conditions can affect the comparison.")
     if summary.get("trainingEffectLabel"):
         f.append(f"Garmin training effect label: {summary['trainingEffectLabel']}.")
     return f
@@ -441,11 +505,11 @@ GLOSSARY: dict[str, dict[str, str]] = {
                           "typical": "Personal; compare steady runs at similar pace.",
                           "improve": "Rises with aerobic base (easy volume, long runs).",
                           "unit": "m/min per bpm"},
-    "aerobic_decoupling": {"meaning": "How much HR drifts up relative to pace from first to "
-                                      "second half of a steady run.",
-                           "typical": "< 5 % suggests good aerobic durability (Friel heuristic).",
-                           "improve": "Long easy runs, heat acclimation, fuelling, pacing below "
-                                      "aerobic threshold.", "unit": "%"},
+    "aerobic_decoupling": {"meaning": "Percentage drop in grade-adjusted speed per heartbeat "
+                                      "from first to second moving-time half of a steady run.",
+                           "typical": "Compare your own runs of similar duration and conditions.",
+                           "improve": "Consider pace, course, heat, fuelling and sensor quality.",
+                           "unit": "%"},
     "trimp": {"meaning": "Banister training impulse: time weighted by HR intensity "
                          "(exponential), our training-load unit.",
               "typical": "Easy 30 min ~ 30-50; hard 60 min ~ 120+.",

@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.14.1: 43 tools, a script-free dashboard with a cited VO₂max reference bar, safer sync/update recovery, corrected data-sufficiency handling, and optional private hosting (off by default).
+> **Status:** v0.14.2. The 43 MCP tools and static dashboard include a run pacing drill-down with elapsed kilometre splits, watch timing and a pace-to-heart-rate comparison. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 

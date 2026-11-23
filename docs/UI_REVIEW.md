@@ -70,3 +70,10 @@ Cloudflare Access policies in a real account, or unattended Mac updates. Those r
 
 The single plan is `ROADMAP.md`: live private hosting/device checks and owner feedback next;
 race/taper work waits for an actual goal. No production hosting was activated in this review.
+
+### Run pacing follow-up (v0.14.2)
+
+The new [pacing drill-down screenshot](screenshots/review-2026-11/run-pacing.png) shows a
+synthetic run on a 390 px viewport. The watch duration and stream span are separate
+values. Chromium checked 300 page/theme/viewport/disclosure states, including the new
+run screen, without page overflow, broken fragment links, scripts or page errors.
