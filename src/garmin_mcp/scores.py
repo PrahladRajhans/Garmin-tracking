@@ -33,7 +33,7 @@ from typing import Any
 from garmin_mcp import recovery
 
 STRAIN_A, STRAIN_B = 6.3, 20.0
-DEFAULT_NEED_H = 8.0
+DEFAULT_NEED_H = recovery.DEFAULT_SLEEP_NEED_H
 BANDS = ((67, "green", "recovered"), (34, "yellow", "moderate"), (0, "red", "low"))
 TARGETS = {"green": (10, 14), "yellow": (8, 12), "red": (0, 8)}
 
@@ -66,7 +66,7 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     sleep_pct = need_h = hours = None
     if sleep_row and sleep_row[0] and sleep_row[0] >= 3 * 3600:
         hours = sleep_row[0] / 3600
-        need_h = (sleep_row[1] / 60) if sleep_row[1] else DEFAULT_NEED_H
+        need_h = (sleep_row[1] / 60) if sleep_row[1] and sleep_row[1] > 0 else DEFAULT_NEED_H
         sleep_pct = round(hours / need_h * 100)
     try:
         trimp = conn.execute("SELECT load FROM fitness WHERE day=?", (day,)).fetchone()
@@ -86,8 +86,8 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
                      "garmin_level": garmin.get("level")},
         "sleep": {"pct": sleep_pct, "hours": round(hours, 2) if hours else None,
                   "need_h": round(need_h, 2) if need_h else None,
-                  "need_source": "Garmin sleep need" if sleep_row and sleep_row[1] else
-                  f"{DEFAULT_NEED_H:.0f} h default",
+                  "need_source": "Garmin sleep need" if sleep_row and sleep_row[1]
+                  and sleep_row[1] > 0 else f"{DEFAULT_NEED_H:.0f} h planning fallback",
                   "garmin_sleep_score": sleep_row[2] if sleep_row else None,
                   "debt_7d_h": r["sleep"]["debt_7d_h"],
                   "incomplete": bool(sleep_row and sleep_row[0] and sleep_row[0] < 3 * 3600)},
@@ -187,8 +187,9 @@ def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[st
     from garmin_mcp.engine import _pearson
 
     e = date.fromisoformat(end)
-    hrv = dict(conn.execute("SELECT day, COALESCE(h.last_night_avg, s.hrv) FROM health_status s "
-                            "LEFT JOIN hrv h USING(day) WHERE day <= ?", (end,)).fetchall())
+    hrv = dict(conn.execute("SELECT day, hrv FROM health_status WHERE day<=? AND hrv>0", (end,)))
+    hrv.update(conn.execute("SELECT day,last_night_avg FROM hrv WHERE day<=? AND last_night_avg>0",
+                            (end,)))
     garmin = dict(conn.execute("SELECT day, score FROM readiness WHERE day <= ?", (end,)))
 
     def hrv_z(d: str) -> float | None:
@@ -213,8 +214,9 @@ def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[st
         nxt = hrv_z((date.fromisoformat(d) + timedelta(days=1)).isoformat())
         rows.append((comp, nxt, garmin.get(d)))
 
-    def corr(f: Any, idx: int) -> dict[str, Any]:
-        pts = [(f(c), o[idx - 1]) for c, *o in rows]
+    def corr(f: Any, idx: int, allowed: set[int] | None = None) -> dict[str, Any]:
+        pts = [(f(c), o[idx - 1]) for i, (c, *o) in enumerate(rows)
+               if allowed is None or i in allowed]
         pts = [(a, b) for a, b in pts if a is not None and b is not None]
         r = _pearson([a for a, _ in pts], [b for _, b in pts]) if len(pts) >= 30 else None
         return {"r": round(r, 3) if r is not None else None, "n": len(pts)}
@@ -229,12 +231,20 @@ def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[st
                    "garmin_readiness": corr(lambda c, n=n: c.get(n), 2)} for n in names}
     variants = {"equal weights (current)": names, "without breathing": names[:3],
                 "HRV + resting HR": names[:2]}
-    comp = {v: {"next_night_hrv": corr(mean_of(k), 1), "garmin_readiness": corr(mean_of(k), 2)}
+    common = {idx: {i for i, (c, *o) in enumerate(rows) if o[idx - 1] is not None and all(
+        mean_of(keys)(c) is not None for keys in variants.values())} for idx in (1, 2)}
+    comp = {v: {"next_night_hrv": corr(mean_of(k), 1, common[1]),
+                "garmin_readiness": corr(mean_of(k), 2, common[2])}
             for v, k in variants.items()}
     base = comp["equal weights (current)"]
-    better = [v for v, c in comp.items() if v != "equal weights (current)" and all(
-        (c[o]["r"] or -1) > (base[o]["r"] or -1) + 0.05 for o in c)]
+    better = [v for v, c in comp.items() if v != "equal weights (current)" and _beats_on_both(c, base)]
     return {"window_days": days, "signals": signals, "composites": comp,
             "decision": f"switch to: {better[0]}" if better else
                         "keep equal weights (no variant better on both outcomes by > 0.05 r)",
-            "method": weight_study.__doc__.strip().splitlines()[0]}
+            "method": weight_study.__doc__.strip().splitlines()[0],
+            "comparison_pairing": "same days across composite variants for each outcome"}
+
+
+def _beats_on_both(candidate: dict, baseline: dict) -> bool:
+    return all(candidate[o]["r"] is not None and baseline[o]["r"] is not None
+               and candidate[o]["r"] > baseline[o]["r"] + 0.05 for o in baseline)

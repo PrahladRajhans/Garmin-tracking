@@ -8,6 +8,7 @@ so tools can say exactly what is missing instead of guessing. Settings override 
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from typing import Any
 
@@ -101,9 +102,36 @@ def pace_to_speed(pace: str) -> float | None:
     """'5:30' min/km -> m/s."""
     try:
         m, s = pace.split(":")
-        return 1000 / (int(m) * 60 + int(s))
+        minutes, seconds = int(m), int(s)
+        if minutes < 0 or not 0 <= seconds < 60 or minutes * 60 + seconds <= 0:
+            return None
+        return 1000 / (minutes * 60 + seconds)
     except (ValueError, AttributeError):
         return None
+
+
+def validate_setting(key: str, value: Any) -> str | None:
+    """Reject malformed overrides without inventing physiological reference ranges."""
+    if value is None:
+        return None
+    if key in {"hr_max_override", "lthr_override", "weekly_run_km_target"}:
+        try:
+            number = float(value)
+            if (isinstance(value, bool) or not math.isfinite(number) or number < 0
+                    or (number == 0 and key != "weekly_run_km_target")):
+                return "setting must be finite and positive (weekly km may be zero)"
+        except (TypeError, ValueError, OverflowError):
+            return "setting must be a number"
+    if key == "threshold_pace_override" and pace_to_speed(value) is None:
+        return "pace must be a positive m:ss value with seconds below 60"
+    if key == "timezone":
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ValueError, TypeError, ZoneInfoNotFoundError):
+            return "timezone must be a valid IANA name, such as Asia/Kolkata"
+    return None
 
 
 def seed_from_file(conn: sqlite3.Connection, path: str | None = None) -> list[str]:

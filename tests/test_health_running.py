@@ -87,3 +87,43 @@ def test_scatter_and_sure():
     assert svg.count('class="pt"') == 3 and 'class="fit"' in svg
     assert dashboard._sure({"notable": False})[1].startswith("not sure")
     assert dashboard._sure({"notable": True, "r_ci95": [0.4, 0.6]})[1] == "very sure"
+
+
+def test_heart_rate_difference_uses_utc_and_has_no_health_cutoff(conn, monkeypatch):
+    import time
+    from datetime import UTC, datetime
+
+    import pytest
+
+    from garmin_mcp import db
+    from garmin_mcp.normalize import rebuild
+
+    if not hasattr(time, "tzset"):
+        pytest.skip("host timezone test requires tzset")
+    rebuild(conn)
+    conn.execute("INSERT INTO sleep(day,sleep_start,sleep_end,sleep_s,avg_hr) VALUES "
+                 "('2026-11-21','2026-11-20 20:00:00','2026-11-21 04:00:00',28800,50)")
+    conn.execute("INSERT INTO sleep(day,sleep_start,sleep_end,sleep_s,avg_hr) VALUES "
+                 "('2026-11-20','2026-11-20 03:00:00','2026-11-20 07:00:00',14400,50)")
+    samples = []
+    for hour, minute, hr in ((18, 0, 80), (19, 15, 120), (19, 45, 160), (12, 0, -1), (6, 0, 20)):
+        ts = datetime(2026, 11, 20, hour, minute, tzinfo=UTC).timestamp() * 1000
+        samples.extend([[ts + i * 1000, hr] for i in range(60)])
+    db.put_daily(conn, "pa_heart_rate", "2026-11-20", "personal_api", {"heartRateValues": samples})
+    results = []
+    try:
+        with monkeypatch.context() as m:
+            for tz in ("UTC", "Asia/Kolkata"):
+                m.setenv("TZ", tz)
+                time.tzset()
+                results.append(health.heart_rate_dip(conn, "2026-11-21"))
+    finally:
+        time.tzset()
+    assert results[0] == results[1]
+    assert results[0]["awake_mean_hr"] == 100 and results[0]["dip_pct"] == 50
+    assert results[0]["label"] == "lower in sleep" and "not a recovery diagnosis" in results[0]["meaning"]
+
+
+def test_run_drift_does_not_claim_a_single_cause():
+    text = " ".join(running.suggestions({"decoupling_pct": 8.}, {}, None))
+    assert "Heat" in text and "noise" in text and "is the limiter" not in text

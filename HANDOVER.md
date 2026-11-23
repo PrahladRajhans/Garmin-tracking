@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.13.2, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.13.3, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -81,7 +81,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need; < 3 h = incomplete | Whoop | M § v0.11.0 |
 | Sleep debt, bedtime | `recovery.sleep_status`, `scores.bedtime_suggestion` | Σ shortfall over 7 valid nights; bedtime = median wake − need − min(60, debt/7) | Garmin sleep coach / Whoop | M § v0.4.0, v0.11.0 |
 | Sleep breakdown | `health.sleep_breakdown` | Garmin `sleepScores` parts with ratings and optimal ranges | Garmin, Fitbit | M § v0.12.0 |
-| Heart-rate dip | `health.heart_rate_dip` | (awake mean − sleep mean) ÷ awake mean; ≥ 10 % healthy | Bevel; blood-pressure "dipper" threshold (heuristic) | M § v0.12.0 |
+| Heart-rate difference | `health.heart_rate_dip` | (recorded awake mean − sleep mean) ÷ awake mean; UTC, known sleep windows excluded; no health cutoff | Descriptive; prior BP-derived cutoff removed | M § v0.13.3 |
 
 ### Load and fitness
 | What | Code | Formula / rule | Source | Spec |
@@ -190,6 +190,11 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
     `sync_retry_required`; endpoint timestamps no longer imply completion. Dates are local.
     Pagination/chunk loops are guarded. Failed dependency installs stop sync and are retried
     using per-checkout `pending-install-*.json` markers in the data folder. See `docs/OPERATIONS.md`.
+13. **Accuracy review (v0.13.3):** shared 8-hour planning fallback, baseline sufficiency,
+    unavailable advice, UTC/known-sleep HR comparison and input validation corrected. Weight
+    studies now include HRV-only days, use matched composite comparison days, and handle zero
+    correlations correctly. Historical study results above predate these corrections; rerun
+    on real data before using them to propose a weight change. Actual weights remain equal.
 
 ## 10. What is left (pick up here)
 In order. Each item says where it goes and what "done" means.

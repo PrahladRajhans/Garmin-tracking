@@ -51,3 +51,15 @@ def test_athlete_placeholders_and_goal(conn):
     assert all(q["key"] != "hr_max_override" for q in athlete.context(conn)["open_questions"])
     assert goals._parse_time("1:45:00") == 6300 and goals._parse_time("50:00") == 3000
     assert round(athlete.pace_to_speed("5:00"), 3) == 3.333
+def test_invalid_athlete_overrides_are_rejected():
+    from garmin_mcp import athlete
+
+    for value in (0, -1, float("nan"), float("inf"), "not a number"):
+        assert athlete.validate_setting("hr_max_override", value)
+    for pace in ("0:00", "5:99", "-1:30", "bad"):
+        assert athlete.pace_to_speed(pace) is None
+        assert athlete.validate_setting("threshold_pace_override", pace)
+    assert athlete.validate_setting("timezone", "Not/A_Timezone")
+    assert athlete.validate_setting("timezone", "Asia/Kolkata") is None
+    assert athlete.validate_setting("hr_max_override", 188) is None
+    assert athlete.validate_setting("weekly_run_km_target", 0) is None

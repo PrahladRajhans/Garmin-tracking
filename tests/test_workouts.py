@@ -62,3 +62,22 @@ def test_upload_schedule_list_delete_with_fake_client(conn):
     assert r["uploaded"] and r["workout_id"] == 7 and f.scheduled == (7, "2026-11-25")
     assert workouts.list_on_garmin(f)["workouts"][0]["id"] == 7
     assert workouts.delete_on_garmin(7, f) == {"deleted": 7}
+def test_malformed_workouts_return_problems_instead_of_crashing():
+    from garmin_mcp import workouts
+
+    bad_steps = [
+        {"type": "interval", "duration": "0:00"},
+        {"type": "interval", "duration": "5:99"},
+        {"type": "interval", "distance_m": -100},
+        {"type": "interval", "duration": 60, "pace": "bad"},
+        {"type": "interval", "duration": 60, "hr": "140-120"},
+        {"type": "interval", "duration": 60, "hr_zone": 2.5},
+        {"type": "repeat", "times": "not a number", "steps": []},
+        1,
+    ]
+    for step in bad_steps:
+        assert workouts.validate({"steps": [step]}, 188)
+    cyclic = {"type": "repeat", "times": 2, "steps": []}
+    cyclic["steps"].append(cyclic)
+    assert workouts.validate({"steps": [cyclic]}, 188)
+    assert workouts.validate({"steps": [{"type": "interval", "duration": 60}] * 201}, 188)

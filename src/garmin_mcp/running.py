@@ -139,8 +139,9 @@ def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None) -> l
         out.append("Ground contact was longer than your usual at this pace: often fatigue or "
                    "tired legs; check sleep and recovery before the next hard run.")
     if m.get("decoupling_pct") is not None and m["decoupling_pct"] > 5:
-        out.append(f"Heart rate drifted {m['decoupling_pct']:.1f} % against pace: aerobic base "
-                   "is the limiter at this pace. More easy-zone volume will help.")
+        out.append(f"Heart rate drifted {m['decoupling_pct']:.1f} % against pace. Heat, hills, "
+                   "fatigue, fuelling and wrist-sensor noise can contribute. Compare steady "
+                   "runs in similar conditions before drawing a fitness conclusion.")
     if m.get("split_cv_pct") and m["split_cv_pct"] > 8:
         out.append("Pacing was uneven across kilometres: start slower and hold a steady effort.")
     if not out:

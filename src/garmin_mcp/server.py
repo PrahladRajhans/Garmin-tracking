@@ -267,6 +267,8 @@ def update_athlete_setting(key: str, value: str, note: str | None = None) -> dic
         parsed: Any = _json.loads(value)
     except ValueError:
         parsed = value
+    if problem := athlete.validate_setting(key, parsed):
+        return {"error": problem, "key": key}
 
     def run(c: sqlite3.Connection) -> dict[str, Any]:
         athlete.set_value(c, key, parsed, note)
@@ -449,7 +451,7 @@ def daily_scores(day: str | None = None, history_days: int = 0) -> dict[str, Any
 def sleep_breakdown(day: str | None = None) -> dict[str, Any]:
     """One night in detail: Garmin sleep score with each part's rating and optimal range
     (duration, deep/REM/light %, awakenings, restlessness, stress) plus the day-to-night
-    heart-rate dip (>= 10 % = healthy dip)."""
+    descriptive day-to-night heart-rate difference (not a health cutoff)."""
     from garmin_mcp import health
 
     return _with_db(lambda c: health.sleep_breakdown(c, _end(c, day)))

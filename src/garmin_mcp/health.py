@@ -4,9 +4,9 @@ shift detection, monthly report.
 - Sleep breakdown: Garmin's own sub-score ratings and optimal ranges (duration, stress,
   awakenings, restlessness, REM/light/deep %) from the Personal API sleep payload; export
   nights use the export's component scores.
-- Heart-rate dip (Bevel-style): (awake daytime mean HR - sleep mean HR) / awake mean * 100,
-  awake mean from the all-day HR timeline outside the sleep window. A nocturnal dip of
-  >= 10 % is the usual "dipper" threshold from cardiovascular research (heuristic here).
+- Heart-rate difference: (recorded awake mean HR - sleep mean HR) / awake mean * 100.
+  Known sleep windows are excluded using UTC timestamps. Descriptive only; blood-pressure
+  dipping thresholds are not a validated heart-rate recovery cutoff.
 - Activity status: days tagged sick / injured / break are excluded from baselines and pause
   training advice (Bevel's "activity status").
 - Pace of ageing (Whoop-style scale): Theil-Sen slope of Garmin's fitness age in years per
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import statistics
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 STATUS_TAGS = {"sick", "injured", "break", "illness"}
@@ -83,7 +83,7 @@ def sleep_breakdown(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
 def heart_rate_dip(conn: sqlite3.Connection, day: str) -> dict[str, Any] | None:
     sl = conn.execute("SELECT sleep_start, sleep_end, avg_hr FROM sleep WHERE day=? AND "
                       "sleep_s >= 3*3600", (day,)).fetchone()
-    if not sl or not sl[2]:
+    if not sl or not sl[0] or not sl[1] or not sl[2] or sl[2] <= 0:
         return None
     # awake HR from the previous day's all-day timeline (the day before this night)
     prev = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
@@ -92,18 +92,26 @@ def heart_rate_dip(conn: sqlite3.Connection, day: str) -> dict[str, Any] | None:
     if not row:
         return None
     values = (json.loads(row[0]) or {}).get("heartRateValues") or []
-    start = datetime.fromisoformat(sl[0]).timestamp() * 1000 if sl[0] else None
-    awake = [hr for ts, hr in values if hr and (start is None or ts < start - 30 * 60 * 1000)]
+    def ms(value: str) -> float:
+        parsed = datetime.fromisoformat(value)
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp() * 1000
+
+    start = ms(sl[0])
+    windows = [(ms(a), ms(b)) for a, b in conn.execute(
+        "SELECT sleep_start,sleep_end FROM sleep WHERE day BETWEEN ? AND ? AND sleep_s>=3*3600 "
+        "AND sleep_start IS NOT NULL AND sleep_end IS NOT NULL", (prev, day))]
+    awake = [hr for ts, hr in values if isinstance(hr, (int, float)) and hr > 0
+             and ts < start - 30 * 60 * 1000 and not any(a <= ts <= b for a, b in windows)]
     if len(awake) < 60:
         return None
     day_mean = statistics.fmean(awake)
     dip = (day_mean - sl[2]) / day_mean * 100
     return {"awake_mean_hr": round(day_mean, 1), "sleep_mean_hr": sl[2],
             "dip_pct": round(dip, 1),
-            "label": "healthy dip" if dip >= 10 else "small dip",
-            "meaning": "A heart-rate drop of >= 10 % from day to night usually means good "
-                       "overnight recovery; small dips often follow late meals, alcohol, "
-                       "late training or illness."}
+            "label": "lower in sleep" if dip > 0 else "higher in sleep" if dip < 0 else "unchanged",
+            "meaning": "Descriptive comparison of recorded daytime and sleep heart rate. "
+                       "This is not a recovery diagnosis; a blood-pressure dipping cutoff "
+                       "does not establish a healthy heart-rate cutoff."}
 
 
 # --------------------------------------------------------------------------- trends
@@ -132,10 +140,9 @@ def pace_of_ageing(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[
     return {"available": True, "fitness_age_now": round(rows[-1][1], 1),
             "chronological_age": rows[-1][2],
             "pace_of_ageing": round(per_year, 2),
-            "meaning": "Pace of ageing = years of fitness age gained per calendar year (trend). "
-                       "1.0 = ageing with the calendar; below 1.0 = slower; 0 = not ageing; "
-                       "negative = getting fitter. Garmin fitness age moves with resting HR, "
-                       "vigorous minutes and body fat, so short windows are noisy.",
+            "meaning": "Change in Garmin fitness age per calendar year, not biological ageing "
+                       "or lifespan. Zero means Garmin fitness age was stable; negative means "
+                       "its estimate fell. The trend is noisy and is not a health diagnosis.",
             "window_days": days}
 
 

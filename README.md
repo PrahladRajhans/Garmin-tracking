@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.13.2: 43 tools, a script-free dashboard, safer sync/update recovery, and optional private Cloudflare publishing (off by default; account setup and phone verification still required).
+> **Status:** v0.13.3: 43 tools, a script-free dashboard, safer sync/update recovery, corrected sleep/data-sufficiency handling, and optional private hosting (off by default).
 
 ## What this is, in one minute
 
@@ -256,6 +256,16 @@ redirects **without uploading**. A disabled or failed check exits with status 1.
 `GARMIN_DASHBOARD_PUBLISH` stops future uploads; existing cloud copies remain protected by Access.
 
 ## Development
+
+Sleep score, debt and bedtime use Garmin's sleep need when valid, otherwise the same explicitly
+labeled 8-hour planning fallback. It is not a measured personal requirement. Incomplete histories
+do not generate reassuring training advice. Heart-rate differences and fitness-age trends are
+descriptive estimates; neither is a medical recovery/biological-age diagnosis.
+
+`create_workout` returns problems for malformed steps and targets rather than attempting an
+upload. The format supports up to 200 stored steps and 8 repeat nesting levels; durations and
+distances must be finite and positive. Athlete numeric/pace/timezone overrides are validated
+before saving. Existing tool names and valid workout formats are retained.
 
 The sync gate uses the last fully completed, error-free run of all requested sources. Failed
 or interrupted runs retry on the next scheduled execution. Endpoint success alone does not delay

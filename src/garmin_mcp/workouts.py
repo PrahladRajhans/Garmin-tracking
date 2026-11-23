@@ -17,6 +17,7 @@ Targets per step: "pace": "m:ss-m:ss" (min/km), "hr": "lo-hi" (bpm), or "hr_zone
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from typing import Any
 
@@ -26,12 +27,22 @@ STEP_ORDER_START = 1
 
 
 def _secs(text: str | float) -> float:
+    if isinstance(text, bool):
+        raise TypeError("duration must be a positive time")
     if isinstance(text, (int, float)):
-        return float(text)
-    total = 0
-    for part in str(text).split(":"):
-        total = total * 60 + int(part)
-    return float(total)
+        total = float(text)
+    else:
+        parts = str(text).strip().split(":")
+        if not 1 <= len(parts) <= 3 or not all(p.isdigit() for p in parts):
+            raise ValueError("time must be seconds, m:ss or h:mm:ss")
+        if any(int(p) >= 60 for p in parts[1:]):
+            raise ValueError("seconds and intermediate minutes must be below 60")
+        total = 0.0
+        for part in parts:
+            total = total * 60 + int(part)
+    if not math.isfinite(total) or total <= 0:
+        raise ValueError("time must be positive and finite")
+    return total
 
 
 def _pace_range(text: str) -> tuple[float, float]:
@@ -55,36 +66,70 @@ def _target(step: dict[str, Any]) -> Any:
 
 def validate(spec: dict[str, Any], hr_max: float | None) -> list[str]:
     """Safety and sanity checks; returns problems (empty = OK)."""
+    if not isinstance(spec, dict):
+        return ["workout must be an object"]
     problems = []
+    count = 0
 
-    def walk(steps: list[dict[str, Any]]) -> None:
+    def walk(steps: list[dict[str, Any]], depth: int = 0) -> None:
+        nonlocal count
+        if depth > 8 or not isinstance(steps, list):
+            problems.append("steps must be a list with at most 8 nested repeat levels")
+            return
         for s in steps:
+            count += 1
+            if count > 200:
+                problems.append("workout exceeds the 200-step format limit")
+                return
+            if not isinstance(s, dict):
+                problems.append("each step must be an object")
+                continue
             t = s.get("type")
             if t not in ("warmup", "interval", "recovery", "cooldown", "repeat"):
                 problems.append(f"unknown step type {t!r}")
                 continue
             if t == "repeat":
-                if not 1 <= int(s.get("times", 0)) <= 30:
+                times = s.get("times", 0)
+                if isinstance(times, bool) or not isinstance(times, int) or not 1 <= times <= 30:
                     problems.append("repeat 'times' must be 1-30")
-                walk(s.get("steps", []))
+                if not s.get("steps"):
+                    problems.append("repeat needs steps")
+                walk(s.get("steps", []), depth + 1)
                 continue
             if "duration" not in s and "distance_m" not in s:
                 problems.append(f"{t} step needs 'duration' or 'distance_m'")
-            if "pace" in s:
-                for p in str(s["pace"]).split("-"):
-                    sec = _secs(p.strip())
-                    if not 150 <= sec <= 720:
-                        problems.append(f"pace {p} outside 2:30-12:00 min/km")
-            if "hr" in s and hr_max:
-                hi = float(str(s["hr"]).split("-")[-1])
-                if hi > hr_max:
-                    problems.append(f"HR target {hi:.0f} above your max HR {hr_max:.0f}")
-            if "hr_zone" in s and not 1 <= int(s["hr_zone"]) <= 5:
-                problems.append("hr_zone must be 1-5")
+            if "duration" in s and "distance_m" in s:
+                problems.append("choose duration or distance_m, not both")
+            try:
+                if "duration" in s:
+                    _secs(s["duration"])
+                if "distance_m" in s:
+                    distance = float(s["distance_m"])
+                    if isinstance(s["distance_m"], bool) or not math.isfinite(distance) or distance <= 0:
+                        problems.append("distance_m must be positive and finite")
+                if sum(k in s for k in ("pace", "hr", "hr_zone")) > 1:
+                    problems.append("choose one target: pace, hr or hr_zone")
+                if "pace" in s:
+                    slow, fast = _pace_range(s["pace"])
+                    if not (1000 / 720 <= slow <= fast <= 1000 / 150):
+                        problems.append("pace outside 2:30-12:00 min/km")
+                if "hr" in s:
+                    lo, hi = (float(x) for x in str(s["hr"]).split("-"))
+                    if not (math.isfinite(lo) and math.isfinite(hi) and 0 < lo <= hi):
+                        problems.append("hr must be an ordered, positive, finite range")
+                    elif hr_max and hi > hr_max:
+                        problems.append(f"HR target {hi:.0f} above your max HR {hr_max:.0f}")
+                if "hr_zone" in s and (isinstance(s["hr_zone"], bool)
+                        or not isinstance(s["hr_zone"], int) or not 1 <= s["hr_zone"] <= 5):
+                    problems.append("hr_zone must be an integer 1-5")
+            except (TypeError, ValueError, OverflowError):
+                problems.append(f"{t} has an invalid duration, distance or target")
 
     walk(spec.get("steps", []))
     if not spec.get("steps"):
         problems.append("workout has no steps")
+    if "name" in spec and not isinstance(spec["name"], str):
+        problems.append("workout name must be text")
     return problems
 
 
