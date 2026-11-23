@@ -98,6 +98,22 @@ Each page answers one question, top to bottom: **headline number → one sentenc
 | Interaction | Native hover/long-press tooltips on every mark (SVG `<title>`). Links for drill-down. |
 
 ## 8. Hosting and viewing live
-- **Mac:** `~/garmin-data/dashboard/index.html`, rebuilt after every sync (launchd). Bookmark it in Safari.
-- **Phone:** the same file is copied to `iCloud Drive/Garmin/dashboard.html` after each build (if iCloud Drive exists). Open it in the Files app, or Share → Open in Safari for working links.
-- **Anywhere (opt-in):** ask Claude to publish it as a private Artifact. Health data then leaves the Mac, so this is never automatic.
+- **Mac:** `$GARMIN_DATA_DIR/dashboard/index.html`, default `~/.garmin-mcp/dashboard/index.html`,
+  rebuilt after each sync. Reload an open Safari tab to see the new file.
+- **iCloud:** `dashboard.build` copies the HTML to `iCloud Drive/Garmin/dashboard.html` only when
+  the iCloud directory exists. Actual Mac copying and phone navigation remain unverified.
+- **Anywhere:** optional Cloudflare Pages + Access, implemented in v0.13.1 and disabled by default.
+  After local build, sync/the CLI/the MCP build tool call `publish.publish_if_enabled`. It checks
+  the production hostname, wildcard previews, exact-email Access policies, conflicting Access
+  apps, and anonymous login redirects before uploading the HTML with Wrangler. Only a dedicated
+  Direct Upload project without custom domains is supported. Unknown/unsafe configuration or
+  an upload error leaves the local build intact and reports an error separately.
+- **Alternatives:** Tailscale requires an awake, connected Mac; iCloud viewing needs device checks;
+  private Artifacts are manual snapshots. Public GitHub Pages and public dashboard URLs remain
+  excluded. Cloudflare is the preferred candidate because the uploaded copy works while the Mac
+  is off. Confirm Access free-plan eligibility and perform the live phone checks before calling
+  this deployed. No user health data was uploaded during development.
+
+Setup: [MAC_SETUP.md](MAC_SETUP.md#private-phone-access-optional). Source review and verified limits:
+[hosting research](research_notes/Garmin%20connector%20feature%20research/private_dashboard_hosting.md).
+Sections 1 and 5 retain the original design history; this section records the updated hosting decision.

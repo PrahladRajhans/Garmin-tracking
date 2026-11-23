@@ -1,7 +1,8 @@
 # Architecture
 
 One person's Garmin data → local database → transparent analytics → Claude (MCP tools) and a dashboard.
-Everything runs on the user's Mac. There is no server, no account and no cloud copy.
+Collection and analytics run on the user's Mac. The local dashboard needs no server.
+An optional Cloudflare Pages copy can be enabled explicitly after Access setup; it is off by default.
 
 ```
                 ┌──────────────────────── sources/ ────────────────────────┐
@@ -35,6 +36,9 @@ Everything runs on the user's Mac. There is no server, no account and no cloud c
 4. **Store raw first**: every API response is saved verbatim (`raw_daily`, `raw_range`); FIT files are parsed into `fit_*` tables. Raw data is never overwritten by a lower-priority source.
 5. **Normalize**: tidy tables are rebuilt from raw. Source priority is Personal API, then unofficial, then export, merged field by field.
 6. **Rebuild derived**: `loads.rebuild` (thresholds, per-activity load, fitness), then `dashboard.build`.
+   Sync, the dashboard CLI, and the MCP `build_dashboard` tool then call
+   `publish.publish_if_enabled`: optional upload to an Access-protected Pages project. Upload
+   errors are separate from the local build; no database or FIT files are staged.
 7. **Verify** (`garmin-mcp-verify`): cross-source agreement, unit ranges, fill rates and sense checks against Garmin's own values.
 
 ## Module map (`src/garmin_mcp/`)
@@ -56,6 +60,7 @@ Everything runs on the user's Mac. There is no server, no account and no cloud c
 | `engine.py` | Insight engine: relationships with bootstrap CIs and FDR control, trends, patterns, feed |
 | `goals.py`, `workouts.py`, `athlete.py` | Goals, structured workouts to the watch, athlete settings and notes |
 | `dashboard.py` | Static multi-page dashboard (inline SVG, no JS) |
+| `publish.py` | Opt-in Pages upload, Access checks, check-only CLI; no account configuration writes |
 | `server.py` | MCP server: every tool reads the local DB; only `refresh_data` calls Garmin |
 | `verify.py`, `autoupdate.py` | Checks; self-update |
 
@@ -63,7 +68,8 @@ Everything runs on the user's Mac. There is no server, no account and no cloud c
 - **Transparent:** every number can be traced to a formula in `METRICS.md` and its inputs. Garmin's values are shown beside ours, never blended.
 - **Honest about thin data:** results carry `calibrating`, `signals_used` or `available: false` with a reason, never a guess.
 - **Raw first:** analytics can be recomputed from stored raw data at any time.
-- **Private:** data stays on the Mac. Anything that leaves it (an Artifact snapshot) is opt-in.
+- **Private:** collection and analysis stay on the Mac. A dashboard copy leaves only when publishing
+  is explicitly enabled (or a manual Artifact is requested). Access must protect all Pages addresses.
 
 ## Tests and CI
 `pytest` (unit + small end-to-end on synthetic FIT data) and `ruff`, run on Python 3.12 and 3.13 by `.github/workflows/ci.yml`. Real-data checks run with `garmin-mcp-verify` on the Mac.

@@ -9,6 +9,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.13.1] - 2026-11-23
+
+Continuation: prepare private phone hosting while preserving the existing dashboard and analytics.
+
+### Added
+- Optional `publish.py` helper, called after local builds by sync, the dashboard CLI and the
+  existing MCP `build_dashboard` tool. Disabled by default. Requires a dedicated Cloudflare Pages
+  Direct Upload project, production and wildcard-preview Access apps, one exact-email Allow policy
+  each, and anonymous login redirects before uploading. Rejects overlapping paths, bypasses,
+  destination overrides, and custom domains. Stages only HTML and fixed privacy headers.
+- `python -m garmin_mcp.publish --check` checks configuration without uploading. Publishing errors
+  are reported separately from the local build. Tokens stay in the environment/ignored local `.env`.
+- Regression coverage for refused uploads, private configuration, staging, error redaction,
+  pagination, disabled/check-only modes, and sync retaining its local dashboard after upload failure.
+- `docs/CONTINUATION_REVIEW.md`: code map, verified evolution, documentation drift and validation limits.
+  Hosting comparison and primary-source evidence in `research_notes/.../private_dashboard_hosting.md`.
+
+### Fixed
+- Constant baseline-adjusted signals crashed `engine.relationship` by indexing an empty bootstrap
+  list, preventing dashboard collection. Now unavailable with a reason; no correlation or confidence
+  interval is invented. Baselines, sample requirements, bootstrap and FDR rules are unchanged.
+- Mac setup now pulls `main` with `--ff-only`, replacing an obsolete feature branch.
+- Internal package version now matches the project version (previously still 0.11.0).
+- README/dashboard hosting docs now distinguish the default data path, conditional iCloud copy,
+  unverified phone behavior, manual snapshots and optional hosting. Roadmap deployment status no
+  longer waits on the manual update already marked complete.
+
+### Validation and remaining work
+- Baseline: 59 tests and Ruff passed. Final local suite: 84 tests and Ruff passed on Python 3.12.14.
+- Rendered dashboard HTML is byte-identical to main's renderer for the same synthetic input.
+  Chromium checked 48 page/width/theme states at 390/768/1200 px, light/dark: correct fragment
+  navigation, no document overflow, broken fragment links, page errors or scripts.
+- MCP stdio initialization, 43 tools, and synthetic `data_coverage`/`build_dashboard` calls checked.
+- No live deployment, Garmin access, health-data upload or Mac/iCloud/phone verification. Access
+  pricing/seat eligibility still needs confirmation; Pages file/build limits and the two-app
+  Access requirement were verified from Cloudflare's official documentation source.
+- VO2max norms remain blocked on primary-table retrieval; no values/formulas invented. Full visual
+  design review and improvements remain pending. Existing empty-database dashboard failure recorded.
+- GitHub API access is blocked by cloud network policy; PR, CI and merge remain unverified.
+  See ROADMAP A–D for the remaining work. No new MCP tool was added (still 43).
+
 ## [0.13.0] - 2026-11-23
 
 Phase 13: correlations explorer, test-run tracking, recovery weighting study. 43 tools.

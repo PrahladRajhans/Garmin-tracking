@@ -42,3 +42,12 @@ def test_bh_and_theil_sen():
     assert [r["q_bh"] for r in res] == [0.004, 0.04, 0.0533, 0.5]
     pts = [(x, 2 * x + 1) for x in range(10)] + [(10, 500)]  # outlier
     assert engine.theil_sen(pts) == 2
+
+
+def test_constant_signal_is_unavailable_instead_of_crashing():
+    feat = {(date(2026, 1, 1) + timedelta(days=i)).isoformat():
+            {"a": 4.0, "b": float(i % 7)} for i in range(75)}
+    result = engine.relationship(feat, "a", "b")
+    assert result["n"] >= engine.MIN_PAIRS
+    assert result["available"] is False and result["status"] == "insufficient variation"
+    assert "constant" in result["reason"] and "r" not in result

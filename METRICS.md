@@ -183,3 +183,15 @@ HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial v
 
 ## Build mapping
 Phase 3 = recovery/readiness · Phase 4 = load + performance · Phase 5 = workout coaching + fitness age (see ROADMAP.md).
+
+## v0.13.1: unavailable relationships and pending norms
+
+`engine.relationship` now returns `available: false`, `status: insufficient variation`, and a
+reason when a baseline-adjusted signal is constant or no valid bootstrap samples remain.
+It does not fabricate a correlation or confidence interval. Existing baseline adjustment,
+minimum pairs, block size, bootstrap count, and Benjamini–Hochberg thresholds are unchanged.
+
+The age/sex VO2max bar remains pending: the primary norm table could not be retrieved because
+the cloud network policy blocks the medical-reference sites tested. No norm values, percentiles,
+age interpolation, or replacement formulas have been added. Obtain and cite the exact primary
+table before implementing this item. Existing Garmin and effective VO2max calculations are unchanged.

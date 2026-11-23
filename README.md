@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.13.0: Phases 1–13 done. 43 tools, a multi-page dashboard, and running/sleep/long-term analytics. Updates install themselves on every sync.
+> **Status:** v0.13.1: Phases 1–13 done. 43 tools, a multi-page dashboard, and optional private Cloudflare publishing (off by default; account setup and phone verification still required). Updates install themselves on every sync.
 
 ## What this is, in one minute
 
@@ -53,7 +53,8 @@ library is updated. Use your own account only.
 
 ## Tools
 
-All tools read the local database; only `refresh_data` contacts Garmin.
+All analytics read the local database. `refresh_data` contacts Garmin; workout tools can write
+to Garmin when requested. `build_dashboard` can publish the HTML when private hosting is enabled.
 
 | Tool | What it returns |
 |------|-----------------|
@@ -146,9 +147,18 @@ After this, the server reuses the saved tokens; your password is not stored.
 sync). It is one self-contained file with linked pages: Today → Sleep, Recovery, Training,
 Running (→ each run), Body, Patterns. No JavaScript, no internet needed.
 
-- **Mac:** open it in Safari and bookmark it; it refreshes after each sync.
-- **Phone:** each build is also copied to `iCloud Drive/Garmin/dashboard.html`. In the Files app, open it, then Share → Open in Safari so the page links work.
-- **Anywhere:** ask Claude to publish it as a private Artifact (opt-in, because health data leaves the Mac).
+- **Mac:** open `~/.garmin-mcp/dashboard/index.html` in Safari (or your `GARMIN_DATA_DIR` override).
+  The file is rebuilt after each sync; reload an already open tab to see new data.
+- **iCloud:** each build copies the file to `iCloud Drive/Garmin/dashboard.html` if iCloud Drive
+  exists. The Mac copy and iPhone Safari/link behavior have **not** been verified here.
+- **Private phone hosting:** optional Cloudflare Pages + Access email login. No process needs
+  to stay running on the Mac after upload. Follow [MAC_SETUP.md](MAC_SETUP.md#private-phone-access-optional)
+  first: production **and** preview addresses must be protected before any health data is uploaded.
+  Sync, the dashboard CLI, and `build_dashboard` report publishing errors separately from the local
+  build. Publishing is disabled unless explicitly configured; only the HTML and fixed privacy
+  headers are uploaded, never the database, FIT files, or credentials.
+- **Private Artifact:** a manual snapshot remains an alternative; availability and access controls
+  depend on the host. It does not update itself after a sync.
 
 Design and page map: [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md).
 
@@ -232,6 +242,18 @@ Optional environment variables (or a `.env` file, see `.env.example`):
 | `GARMIN_DATA_DIR` | `~/.garmin-mcp` | Database and FIT files |
 | `GARMIN_DB_PATH` | `$GARMIN_DATA_DIR/garmin.db` | SQLite file |
 | `GARMIN_TZ` | computer's local time | IANA timezone for "today", e.g. `Asia/Kolkata` |
+| `GARMIN_DASHBOARD_PUBLISH` | unset (off) | Set to `cloudflare` only after private hosting setup |
+| `CLOUDFLARE_ACCOUNT_ID` | unset | Account that owns the dedicated Pages project |
+| `CLOUDFLARE_API_TOKEN` | unset | Secret token: Pages Edit and Access applications/policies Read for that account |
+| `GARMIN_CLOUDFLARE_PROJECT` | unset | Dedicated Direct Upload project name, without custom domains |
+| `GARMIN_DASHBOARD_EMAIL` | unset | Exact email allowed by both Access policies |
+| `GARMIN_WRANGLER` | unset | Absolute path to the locally installed Wrangler executable |
+
+The publisher reads these settings from the checkout's ignored `.env` as well as environment
+variables; environment variables win. Never commit `.env` or put token values in documentation.
+Run `.venv/bin/python -m garmin_mcp.publish --check` to check the account and anonymous login
+redirects **without uploading**. A disabled or failed check exits with status 1. Removing
+`GARMIN_DASHBOARD_PUBLISH` stops future uploads; existing cloud copies remain protected by Access.
 
 ## Development
 

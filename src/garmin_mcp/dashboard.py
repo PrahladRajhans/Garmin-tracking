@@ -812,10 +812,22 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
 
 
 def main() -> None:
+    import json
+    import sys
+
     from garmin_mcp import db
     from garmin_mcp.config import db_path
+    from garmin_mcp.publish import publish_if_enabled
 
-    print(build(db.connect(db_path())))
+    conn = db.connect(db_path())
+    try:
+        path = build(conn)
+    finally:
+        conn.close()
+    print(path)
+    result = publish_if_enabled(path)
+    if result["status"] != "disabled":
+        print(json.dumps({"dashboard_publish": result}), file=sys.stderr)
 
 
 if __name__ == "__main__":
