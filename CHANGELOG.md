@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-23
+
+Phase 7: workouts to the watch (ROADMAP 7.1).
+
+### Added
+- `workouts.py` + tools `workout_templates`, `create_workout`, `garmin_workouts`:
+  - Structured running workouts from a small JSON spec (warmup, interval, recovery, cooldown, repeats; targets by pace, HR range or HR zone).
+  - Built with python-garminconnect's own workout models.
+  - Validated before anything is sent: paces 2:30–12:00/km, HR targets at or below your max HR, known step types.
+  - Optional upload to Garmin Connect, scheduling, list and delete (unofficial login, Mac only).
+  - Templates use your HR thresholds: easy, tempo, VO2 intervals, and a calibration test that fixes the "no all-out efforts" gap.
+- Tests with a stand-in Garmin client (39 total). 27 MCP tools.
+
+### Fixed
+- `thresholds` no longer fails on a fresh database before the tidy tables are built.
+
+### Notes
+- A FIT workout file encoder was not built: after upload, Garmin Connect provides the workout file itself, which is more reliable than our own encoder.
+
 ## [0.7.0] - 2026-11-23
 
 Phase 6: memory, goals, provenance (ROADMAP 6.1–6.4).

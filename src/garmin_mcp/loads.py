@@ -152,9 +152,12 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         "SELECT z.threshold_hr FROM fit_zones z JOIN activities a USING(activity_id) "
         "WHERE z.threshold_hr > 0 AND substr(a.start_time_local,1,10) <= ? "
         "ORDER BY a.start_time_local DESC LIMIT 1", (asof,)).fetchone()
-    rest_vals = [r[0] for r in conn.execute(
-        "SELECT resting_hr FROM daily WHERE day BETWEEN ? AND ? AND resting_hr IS NOT NULL",
-        ((date.fromisoformat(asof) - timedelta(days=60)).isoformat(), asof))]
+    try:
+        rest_vals = [r[0] for r in conn.execute(
+            "SELECT resting_hr FROM daily WHERE day BETWEEN ? AND ? AND resting_hr IS NOT NULL",
+            ((date.fromisoformat(asof) - timedelta(days=60)).isoformat(), asof))]
+    except sqlite3.OperationalError:  # tidy tables not built yet (fresh database)
+        rest_vals = []
     rest = statistics.median(rest_vals) if rest_vals else None
 
     best20 = None

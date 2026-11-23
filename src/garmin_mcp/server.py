@@ -294,6 +294,49 @@ def goal_check() -> dict[str, Any]:
     return _with_db(goals.goal_check)
 
 
+# ----------------------------------------------------------------- Phase 7: workouts
+@mcp.tool()
+def workout_templates() -> dict[str, Any]:
+    """Ready-made workout specs (easy, tempo, VO2 intervals, calibration test) using your HR
+    thresholds. Pass one (edited as needed) to create_workout."""
+    from garmin_mcp import workouts
+
+    return _with_db(workouts.templates)
+
+
+@mcp.tool()
+def create_workout(spec: str, upload: bool = False,
+                   schedule_date: str | None = None) -> dict[str, Any]:
+    """Build a structured running workout from a JSON spec, validate it (paces 2:30-12:00/km,
+    HR below your max) and return Garmin's workout JSON. With upload=true it is sent to Garmin
+    Connect (unofficial login, Mac only) and optionally scheduled (YYYY-MM-DD); sync the watch to
+    receive it. Spec: {"name":..., "steps":[{"type":"warmup|interval|recovery|cooldown",
+    "duration":"m:ss" or "distance_m":800, "pace":"5:00-5:10" | "hr":"150-160" | "hr_zone":2},
+    {"type":"repeat","times":5,"steps":[...]}]}. Only upload when the user asks."""
+    import json as _json
+
+    from garmin_mcp import workouts
+
+    try:
+        parsed = _json.loads(spec)
+    except ValueError as exc:
+        return {"error": f"spec is not valid JSON: {exc}"}
+    return _with_db(lambda c: workouts.create(c, parsed, upload, schedule_date))
+
+
+@mcp.tool()
+def garmin_workouts(action: str = "list", workout_id: int | None = None) -> dict[str, Any]:
+    """List workouts saved in Garmin Connect, or delete one (action='delete', workout_id).
+    Needs the unofficial login (Mac). Only delete when the user asks."""
+    from garmin_mcp import workouts
+
+    if action == "delete":
+        if not workout_id:
+            return {"error": "workout_id required"}
+        return workouts.delete_on_garmin(workout_id)
+    return workouts.list_on_garmin()
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the

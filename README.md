@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.7.0: Phases 1–6 done (data, recovery, load & performance, running/swim/strength coaching, goals and memory). 24 tools. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.8.0: Phases 1–7 done (data, recovery, load & performance, running/swim/strength coaching, goals and memory, workouts to the watch). 27 tools. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -51,6 +51,9 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `update_athlete_setting(key, value)` | Save a stated input, e.g. tested max HR or goal race; recalculates |
 | `add_athlete_note(text, kind)` | Save a note, decision or preference |
 | `goal_check()` | Goal race vs current fitness (median of methods, cautions) |
+| `workout_templates()` | Easy, tempo, VO2 intervals and calibration-test specs from your HR thresholds |
+| `create_workout(spec, upload=False, schedule_date?)` | Validate and build a structured workout; optional upload and schedule to Garmin Connect (Mac) |
+| `garmin_workouts(action='list'\|'delete', workout_id?)` | Workouts saved in Garmin Connect (Mac) |
 | `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
 | `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
 | `data_coverage()` | What is stored, date ranges, last sync and errors |
@@ -199,6 +202,7 @@ src/garmin_mcp/
   coaching.py # Phase 5: run analysis, form at matched pace, glossary, fitness age
   athlete.py  # Phase 6: settings, goals, notes, placeholders
   goals.py    # Phase 6: goal reality check
+  workouts.py # Phase 7: structured workouts, validation, upload
   verify.py   # data-quality checks (garmin-mcp-verify)
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/

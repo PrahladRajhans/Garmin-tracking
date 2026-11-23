@@ -46,8 +46,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.5.0 | Phase 4: training load & performance + weekly review | done |
 | 0.6.0 | Phase 5: workout coaching (running first) + activity recap + fitness age levers | done |
 | 0.7.0 | Phase 6: memory, goals, provenance | done |
-| 0.8.0 | Phase 7: workouts to the watch | **next** |
-| 0.9.0 | Phase 8: insight engine, levels 1–3 | planned |
+| 0.8.0 | Phase 7: workouts to the watch | done (upload untested until the Mac setup) |
+| 0.9.0 | Phase 8: insight engine, levels 1–3 | **next** |
 | 0.10.0 | Phase 9: dashboard | planned |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
@@ -106,7 +106,7 @@ Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 | 6.3 | Provenance on every result (source, computed vs Garmin) | R30 |
 | 6.4 | Profile/timezone for "today" (GARMIN_TZ; defaults to the computer's local time) | R7 |
 
-### Phase 7: Workouts to the watch → v0.8.0
+### Phase 7: Workouts to the watch → v0.8.0 ✅ done (upload path tested with a stand-in client; real upload needs the Mac login)
 | ID | Item | Backlog/source |
 |---|---|---|
 | 7.1 | Structured workout builder; push via unofficial upload; FIT-file fallback | R31 |
