@@ -132,3 +132,11 @@ The empty dashboard explains how to obtain data. Today reports signal coverage a
 syncs; no stale health-status row is presented as today. The footer says "Data through".
 HTML is still script-free and responsive, with atomic local/iCloud replacement. Real Safari,
 iCloud and Cloudflare Access tests remain rollout work; Chromium checks do not close those.
+
+## Run pacing drill-down (v0.14.2)
+
+Running → activity → Pacing and effort. The split line uses elapsed seconds with clock-formatted
+values and a table. The timing card puts FIT sample-derived times next to watch session times.
+A separate card presents heart-rate change in bpm and grade-adjusted speed per heartbeat
+in percent, with both based on equal recorded moving-time halves. Back links follow the
+same static fragment navigation as the rest of the dashboard.

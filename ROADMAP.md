@@ -57,6 +57,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | merged PR #10 after both CI jobs passed |
 | 0.14.0 | Exact FRIEND VO2max reference bar, source transcription and tests | merged PR #11 after both CI jobs passed; live profile check pending |
 | 0.14.1 | Dashboard accessibility, current-day ranges, atomic/private files and provenance | implemented; CI/merge evidence recorded in GitHub PR |
+| 0.14.2 | Run pacing drill-down, timestamp-based timing, elapsed splits and Garmin timer evidence | Implemented with synthetic regression and browser checks |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -82,6 +83,19 @@ Primary VO2max Table 3 retrieval is complete (PR #11). Deferred research: re-che
 sources against full papers, benchmark competitor workflows with actual captures. Do not invent
 norms, alter recovery weights, label correlations causal, or expose a cloud MCP endpoint before
 an authentication/authorization and private-data deployment design has been verified.
+
+### Analytics and dashboard follow-up (23 November)
+
+| Order | Deliverable | Evidence needed |
+|---|---|---|
+| 1 | Run timing and pacing evidence (v0.14.2) | Known-speed/HR, sparse timing, pauses, partial kilometres, link navigation and Garmin session-field mapping |
+| 2 | Monthly drill-down and pattern evidence | Show coverage beside trends, distinguish weak associations and make missing days visible |
+| 3 | Historical validation on the Mac | Run the existing data-quality verifier on the archived history and compare sampled watch summaries with new recorded-stream outputs |
+| 4 | Phone deployment | Verify protected preview and production, owner login, dashboard drill-down and next scheduled update |
+
+The Mac holds the original Garmin history and account access. Synthetic checks can validate
+individual formulas, mappings and edge cases. The recorded agreement figures are historical
+until the owner dataset is checked again.
 
 ### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
 | ID | Item | Backlog/source |

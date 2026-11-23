@@ -258,3 +258,30 @@ A current Garmin health-status value may fill a missing same-day series value. M
 are calibrating; above/below describes a personal baseline, not disease or fitness clearance.
 `as_of` names the requested day and `range_available` distinguishes thin history. No recovery
 weights, statistical/FDR rules or physiological conversion constants changed in v0.14.1.
+
+## FIT run timing and split evidence (v0.14.2)
+
+In `coaching.run_metrics`, recorded moving duration sums positive adjacent FIT timestamp
+intervals of at most 10 seconds with speed above 1 m/s at both ends. The minimum is 120
+seconds of such intervals. The 10-second gap limit and speed threshold are engineering
+choices. Missing intervals are excluded from this estimate. Pace and grade-adjusted speed
+use end-sample values weighted by interval duration. Minute CV uses complete 60-second
+moving-time bins; the existing steady criterion is at least 1,200 seconds and CV below 15%.
+Efficiency uses matched speed and HR intervals. For the overall value and either moving-time
+half, valid HR must cover at least 90% of the corresponding duration. Decoupling remains
+100 × (first-half EF − second-half EF) / first-half EF. HR change is second minus first
+weighted HR in bpm. Neither establishes aerobic fitness by itself.
+
+Recorded elapsed time spans the first to last FIT record. Elapsed splits use monotonic
+cumulative distance relative to the first usable distance and interpolate crossings between
+nearby records (explicitly recorded boundary timestamps are used directly). A distance reset
+or unresolvable kilometre crossing suppresses the splits. Pauses count toward elapsed splits.
+For 4 km or more, the elapsed comparison uses two equal recorded distances, including the
+last partial kilometre. Second minus first gives the signed delta in seconds. Differences
+within one second are shown as approximately even. Garmin FIT summary timer and elapsed
+fields are displayed separately for a single stored session.
+
+Source: [Garmin FIT Cookbook, Elapsed, Timer, and Moving Durations](https://developer.garmin.com/fit/cookbook/durations/).
+The watch timer may start before the first sample and end after the final sample. These time
+definitions can differ on correctly recorded activities. Tests use known fixture values.
+Garmin history and current device data still require a Mac verification run.

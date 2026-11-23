@@ -88,3 +88,13 @@ Current-day personal ranges exclude stale measurements and require preceding obs
 see METRICS for exact minimums. These changes qualify interpretation without changing the
 underlying physiological formulas. W3C sources, screenshots and accessibility evidence are
 linked in [UI_REVIEW](../../docs/UI_REVIEW.md). No new competitor or clinical validation is claimed.
+
+### Run timing follow-up (v0.14.2)
+
+Retrieved Garmin's [FIT duration article](https://developer.garmin.com/fit/articles/cookbook/durations.html)
+on 23 November 2026. It defines elapsed duration as wall time including pauses and timer
+duration as stopwatch time excluding them. Moving duration uses a speed threshold and can
+differ across platforms. The repo now labels its sample-based estimate separately from Garmin
+FIT fields. The gap, coverage and steady-run rules are documented engineering choices. The
+recording tests check one-second and five-second sampling, a long pause, interpolation and an
+odd/partial last kilometre. The owner's Garmin history was unavailable in cloud.
