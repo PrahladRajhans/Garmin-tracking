@@ -337,6 +337,88 @@ def garmin_workouts(action: str = "list", workout_id: int | None = None) -> dict
     return workouts.list_on_garmin()
 
 
+# ----------------------------------------------------------------- Phase 8: insight engine
+def _end(c: sqlite3.Connection, end: str | None) -> str:
+    return parse_date(end) if end else insights._latest_day(c) or parse_date(None)
+
+
+@mcp.tool()
+def insight_feed(end: str | None = None) -> dict[str, Any]:
+    """Ranked insights (level 1 what happened, level 2 associations in your data, level 3 what
+    to do): readiness, HRV-guided advice, vitals outside range, load flags, 90-day trends,
+    notable relationships. Start here for 'what should I know?'."""
+    from garmin_mcp import engine
+
+    return _with_db(lambda c: engine.insight_feed(c, _end(c, end)))
+
+
+@mcp.tool()
+def relationships(days: int = 365, end: str | None = None) -> dict[str, Any]:
+    """Associations in your own data (e.g. sleep -> next-day HRV, stress -> HRV, bedtime ->
+    sleep, training load -> next-day resting HR), baseline-adjusted with bootstrap CIs and
+    false-discovery control. Association, not causation."""
+    from garmin_mcp import engine
+
+    return _with_db(lambda c: engine.relationships(c, _end(c, end), max(90, min(days, 1100))))
+
+
+@mcp.tool()
+def trends_and_patterns(days: int = 90, end: str | None = None) -> dict[str, Any]:
+    """Robust trends (HRV, resting HR, sleep, VO2max, fitness, steps) with confidence intervals,
+    weekday patterns, streaks, personal ranges and form as % of fitness."""
+    from garmin_mcp import engine
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        e = _end(c, end)
+        return {"trends": engine.trends(c, e, max(30, min(days, 730))),
+                "weekday_patterns": engine.weekday_patterns(c, e),
+                "streaks": engine.streaks(c, e), "personal_ranges": engine.personal_ranges(c, e),
+                "form": engine.form_percent(c, e), "load_flags": engine.load_flags(c, e)}
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def records_and_calendar(days: int = 365, end: str | None = None) -> dict[str, Any]:
+    """Personal-best timeline (pace curve), longest sessions per sport, and a per-day calendar
+    of sleep, HRV, resting HR, load, steps and readiness for heatmaps."""
+    from garmin_mcp import engine
+
+    return _with_db(lambda c: {"records": engine.records(c),
+                               "calendar": engine.calendar(c, _end(c, end),
+                                                           max(30, min(days, 1100)))})
+
+
+@mcp.tool()
+def add_tag(day: str, tag: str) -> dict[str, Any]:
+    """Tag a day with a behaviour or context (alcohol, late meal, travel, illness, late
+    caffeine, sick, injured). Used for Whoop-style impact estimates on next-day HRV/sleep."""
+    from garmin_mcp import athlete
+
+    d = parse_date(day)
+    return _with_db(lambda c: (athlete.add_note(c, "tag", f"{d}|{tag.strip().lower()}"),
+                               {"tagged": d, "tag": tag})[1])
+
+
+@mcp.tool()
+def tag_impact(days: int = 365) -> dict[str, Any]:
+    """How tagged days relate to next-day HRV, sleep score and resting HR vs your baseline."""
+    from garmin_mcp import engine
+
+    return _with_db(lambda c: engine.tag_impact(c, _end(c, None), max(30, min(days, 1100))))
+
+
+# ----------------------------------------------------------------- Phase 9: dashboard
+@mcp.tool()
+def build_dashboard() -> dict[str, Any]:
+    """Rebuild the personal dashboard (one HTML file, opens in any browser or phone). It is also
+    rebuilt automatically after every sync. Returns the file path."""
+    from garmin_mcp import dashboard
+
+    return _with_db(lambda c: {"path": str(dashboard.build(c)),
+                               "open_with": "open <path> (Mac) or any browser"})
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the

@@ -47,8 +47,9 @@ compute: activity recaps, daily brief, weekly review.
 | 0.6.0 | Phase 5: workout coaching (running first) + activity recap + fitness age levers | done |
 | 0.7.0 | Phase 6: memory, goals, provenance | done |
 | 0.8.0 | Phase 7: workouts to the watch | done (upload untested until the Mac setup) |
-| 0.9.0 | Phase 8: insight engine, levels 1–3 | **next** |
-| 0.10.0 | Phase 9: dashboard | planned |
+| 0.9.0 | Phase 8: insight engine, levels 1–3 | done (core); see status per item |
+| 0.10.0 | Phase 9: dashboard | done |
+| 0.11.0 | Phase 10: competitor-parity scores & presentation (Fitbit, Whoop, Bevel, Oura) | **next** |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -111,29 +112,29 @@ Tools: `readiness_today`, `recovery_trend`, `daily_brief`.
 |---|---|---|
 | 7.1 | Structured workout builder; push via unofficial upload; FIT-file fallback | R31 |
 
-### Phase 8: Insight engine, levels 1–3 → v0.9.0
+### Phase 8: Insight engine, levels 1–3 → v0.9.0 ✅ core done (`engine.py`)
 Source: `research_notes/.../insights_and_dashboards.md` (24-item backlog). Statistical rules for
 all items: subtract personal baselines, ≥ 30 paired days before showing a relationship,
 bootstrap confidence intervals, Benjamini–Hochberg correction when scanning many pairs, no causal
 wording, no "injury risk".
 | ID | Level | Item |
 |---|---|---|
-| 8.1 | 1 | Calendar heatmaps (load, sleep, HRV, readiness); PR timeline; streaks |
-| 8.2 | 2 | Sleep → next-day HRV / readiness (lagged, baseline-adjusted) |
-| 8.3 | 2 | Training time-of-day and load → that night's sleep and next-day HRV |
-| 8.4 | 2 | Heat → HR drift (extends 5.5); day-of-week patterns |
-| 8.5 | 2 | User tags (alcohol, late meal, travel, illness) with Whoop-style impact estimates |
-| 8.6 | 3 | HRV-guided training rule in the daily brief (Altini/Plews-style) |
-| 8.7 | 3 | Load-jump flags (worded as load change, not risk) |
-| 8.8 | 3 | Marathon shape (Runalyze) + race-time correction for volume |
-| 8.9 | 3 | Personal Banister fitness–fatigue fit (bounded) → performance forecast |
-| 8.10 | 3 | Plateau/changepoint detection on EF, VO2max, resting HR |
-| 8.11 | 3 | Submaximal fitness test protocol (standardised run → EF/HR trend) |
-| 8.12 | 3 | Race readiness + taper simulator |
-| 8.13 | — | Garmin Active Intelligence / Strava Athlete Intelligence parity (from 5.9) |
-| 8.14 | — | Own fitness-age estimate once the norm formula is verified (from 5.7) |
+| 8.1 | 1 | Calendar heatmaps (load, sleep, HRV, readiness); PR timeline; streaks ✅ |
+| 8.2 | 2 | Sleep → next-day HRV / readiness (lagged, baseline-adjusted) ✅ (14 pairs, BH-controlled) |
+| 8.3 | 2 | Training time-of-day and load → that night's sleep and next-day HRV ✅ built; time-of-day has too few evening sessions yet (3–4 days) |
+| 8.4 | 2 | Heat → HR drift (5.5) and day-of-week patterns ✅ |
+| 8.5 | 2 | User tags with Whoop-style impact estimates ✅ (needs ≥ 5 tagged days per tag) |
+| 8.6 | 3 | HRV-guided training rule in the insight feed ✅ |
+| 8.7 | 3 | Load-jump and long-run-jump flags ✅ |
+| 8.8 | 3 | Marathon shape (Runalyze rules verified: 6-month weekly km ⅔ + long runs ≥ 13 km over 10 weeks ⅓; 5K 7 %, 10K 17 %, HM 43 %, M 100 %) → Phase 10 (target-volume formula still unverified) |
+| 8.9 | 3 | Personal Banister fit → Phase 10 (needs more performance points than 19 runs give) |
+| 8.10 | 3 | Robust 90-day trends (Theil-Sen + CI) ✅; formal changepoint detection → Phase 10 |
+| 8.11 | 3 | Calibration-test workout exists (Phase 7); EF trend of steady runs exists (5.2); standardised protocol tracking → Phase 10 |
+| 8.12 | 3 | Race readiness + taper simulator → when you pick a race |
+| 8.13 | — | Active/Athlete Intelligence parity: daily brief, weekly review, activity recap facts, insight feed ✅; further items in Phase 10 |
+| 8.14 | — | Own fitness-age estimate → Phase 10 (norm formula unverified) |
 
-### Phase 9: Dashboard → v0.10.0
+### Phase 9: Dashboard → v0.10.0 ✅ done (`garmin-mcp-dashboard`, rebuilt after every sync; 9.6 is a list, interactive explorer → Phase 10)
 Static, mobile-friendly HTML pages built by Python after each sync (Plotly.js/Chart.js, data
 embedded), optional Datasette for ad-hoc SQL. Garmin's values shown with a "G" badge beside ours,
 never averaged; provenance footer on every chart.
@@ -146,10 +147,26 @@ never averaged; provenance footer on every chart.
 | 9.5 | Weekly summary; calendar heatmap; swim and strength trends |
 | 9.6 | Correlations explorer (Phase 8 results) |
 
+### Phase 10: Competitor-parity scores & presentation → v0.11.0
+Source: `research_notes/.../fitbit_whoop_bevel.md` (Fitbit/Google Health, Whoop, Bevel, Oura;
+verified page reads marked [R]). Each item keeps Garmin's values beside ours.
+| ID | Item | Inspired by |
+|---|---|---|
+| 10.1 | Readiness gauge 0–100 with contributor chips and plain-word bands (85/70/60) | Oura, Fitbit |
+| 10.2 | Sleep score breakdown (duration, time to sound sleep, sound sleep, restlessness, awakenings, interruptions) + heart-rate dip | Fitbit 2026, Bevel |
+| 10.3 | Sleep need, debt and bank, suggested bedtime | Whoop, Garmin sleep coach |
+| 10.4 | Daily strain on a log scale of TRIMP with a target band from readiness | Whoop, Bevel |
+| 10.5 | Activity status (sick/injured/break) that pauses advice and excludes days from baselines | Bevel |
+| 10.6 | Pace of ageing (30 days vs 6 months), ± years per input; own fitness age (8.14) | Whoop Healthspan |
+| 10.7 | Marathon shape (8.8) and Banister fit (8.9), changepoints (8.10), standardised test tracking (8.11) | Runalyze, Phase 8 carry-over |
+| 10.8 | VO2max range bar by age and sex; Active Zone Minutes view | Fitbit |
+| 10.9 | Interactive correlations explorer; monthly report page | Whoop, Fitbit |
+| 10.10 | "Calibrating" badge on every score with too little data | Oura, Fitbit |
+
 ### Deployment track (runs alongside, needs you once)
 | ID | Item | Target |
 |---|---|---|
-| D.1 | Mac setup via one local Claude Code session (`MAC_SETUP.md`): import export, 1-year backfill, Claude Desktop config, 3-hourly sync | v1.0.0 |
+| D.1 | Mac setup via one local Claude Code session (`MAC_SETUP.md`): import, 1-year backfill (✅ done 23 Nov: 2,894 calls, 0 errors), Claude Desktop config, 3-hourly sync (✅ scheduled). Remaining: restart Claude Desktop and pull the latest code | v1.0.0 |
 
 ### Later / optional (only if you ask)
 R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe · Grafana view ·
@@ -160,28 +177,27 @@ Skin temperature/ECG (no FR955 sensor) · ACWR as injury risk · Strava as a sou
 our own Body Battery/Stress (no valid open method; Garmin's are shown).
 
 ## Needs from you (placeholders live in `athlete_settings`; set them by telling Claude)
-| # | Input / action | Why it matters | Current fallback |
-|---|---|---|---|
-| 1 | Run the one-message Mac setup (D.1) | Makes everything usable in Claude Desktop; adds the unofficial extras for recent months; daily sync | Development works on a cloud copy of your data |
-| 2 | Tested max HR, or a value seen above 193 (`hr_max_override`) | Drives TRIMP, zones, effective VO2max, race predictions | Observed 193 (Garmin's setting 209 is flagged) |
-| 3 | Goal race: distance, date, target (`goal_race`) | Goal reality check, weekly focus | `goal_check` asks for it |
-| 4 | Goals, weekly km target, long-run day, injuries/limits | Framing for briefs, recaps and workouts | Generic framing |
-| 5 | Timezone (`GARMIN_TZ`, e.g. Asia/Kolkata) | Correct "today" | Computer's local time |
-| 6 | Optional hard efforts: 5 min all-out and a hard 20-min run | Calibrates critical speed, LTHR, rTSS | Estimates from easy runs (flagged) |
-| 7 | Optional: weights in Garmin strength sessions | Strength volume (kg) | Sets/reps only |
-| 8 | Optional: watch setting "Log HRV" | Beat-to-beat HRV during activities | Not recorded |
-| 9 | Optional: allow intervals.icu, TrainingPeaks, HRV4Training, Oura, Runalyze, Whoop domains | Research claims are snippet-only until pages can be read | Marked [S]/[unverified] |
-| 10 | Rotate the Personal API key (it was pasted in chat) | Security | Deferred by you |
+| # | Input / action | State |
+|---|---|---|
+| 1 | Mac setup (D.1) | ✅ backfill and schedule done. Remaining: in the local Claude Code session say "git pull and pip install -e ." then restart the Claude desktop app |
+| 2 | Max HR | ✅ answered: no test. Using 188 = max(repeatable peak 177, Tanaka age estimate 188); the 193 treadmill peak is flagged as a probable optical spike |
+| 3 | Goal race | ✅ none yet; goal = general fitness, marathon some day |
+| 4 | Goals, injuries/limits | ✅ right knee a little weak → knee cautions in workouts |
+| 5 | Timezone | ✅ Asia/Kolkata |
+| 6 | Save 2–5 on the Mac: tell Claude Desktop once: "save my settings: timezone Asia/Kolkata, injuries: right knee a little weak, goals: general fitness, marathon in future" | open (settings live in each machine's database) |
+| 7 | Optional hard efforts (calibration-test workout) | open: past swims/strength can't calibrate run thresholds (see METRICS.md) |
+| 8 | Optional: weights in strength sessions; watch "Log HRV" | open |
+| 9 | Rotate the Personal API key | deferred by you |
 
 ## Problems caused by incomplete information (and what fixes them)
 | Problem | Effect | Fix |
 |---|---|---|
 | No all-out run efforts | Critical speed and best-effort predictions reflect training pace; rTSS off | #6 |
-| Garmin's max-HR/LTHR settings look too high | Garmin's own zones may overstate easy runs as hard | #2 (or correct them in Garmin Connect) |
+| Garmin's max-HR/LTHR settings look too high (209/185) | Garmin's own zones under-rate your effort | Ours use 188/166; optionally set Garmin Connect max HR to ~188 so the watch agrees |
 | Last night's sleep sometimes missing / 14-min records | Readiness falls back; flagged as incomplete | Wear the watch overnight; sync in the morning |
-| Unofficial extras (readiness factors, training status) only for the last 7 days in API data | Export covers history to 22 Nov 2026; gap after that until Mac backfill | #1 |
+| Unofficial extras gap after the export date | ✅ closed by the Mac backfill (365 days) | — |
 | Low weekly running volume (~2 km/week recently) | Half/marathon predictions unreliable (warned) | Training, not data |
-| Vendor docs unreachable from the cloud session | Some competitor methods unverified | #9 |
+| Whoop blocks automated reading | Whoop details rest on search snippets and reviews | nothing needed |
 
 ## Side-quest rule
 Research or fixes outside the current phase are done only when they feed an item above; each is

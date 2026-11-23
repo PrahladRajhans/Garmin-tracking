@@ -43,5 +43,8 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
    `~/Library/LaunchAgents/com.garmin-mcp.sync.plist` running
    `/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp-sync --days 3`, StartInterval 10800,
    stdout/stderr to `~/.garmin-mcp/sync.log`; then `launchctl load` it.
-7. **Verify**: `.venv/bin/garmin-mcp-sync --coverage`, and in Claude Desktop ask
+7. **Updates later**: `git pull && .venv/bin/pip install -e .`, then restart the Claude
+   desktop app. The dashboard is at `~/.garmin-mcp/dashboard/index.html` (rebuilt after each
+   sync; `open` it).
+8. **Verify**: `.venv/bin/garmin-mcp-sync --coverage`, and in Claude Desktop ask
    "show my health snapshot". Report results to the user.
