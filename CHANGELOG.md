@@ -11,6 +11,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `--source both` (now the default): official API first, then only the extras the official API lacks from the unofficial library. Either source failing is reported without blocking the other.
 - Tests for the Personal API source (14 total).
 
+### Fixed
+- Sync now waits and retries on HTTP 429. Garmin's Personal API allows ~100 requests per window and returns `retryInSeconds`; previously the run aborted. Waits are counted in `rate_limit_waits`.
+- `--coverage` now lists windowed datasets (Body Battery, stress, steps, VO2max, etc.).
+
+### Verified on real data (2026-11-23)
+- Official Personal API: 30 days synced, 0 errors. Unofficial extras: 7 days, 0 errors.
+- A watch-only FR955 records vertical oscillation, ground contact time and stride length in FIT records (previously assumed to need a chest strap). Beat-to-beat HRV is not recorded (HRV logging is off on the watch).
+
 ### Changed
 - Python 3.12+ required (official Garmin client requirement).
 - README: key setup via a private key file, source modes, what each source covers.

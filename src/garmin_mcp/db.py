@@ -200,6 +200,13 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
             "FROM raw_daily GROUP BY dataset ORDER BY dataset"
         )
     ]
+    ranges = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT dataset, COUNT(*) AS chunks, MIN(start_day) AS first_day, "
+            "MAX(end_day) AS last_day FROM raw_range GROUP BY dataset ORDER BY dataset"
+        )
+    ]
     acts = dict(
         conn.execute(
             "SELECT COUNT(*) AS activities, MIN(start_time_local) AS first, "
@@ -210,4 +217,4 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
         "SELECT run_id, MAX(ts) AS finished, SUM(status='error') AS errors, COUNT(*) AS calls "
         "FROM sync_log GROUP BY run_id ORDER BY finished DESC LIMIT 1"
     ).fetchone()
-    return {"daily": daily, "activities": acts, "last_sync": dict(last) if last else None}
+    return {"daily": daily, "ranges": ranges, "activities": acts, "last_sync": dict(last) if last else None}

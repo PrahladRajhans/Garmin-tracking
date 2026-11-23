@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -32,6 +33,7 @@ class SyncResult:
     errors: int = 0
     new_activities: int = 0
     aborted: str | None = None
+    rate_limit_waits: int = 0
     error_samples: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -40,6 +42,28 @@ class SyncResult:
 
 class _Abort(Exception):
     pass
+
+
+class _RateLimited(Exception):
+    def __init__(self, seconds: float) -> None:
+        super().__init__(seconds)
+        self.seconds = seconds
+
+
+def _retry_after(exc: Exception) -> float | None:
+    """Seconds to wait if `exc` is an HTTP 429 rate-limit error, else None.
+
+    Garmin's Personal API allows ~100 requests per window and returns
+    {"retryInSeconds": N} in the 429 body. Other sources may only set status_code.
+    """
+    status = getattr(exc, "status_code", None) or getattr(
+        getattr(exc, "response", None), "status_code", None
+    )
+    if status != 429 and "429" not in str(exc)[:200]:
+        return None
+    text = getattr(exc, "response_text", "") or str(exc)
+    match = re.search(r'"retryInSeconds"\s*:\s*(\d+)', text)
+    return float(match.group(1)) + 1 if match else 30.0
 
 
 class Syncer:
@@ -52,6 +76,8 @@ class Syncer:
         refresh_days: int = 2,
         max_consecutive_errors: int = 8,
         store_fit_files: bool = True,
+        max_rate_limit_waits: int = 200,
+        sleep=time.sleep,
     ) -> None:
         self.conn = conn
         self.source = source
@@ -61,12 +87,28 @@ class Syncer:
         self.store_fit_files = store_fit_files
         self.result = SyncResult(run_id=uuid.uuid4().hex[:12])
         self._consecutive = 0
+        self._sleep = sleep
+        self._rate_waits_left = max_rate_limit_waits
 
     # -- helpers -------------------------------------------------------------
     def _call(self, dataset: str, key: str, fn, *args) -> tuple[bool, Any]:
+        while True:
+            try:
+                return self._call_once(dataset, key, fn, *args)
+            except _RateLimited as rl:
+                if self._rate_waits_left <= 0:
+                    raise _Abort(f"rate limit: gave up after repeated waits ({dataset})") from rl
+                self._rate_waits_left -= 1
+                self.result.rate_limit_waits += 1
+                self._sleep(rl.seconds)
+
+    def _call_once(self, dataset: str, key: str, fn, *args) -> tuple[bool, Any]:
         try:
             payload = fn(*args)
         except Exception as exc:
+            wait = _retry_after(exc)
+            if wait is not None:
+                raise _RateLimited(wait) from exc
             self.result.errors += 1
             self._consecutive += 1
             msg = f"{dataset}[{key}]: {type(exc).__name__}: {exc}"[:300]
@@ -79,7 +121,7 @@ class Syncer:
             return False, None
         finally:
             if self.delay:
-                time.sleep(self.delay)
+                self._sleep(self.delay)
         self._consecutive = 0
         self.result.fetched += 1
         db.log(self.conn, self.result.run_id, self.source.name, dataset, key, "ok")

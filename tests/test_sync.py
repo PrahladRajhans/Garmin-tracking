@@ -94,3 +94,26 @@ def test_coverage_reports_stored_data(conn):
     sleep = next(d for d in cov["daily"] if d["dataset"] == "sleep")
     assert sleep["days"] == 3 and sleep["last_day"] == today.isoformat()
     assert cov["last_sync"]["errors"] == 0
+
+
+class RateLimitError(Exception):
+    status_code = 429
+    response_text = '{"count":101,"limit":100,"retryInSeconds":7}'
+
+
+def test_rate_limit_waits_and_retries(conn):
+    src = FakeSource()
+    attempts = {"n": 0}
+
+    def flaky(day):
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise RateLimitError()
+        return {"ok": day}
+
+    src.daily = {"sleep": flaky}
+    slept = []
+    today = date.today()
+    r = Syncer(conn, src, delay=0, store_fit_files=False, sleep=slept.append).run(today, today)
+    assert r.errors == 0 and r.rate_limit_waits == 2 and slept == [8.0, 8.0]
+    assert db.has_daily(conn, "sleep", today.isoformat())
