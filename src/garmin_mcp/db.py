@@ -217,4 +217,13 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
         "SELECT run_id, MAX(ts) AS finished, SUM(status='error') AS errors, COUNT(*) AS calls "
         "FROM sync_log GROUP BY run_id ORDER BY finished DESC LIMIT 1"
     ).fetchone()
-    return {"daily": daily, "ranges": ranges, "activities": acts, "last_sync": dict(last) if last else None}
+    tidy = {}
+    for t in ("daily", "sleep", "hrv", "health_status", "readiness", "training",
+              "race_predictions", "scores", "fitness_age"):
+        try:
+            tidy[t] = dict(conn.execute(
+                f"SELECT COUNT(*) AS days, MIN(day) AS first_day, MAX(day) AS last_day FROM {t}"
+            ).fetchone())
+        except sqlite3.OperationalError:
+            pass  # not built yet
+    return {"tidy": tidy, "daily": daily, "ranges": ranges, "activities": acts, "last_sync": dict(last) if last else None}

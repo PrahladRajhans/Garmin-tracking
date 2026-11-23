@@ -265,6 +265,9 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
                 out["sources"][name] = {"skipped": f"{type(exc).__name__}: {exc}"[:300]}
                 continue
             out["sources"][name] = Syncer(conn, src, delay=delay).run(start, end).as_dict()
+        from garmin_mcp.normalize import rebuild
+
+        out["tidy_tables"] = rebuild(conn)
     finally:
         conn.close()
     return out

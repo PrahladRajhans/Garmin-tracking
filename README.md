@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.2.0, Phase 1 (data foundation). Local SQLite sync of all FR955 data. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.3.0, Phase 2: full history (export + official API + unofficial extras) in tidy local tables, with a one-call health snapshot. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** see [ROADMAP.md](ROADMAP.md) for decisions and phased build order.
 
@@ -26,18 +26,26 @@ library is updated. Use your own account only.
 
 ## Tools
 
+All tools read the local database; only `refresh_data` contacts Garmin.
+
 | Tool | What it returns |
 |------|-----------------|
-| `get_daily_summary(day?)` | Steps, calories, resting HR, stress, body battery for a day |
-| `get_sleep(day?)` | Sleep stages, score, timings |
-| `get_heart_rate(day?)` | Heart-rate timeline and resting HR |
-| `get_recent_activities(limit=10)` | Latest activities, newest first (max 100) |
-| `refresh_data(days=3)` | Sync recent days from Garmin into the local database |
-| `data_coverage()` | What is stored locally, date ranges, last sync and errors |
+| `health_snapshot(day?)` | One-call picture: sleep, HRV and resting HR vs your baselines, Garmin training readiness (with factors) and status, load, VO2max, race predictions, endurance/hill score, everyday activity, fitness age, last 7 days of activities, and flags |
+| `daily_summary(day?)` | Every stored metric for one day |
+| `activities(days=30, activity_type?, end?)` | Activities with a per-type summary |
+| `activity_detail(activity_id)` | Laps with pace, HR zones, weather, Garmin training effect, running form from the FIT file (cadence, ground contact, vertical oscillation, power) |
+| `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
+| `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
+| `data_coverage()` | What is stored, date ranges, last sync and errors |
 
-The first four tools still call Garmin live; Phase 2 moves them onto the local database.
+`day` is `YYYY-MM-DD`. Values prefixed `garmin_` are Garmin's own scores.
 
-`day` is `YYYY-MM-DD` and defaults to today.
+### Local tables (rebuilt from raw data after every sync/import)
+
+`daily`, `sleep`, `hrv`, `health_status`, `readiness`, `training`, `race_predictions`, `scores`,
+`fitness_age`, plus `activities`, `fit_laps`, `fit_records`. When sources overlap, each field is
+taken from the official API first, then the unofficial library, then the export (values were
+cross-checked and agree).
 
 ## Setup
 
@@ -164,6 +172,9 @@ src/garmin_mcp/
   db.py       # SQLite schema + storage helpers
   fit.py      # FIT parsing (official garmin-fit-sdk)
   sync.py     # incremental sync engine + CLI
+  importer.py # Garmin data export importer
+  normalize.py# tidy per-day tables from all sources
+  insights.py # health snapshot, trends, activity views
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/
 ```

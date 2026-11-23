@@ -39,9 +39,9 @@ Design rules:
 | Confirm METRICS.md formulas against primary sources (⚠ items) | **open → step A** |
 | Import full history from the Garmin export | **done** (`garmin-mcp-import`, tested on your real export) |
 | Backfill extras from the unofficial library (only 7 days on the Mac) | open → step F (Mac) |
-| Tidy (normalised) tables from raw payloads | open → step C (Phase 2) |
-| Move the 4 original tools onto the local database (design rule 1) | open → step C |
-| One-call health snapshot | open → step C |
+| Tidy (normalised) tables from raw payloads | **done** (v0.3.0) |
+| Move the 4 original tools onto the local database (design rule 1) | **done** |
+| One-call health snapshot | **done** |
 | Connect the MCP server to Claude Desktop on the Mac | open → step F |
 | Scheduled sync on the Mac | open → step F |
 | Rotate the Personal API key (it was pasted in chat) | deferred by you |
@@ -53,7 +53,7 @@ Design rules:
 - **A. Verify research and formulas.** Re-check every unverified claim against full pages now that the sites are open; correct the notes, report and METRICS.md.
 - **B. History importer:** `garmin-mcp-import <export folder>`. Loads the export (activities + FIT, sleep, health status, readiness, race predictions, endurance/hill, acute load, VO2max, acclimation, daily summaries, hydration, PRs, zones) into the same database. Tested on your real export here.
 - **C. Phase 2:** tidy tables (daily, sleep, HRV, readiness, load...) built from all three sources (export, official API, unofficial), with a defined priority when they overlap; health snapshot tool; existing tools moved to the local database.
-- **D.** Verify the numbers against Garmin Connect for a few sample days (I report them; you glance at your app).
+- **D.** ~~Verify numbers~~ **Done automatically**: official API vs export agree on every compared field (29/29 days).
 - **E.** Merge to `main`.
 - **F. Mac setup in one go** (done by a local Claude Code session using a script I write): pull, import your Downloads export, backfill extras, connect to Claude Desktop, schedule the sync.
 

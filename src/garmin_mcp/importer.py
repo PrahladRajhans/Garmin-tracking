@@ -281,6 +281,9 @@ def run_import(path: str | Path, conn: sqlite3.Connection | None = None) -> dict
         result["fit"] = import_fit_files(conn, reader, names)
         db.log(conn, "import", SOURCE, "export", str(path), "ok")
         conn.commit()
+        from garmin_mcp.normalize import rebuild
+
+        result["tidy_tables"] = rebuild(conn)
         return result
     finally:
         if own:
