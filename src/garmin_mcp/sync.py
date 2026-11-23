@@ -18,6 +18,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from garmin_mcp import db, fit
@@ -277,6 +278,9 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
             from garmin_mcp import dashboard
 
             out["dashboard"] = str(dashboard.build(conn))
+            from garmin_mcp.publish import publish_if_enabled
+
+            out["dashboard_publish"] = publish_if_enabled(Path(out["dashboard"]))
         except Exception as exc:  # noqa: BLE001 - dashboard must never break a sync
             out["dashboard_error"] = f"{type(exc).__name__}: {exc}"[:200]
     finally:

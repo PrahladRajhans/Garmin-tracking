@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.13.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.13.1, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -111,6 +111,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Shifts | `health.detect_shift`, `health.shifts` | Best two-segment split ≥ 1 SD, ≥ 14 days each side | Simple changepoint | M § v0.12.0 |
 | Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
 | Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
+| Constant signals | `engine.relationship` | Returns unavailable with a reason instead of indexing an empty bootstrap result | No change to formulas or statistical thresholds | M § v0.13.1 |
 | Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; Garmin baseline bands or 60-day ± 1 SD | Fitbit "in your range" | M § v0.9.0 |
 | Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, plus per-day points; "how sure" from CI and FDR (`dashboard._sure`) | — | M § v0.13.0 |
 | Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
@@ -137,6 +138,11 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
   - Tooltips use SVG `<title>`.
   - Rebuilt after every sync (`sync.py`) and copied to iCloud Drive.
 - **Tests:** `tests/test_dashboard.py`.
+- **Optional hosting (v0.13.1):** `publish.publish_if_enabled` uploads only the HTML and fixed
+  privacy headers after checking Access on the production and wildcard-preview hostnames.
+  Called after local builds by sync, the dashboard CLI, and the MCP build tool. Disabled by
+  default. Account setup, pricing confirmation, and live phone validation remain pending;
+  see `MAC_SETUP.md` and the hosting research note.
 
 ## 8. What is different, and exactly how
 ### Ours vs Garmin
@@ -171,6 +177,15 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 6. **Fitness-age history** covers about 30 days, so pace of ageing is hidden until it spans 90.
 7. **Garmin sleep part scores** (Duration, Awakenings, …) come as ratings only, without values, from the Personal API.
 8. **iCloud copy** (`dashboard.build`) has not been tested on the Mac. It writes to `~/Library/Mobile Documents/com~apple~CloudDocs/Garmin/`.
+9. **Private phone hosting:** optional publishing code is tested with stand-ins, not a live
+   account. No health data was uploaded. Cloudflare's preview Access switch alone does not
+   protect the production address. The helper requires both apps and refuses conflicting
+   paths, bypasses, custom domains, and policies that allow anyone beyond the configured email.
+10. **Fresh database:** the dashboard CLI still requires normalized, populated data. It fails
+    on an empty database (missing tidy tables, then no latest day). This predates v0.13.1.
+11. **Review limits:** GitHub API and medical-reference/pricing hosts were denied by the cloud
+    network policy. Git read access works. No primary VO2max norm table was retrieved; no
+    norms have been added. Local checks do not establish Mac, iPhone, live Garmin, or CI health.
 
 ## 10. What is left (pick up here)
 In order. Each item says where it goes and what "done" means.
@@ -178,15 +193,22 @@ In order. Each item says where it goes and what "done" means.
 | # | Item | Where | Done when |
 |---|---|---|---|
 | ✅ | Correlations explorer, test-run tracking, recovery weighting study | Done in v0.13.0 | See CHANGELOG 0.13.0 |
+| A (first) | **Activate private phone hosting** | `publish.py`, `MAC_SETUP.md` | Account/free-plan check, both Access apps, local token, anonymous denial, owner OTP, phone links, next scheduled upload all verified |
 | 1 | **Add more pairs to the explorer** if useful: e.g. alcohol/travel tags → HRV is already in `tag_impact`; respiration → HRV | `engine.PAIRS` | New pairs pass the same FDR rule |
 | 2 | **Test runs with more data**: add route matching (start/end GPS within 200 m) once the FIT session start position is parsed | `fit.py` (session `start_position_lat/long`), `running.test_runs` | Runs on the same route are grouped |
 | 3 | **Race readiness and taper** (8.12): once a goal race is set | `goals.py` + `health.marathon_shape` + fitness/form | Only when the user sets a race |
 | 4 | **VO2max range bar by age and sex** (10.8) | Body page | Needs a citable norm table (e.g. ACSM or Cooper Institute); do not invent values |
 | 5 | **Re-run the recovery weighting study** every ~3 months (`recovery_weight_study`) | `scores.weight_study` | Weights change only by its rule |
 | 6 | **Max HR test → recalculate** | `athlete` setting | User runs the test; check that the effective VO2max flag clears |
-| 7 | **Interactive dashboard on phone**: test the iCloud flow; optional private Artifact snapshot (opt-in only) | `dashboard.build` | User confirms it opens on the phone |
+| 7 | **Dashboard on phone**: Cloudflare candidate implemented but inactive; iCloud and manual private Artifact remain alternatives | `dashboard.build`, `publish.py` | User confirms private access and working links on the phone |
 | 8 | **v1.0.0**: everything running unattended on the Mac for 2 weeks with no sync errors | `sync_log`, `garmin-mcp-verify` | `ROADMAP.md` D.1 closed |
 | Later, only if the user asks | intervals.icu source (R32), Apple Health import (R33), multi-device dedupe (R34) | `sources/` | — |
+
+The user's continuation order is A private phone hosting → B primary-source VO2max table/bar
+→ C design review and small improvements → D documentation alongside every change. This
+release prepares A; it does not mark A–C complete. The 390/768/1200 light/dark checks used
+synthetic data; rendered HTML is unchanged. See `docs/CONTINUATION_REVIEW.md` for evidence and
+known documentation drift. `ROADMAP.md` remains the only plan.
 
 **Deliberately not building** (`ROADMAP.md`, "Explicitly not building" and the dropped-items table):
 - **Never building:**

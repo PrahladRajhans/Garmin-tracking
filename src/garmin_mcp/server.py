@@ -412,11 +412,17 @@ def tag_impact(days: int = 365) -> dict[str, Any]:
 @mcp.tool()
 def build_dashboard() -> dict[str, Any]:
     """Rebuild the personal dashboard (one HTML file, opens in any browser or phone). It is also
-    rebuilt automatically after every sync. Returns the file path."""
+    rebuilt automatically after every sync. Returns the file path and separate publishing
+    status; uploads HTML only if private hosting was explicitly enabled in local settings."""
     from garmin_mcp import dashboard
+    from garmin_mcp.publish import publish_if_enabled
 
-    return _with_db(lambda c: {"path": str(dashboard.build(c)),
-                               "open_with": "open <path> (Mac) or any browser"})
+    def build(c):
+        path = dashboard.build(c)
+        return {"path": str(path), "open_with": "open <path> (Mac) or any browser",
+                "publish": publish_if_enabled(path)}
+
+    return _with_db(build)
 
 
 # ----------------------------------------------------------------- Phase 10: daily scores

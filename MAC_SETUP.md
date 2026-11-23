@@ -14,7 +14,7 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
 
 1. **Update code and environment**
    ```bash
-   git fetch origin && git checkout claude/affectionate-thompson-ko3x70 && git pull
+   git fetch origin && git checkout main && git pull --ff-only
    [ -d .venv ] || python3 -m venv .venv
    .venv/bin/pip install -q --upgrade pip && .venv/bin/pip install -q -e '.[dev]'
    .venv/bin/pytest -q
@@ -48,3 +48,54 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
    sync; `open` it).
 8. **Verify**: `.venv/bin/garmin-mcp-sync --coverage`, and in Claude Desktop ask
    "show my health snapshot". Report results to the user.
+
+## Private phone access (optional)
+
+This part is new in v0.13.1. It is implemented and tested with stand-ins, but **not yet deployed
+or verified on this Mac/phone**. Leave publishing disabled until the account checks succeed.
+The default local dashboard, sync schedule, and analytics work without Cloudflare or Node.
+
+### One-time actions for the owner
+
+1. Create a Cloudflare account and select the free Pages and Zero Trust plans. Confirm the
+   current Access free-plan allowance in the account UI before activating hosting; its live
+   pricing page was unavailable in the cloud review. No paid domain is required.
+2. With the local assistant, create a **dedicated Direct Upload** Pages project and deploy
+   only an empty, non-health placeholder. In Pages settings enable Access for previews, then
+   follow [Cloudflare's production-domain instructions](https://developers.cloudflare.com/pages/platform/known-issues/#enable-access-on-your-pagesdev-domain).
+   The result must be two self-hosted Access apps: `PROJECT.pages.dev` and `*.PROJECT.pages.dev`
+   (use the actual Pages subdomain if Cloudflare added a suffix). Each must have one Allow policy
+   whose Include rule is **Emails → your exact email**. Enable the One-time PIN identity provider.
+   Do not add custom domains, path-specific apps, bypass rules, or public destination overrides.
+3. Create an API token scoped to this account with **Cloudflare Pages Edit** and
+   **Access: Apps and Policies Read**. Save it securely with the local assistant in the ignored
+   repo `.env`; never paste its value into chat or commit it. The assistant can fill the
+   non-secret settings from the account; no further Garmin login or backfill is needed.
+
+Then ask your local assistant to follow the remaining section. These are instructions for
+the assistant to execute, rather than a terminal sequence the owner needs to copy.
+
+### Steps for the local assistant
+
+- Preserve existing `.env` values and launchd settings. Check variable names/presence only;
+  never print secrets. Confirm Node supports Wrangler (tested here with Node 24.22.3).
+- Install the tested CLI outside the repo:
+  `npm install --prefix ~/.garmin-mcp/cloudflare wrangler@4.166.0`.
+- Fill the six publishing settings in `.env` using `.env.example` as a key list:
+  `GARMIN_DASHBOARD_PUBLISH=cloudflare`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`,
+  `GARMIN_CLOUDFLARE_PROJECT`, `GARMIN_DASHBOARD_EMAIL`, and the absolute `GARMIN_WRANGLER` path.
+  Restrict the file to its owner (`chmod 600 .env`). Ensure the scheduled process's PATH contains
+  Node: Wrangler uses `/usr/bin/env node`, and launchd does not inherit the interactive shell PATH.
+- Run `.venv/bin/python -m garmin_mcp.publish --check`. This reads account configuration,
+  checks all Access apps for overlapping project paths, and checks anonymous production and
+  wildcard-host requests. It uploads nothing and returns `status: checked` only when successful.
+  If a fresh project needs an initial deployment for routing, use a non-health placeholder.
+- Only after that succeeds, run `.venv/bin/garmin-mcp-dashboard`. Check its publishing result,
+  then open the production URL on the phone: private browsing must require login, a different
+  email must be denied, and the owner's One-time PIN must open the dashboard. Test every page
+  link and a run link. Check a direct deployment URL also requires login.
+- Check the next scheduled sync publishes an update. A dashboard build retains its local and
+  iCloud copies even when uploading is refused or fails. Keep the Access apps in place for
+  **all existing deployments**; disabling publishing does not remove cloud copies.
+
+Hosting rationale and sources: [private_dashboard_hosting.md](research_notes/Garmin%20connector%20feature%20research/private_dashboard_hosting.md).

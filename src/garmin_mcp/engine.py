@@ -166,9 +166,15 @@ def relationship(feat: dict[str, dict[str, float]], x: str, y: str, lag: int = 0
         out["status"] = f"insufficient data (< {MIN_PAIRS} paired days)"
         return out
     r = _pearson([p[0] for p in pairs], [p[1] for p in pairs])
+    if r is None:
+        return {**out, "status": "insufficient variation", "available": False,
+                "reason": "one or both baseline-adjusted signals are constant"}
     boot_r = _block_bootstrap(pairs, _pearson, rng)
     slope = _slope([p[0] for p in pairs], [p[1] for p in pairs])
     boot_s = _block_bootstrap(pairs, _slope, rng)
+    if not boot_r or not boot_s:
+        return {**out, "status": "insufficient variation", "available": False,
+                "reason": "not enough varying bootstrap samples to estimate uncertainty"}
     lo, hi = boot_r[int(0.025 * len(boot_r))], boot_r[int(0.975 * len(boot_r)) - 1]
     # two-sided bootstrap p: share of resamples on the other side of 0, doubled
     p = min(1.0, 2 * min(sum(v <= 0 for v in boot_r), sum(v >= 0 for v in boot_r)) / len(boot_r))

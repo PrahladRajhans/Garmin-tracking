@@ -52,6 +52,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.11.0 | Phase 10a: daily scores (Recovery %, Sleep %, Strain), bedtime; self-update; CI | done |
 | 0.12.0 | Phase 11: dashboard v2 (multi-page) + Phase 12: sleep breakdown, HR dip, activity status, pace of ageing, marathon shape, shifts, monthly report, running breakdown; sync gate | done |
 | 0.13.0 | Phase 13: correlations explorer, test-run tracking, recovery weighting study | done |
+| 0.13.1 | Private hosting preparation (off by default), constant-signal crash fix, continuation review | implemented locally; live hosting and CI verification pending |
 | 0.14.0 | Phase 14: race readiness/taper (once a race is set), VO2max norm bar (needs a citable table), phone check | waiting on inputs |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
@@ -178,14 +179,27 @@ Full plan: `DASHBOARD_PLAN.md`. Steps 11.2–11.7: wireframe of hero + Today + W
 ### Phase 14 → v0.14.0 (waiting on inputs)
 8.12 race readiness/taper: needs a goal race · VO2max range bar by age and sex: needs a citable norm table (ACSM / Cooper Institute), never invented · phone check of the iCloud dashboard: needs the user · re-run `recovery_weight_study` and `test_runs` after ~3 months of new data.
 
+Continuation order requested by the owner:
+
+| Item | State | Remaining evidence |
+|---|---|---|
+| A: private phone access | Optional Cloudflare Pages publisher implemented in v0.13.1; disabled | Confirm current Access free plan, configure account and two Access apps, save token locally, verify owner OTP/anonymous denial and next scheduled update on Mac/phone |
+| B: age/sex VO2max bar | Blocked on primary norm table access; no values invented | Retrieve the exact primary table and citation, then implement separate Garmin/effective markers with HRmax caveat, tests and version bump |
+| C: dashboard design | Source screenshots inspected; current HTML unchanged; 48 synthetic browser states checked | Complete visual review of all pages with representative data, contrast/keyboard/table checks, then make small evidence-backed improvements |
+| D: docs with every change | Updated for v0.13.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
+
+The constant-signal explorer crash found while validating A is fixed without changing statistical
+thresholds. The empty-database dashboard failure remains recorded for later work. See
+`docs/CONTINUATION_REVIEW.md` for findings and validation, not a second plan.
+
 ### Deployment track (runs alongside, needs you once)
 | ID | Item | Target |
 |---|---|---|
 | D.1 | Mac setup (`MAC_SETUP.md`): import, 1-year backfill (✅ 2,894 calls, 0 errors), Claude Desktop config, 3-hourly sync (✅). **Self-update (v0.11): after one last pull, every sync updates itself from `main`; settings come from `config/athlete.json`.** | v1.0.0 |
 
 ### Later / optional (only if you ask)
-R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe · Grafana view ·
-remote hosting.
+R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe.
+Grafana remains dropped; private remote hosting has been requested and moved to A above.
 
 ### Explicitly not building
 Skin temperature/ECG (no FR955 sensor) · ACWR as injury risk · Strava as a source ·
@@ -200,13 +214,15 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | 4 | Goals, knee, timezone | ✅ saved, applied automatically via `config/athlete.json` |
 | 5 | Optional: weights in strength sessions; watch "Log HRV"; Garmin Connect max HR setting once #2 is known | open |
 | 6 | Rotate the Personal API key | deferred by you |
+| 7 | Cloudflare account, free-plan confirmation, exact-email Access apps and locally saved token | needed only to activate A; no secrets in chat |
+| 8 | Apply the saved cloud network additions for GitHub API and source research | needed to open/verify a PR, check CI and merge; current Git transport read access is working |
 
 ## What's left (full backlog, 2026-11-23)
 | Area | Items | State |
 |---|---|---|
 | Dashboard | Phase 11 v2 | ✅ done |
 | Parity / Level 3 | Phases 12–13 | ✅ done; Phase 14 waits on inputs |
-| Deployment | #1 above, then v1.0.0 | waiting on #1 |
+| Deployment | Mac checks in D.1, optional phone hosting A, then v1.0.0 | manual update #1 is done; live unattended/phone evidence still pending |
 | Research | Whoop details snippet-only (site blocks bots); HRV4Training rule page empty; fitness-age norm formula unverified | accepted, flagged |
 | Optional sources | R32 intervals.icu, R33 Apple Health, R34 multi-device dedupe | only if you ask |
 
@@ -216,7 +232,7 @@ our own Body Battery/Stress (no valid open method; Garmin's are shown).
 | FIT workout encoder (7.1 fallback) | Garmin Connect provides the workout FIT after upload |
 | Oura 85/70/60 readiness bands (10.1) | Whoop's three-colour bands read faster |
 | Grafana view | Wrong tool for a personal glance view; the static dashboard replaces it |
-| Remote hosting | Not needed; optional private phone snapshot instead |
+| Remote hosting | Previously dropped in favor of a manual private snapshot; reopened at the owner's request as A (private access required) |
 | Our own Body Battery/Stress, ACWR injury risk, Strava source, skin temp/ECG | Already excluded (no valid method / API terms / no sensor) |
 | Copy-paste setup in a second Claude chat | Replaced by self-update + settings file |
 | Banister impulse-response fit (8.9) | 19 runs is too little data for a 4-parameter fit; revisit after ~6 months of steady training |
