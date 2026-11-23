@@ -84,10 +84,16 @@ def health_snapshot(conn: sqlite3.Connection, day: str | None = None) -> dict[st
         last = conn.execute("SELECT MAX(day) FROM sleep WHERE day<=?", (day,)).fetchone()[0]
         if last:
             sleep, sleep_night = _row(conn, "sleep", last) or {}, last
-    sleep_avg28, _ = _avg(conn, "sleep", "sleep_s", day, 28, skip_last=True)
+    lo28 = (date.fromisoformat(day) - timedelta(days=28)).isoformat()
+    sleep_avg28 = conn.execute(
+        "SELECT AVG(sleep_s) FROM sleep WHERE day >= ? AND day < ? AND sleep_s >= 3*3600",
+        (lo28, day)).fetchone()[0]  # nights under 3 h are incomplete records
     sleep_h = _hours(sleep.get("sleep_s"))
-    if sleep_h is not None and sleep_h < 6:
-        flags.append(f"Short sleep: {sleep_h} h (under 6 h).")
+    if sleep_h is not None and sleep_h < 3:
+        flags.append(f"Sleep record for the night ending {sleep_night} is only {sleep_h} h: "
+                     "likely incomplete (watch off or nap only).")
+    elif sleep_h is not None and sleep_h < 6:
+        flags.append(f"Short sleep: {sleep_h} h on the night ending {sleep_night} (under 6 h).")
     stages = {k: sleep.get(f"{k}_s") for k in ("deep", "light", "rem", "awake")}
     total = sum(v for k, v in stages.items() if k != "awake" and v) or None
     sleep_out = {
@@ -97,6 +103,7 @@ def health_snapshot(conn: sqlite3.Connection, day: str | None = None) -> dict[st
         "stages_pct": {k: _r(100 * v / total) for k, v in stages.items()
                        if v is not None and total and k != "awake"} or None,
         "avg_28d_hours": _hours(sleep_avg28),
+        "avg_28d_note": "valid nights only (>= 3 h)",
         "sleep_need_hours": _r(sleep["sleep_need_min"] / 60, 2)
         if sleep.get("sleep_need_min") else None,
         "avg_sleep_stress": sleep.get("avg_sleep_stress"),
@@ -319,3 +326,31 @@ def trend(conn: sqlite3.Connection, metric: str, days: int = 30,
                    second_half_avg=_r(sum(nums[half:]) / max(len(nums) - half, 1), 2))
     out["series"] = pts if days <= 120 else pts[-120:]
     return out
+
+
+# --------------------------------------------------------------------------- daily brief
+def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, Any]:
+    """Morning-report style brief: the facts Claude narrates (Athlete-Intelligence style)."""
+    from garmin_mcp import recovery
+
+    day = day or _latest_day(conn) or date.today().isoformat()
+    r = recovery.readiness(conn, day)
+    snap = health_snapshot(conn, day)
+    yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+    return {
+        "day": day,
+        "suggestion": recovery.suggestion(r),
+        "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state",
+                                                          "holding_back", "helping")},
+                      "garmin": r["garmin"]},
+        "hrv": {k: r["hrv"].get(k) for k in ("state", "rolling_7d_ms", "normal_band_ms",
+                                              "last_night_ms", "cv_7d_pct")},
+        "sleep": r["sleep"],
+        "illness_flag": r["illness_flag"]["raised"],
+        "garmin_training_status": snap["training"]["garmin_status"],
+        "yesterday_activities": recent_activities(conn, days=1, end=yesterday)["activities"],
+        "week_so_far": snap["recent_activities"],
+        "intensity_minutes_7d": snap["everyday_activity"]["intensity_minutes_7d"],
+        "flags": snap["flags"],
+        "narrate_as": "2-4 sentences: how recovered, why, what to do today, one thing to watch.",
+    }

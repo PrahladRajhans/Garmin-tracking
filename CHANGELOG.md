@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
+Phase 3: recovery & readiness (ROADMAP items 3.1–3.6).
+
+### Added
+- `recovery.py` + MCP tools `readiness_today`, `recovery_trend`, `daily_brief`:
+  - 3.1 HRV state: 7-day ln HRV vs 60-day normal band (± 0.5 SD), CV.
+  - 3.2 Resting HR and respiration z-scores; sleep vs 28-day norm, 7-day sleep debt, bedtime consistency.
+  - 3.3 Transparent readiness from component z-scores, shown next to Garmin's readiness.
+  - 3.4 Illness/strain flag.
+  - 3.5 Daily brief (morning-report style) with a rule-based suggestion and its reason.
+- 3.6 Verified: 7-day rolling ln RMSSD with smallest worthwhile change (AIS guide, Plews et al.). The 60-day baseline is documented as our own choice.
+- Tests for Phase 3 (28 total).
+
+### Fixed
+- Sleep records under 3 h (for example a 14-minute record) are flagged as incomplete and excluded from the sleep norm and debt, instead of raising a "short sleep" flag. The snapshot names the night each flag refers to.
+
 ## [0.3.1] - 2026-11-23
 
 Data-quality pass (serves every phase: correct inputs).

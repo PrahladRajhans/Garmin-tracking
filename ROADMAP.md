@@ -42,8 +42,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.2.0 | Phase 1: SQLite sync engine, FIT parsing, official + unofficial sources | done |
 | 0.3.0 | Phase 2: export importer, tidy tables, health snapshot, DB-backed tools | done |
 | 0.3.1 | Data-quality pass: unit fixes + `garmin-mcp-verify` | done |
-| 0.4.0 | Phase 3: recovery & readiness + daily brief | **in progress** |
-| 0.5.0 | Phase 4: training load & performance + weekly review | |
+| 0.4.0 | Phase 3: recovery & readiness + daily brief | done |
+| 0.5.0 | Phase 4: training load & performance + weekly review | **next** |
 | 0.6.0 | Phase 5: workout coaching + activity recap + fitness age levers | |
 | 0.7.0 | Phase 6: memory, goals, provenance | |
 | 0.8.0 | Phase 7: workouts to the watch | |
@@ -57,7 +57,7 @@ pass on Garmin labels (`VERIFICATION_LOG.md`).
 
 ## Phases ahead (in order)
 
-### Phase 3: Recovery & readiness → v0.4.0
+### Phase 3: Recovery & readiness → v0.4.0 ✅ done (all items 3.1–3.6)
 | ID | Item | Backlog/source |
 |---|---|---|
 | 3.1 | HRV baseline: ln RMSSD, 7-day mean vs 60-day normal range (SWC band), CV trend | R17, METRICS §Recovery |

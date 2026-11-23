@@ -20,7 +20,7 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 ### Recovery and readiness
 | Metric | Garmin | Science | **Our method** | Presented as |
 |---|---|---|---|---|
-| HRV status | 7-day avg overnight RMSSD vs personal baseline band; Balanced/Unbalanced/Low/Poor; thresholds unpublished | Plews 2012–14: ln RMSSD, 7-day rolling mean; normal = baseline ± SWC (≈0.5 SD); CV rising signals strain | ln(RMSSD) nightly → 7d mean vs 60d mean ± 0.5 SD (⚠ 0.5 SD multiplier to confirm); plus 7d CV | Garmin status + ours, nightly value, band, "within / below / above normal", CV trend |
+| HRV status | 7-day avg overnight RMSSD vs personal baseline band; Balanced/Unbalanced/Low/Poor; thresholds unpublished | Plews 2012–14: ln RMSSD, 7-day rolling mean; normal = baseline ± SWC (≈0.5 SD); CV rising signals strain | ln(RMSSD) nightly → 7d mean vs 60d mean ± 0.5 SD; plus 7d CV. **Implemented v0.4.0.** 7-day rolling ln RMSSD + SWC verified: [AIS HRV guide](https://www.ais.gov.au/__data/assets/pdf_file/0013/1130260/HRV-BPG_FINAL.pdf), [PMC5721172](https://pmc.ncbi.nlm.nih.gov/articles/PMC5721172/). The 60-day window is **our design choice** (no source fixes it; one study used a 42-day EWMA). Needs ≥21 nights | Garmin status + ours, nightly value, band, "within / below / above normal", CV trend |
 | Resting HR | Daily RHR | Elevated RHR (> ~5 bpm over baseline) tracks fatigue/illness | 7d mean vs 60d baseline, z-score | Delta in bpm with flag |
 | Sleep | Sleep Score 0–100 (weights unpublished) | Duration vs need, regularity (Sleep Regularity Index), efficiency matter most | Store Garmin score and stages. Ours = duration vs 28d personal norm + debt (7-day Σ shortfall) + bedtime consistency (SD) | Hours, debt, consistency, Garmin score |
 | Readiness | Training Readiness 0–100 from sleep, recovery time, HRV, acute load, sleep/stress history; weights unpublished | No validated composite exists | **Transparent z-score composite**: HRV (ln RMSSD z), RHR (inverted z), sleep (vs norm), load (TSB). Equal weights at first; shown component by component | Garmin readiness next to ours; components ranked by impact; "what's holding you back today" |
@@ -63,6 +63,17 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Stress / Body Battery | Firstbeat HRV-based, unpublished | Baevsky stress index needs RR data | Fetch and trend Garmin's; no own version (low value, no valid open method) |
 | Intensity minutes | Moderate ×1 + vigorous ×2 vs 150/week (WHO) | Same WHO rule | Garmin's value; trend vs goal |
 | Respiration / SpO2 / RHR | Measured | Baseline deviation matters more than absolute values | Baseline + z-score; feeds the illness flag |
+
+## Implemented in v0.4.0 (Phase 3): exact rules
+| Item | Rule |
+|---|---|
+| Nightly HRV input | Garmin overnight HRV (`hrv.last_night_avg`); history filled from export health status (`health_status.hrv`) |
+| HRV state | 7-day mean of ln HRV (≥4 of 7 nights) vs 60-day mean ± 0.5 SD (≥21 nights, else "calibrating") |
+| RHR / respiration z | today vs mean and SD of the previous 60 days (≥21 days) |
+| Sleep | valid nights only (≥3 h; shorter records are flagged as incomplete). z = last night vs previous 28 valid nights. Debt = Σ max(0, need − actual) over 7 valid nights; need = Garmin sleep need, else 7 h (AASM adult minimum). Bedtime consistency = SD of sleep start over 14 nights |
+| Our readiness | mean of signed z-scores clipped to ±3 (HRV +, sleep +, RHR −, respiration −). States: ≥0.5 fresher than usual · −0.5…0.5 normal · −1…−0.5 below usual · <−1 well below usual. Heuristic; Garmin readiness shown beside it |
+| Illness/strain flag | ≥2 of {HRV z<−1, RHR z>+1, respiration z>+1} on each of the last 2 days |
+| Suggestion | illness flag → rest/very easy · well below usual or Garmin POOR → rest/easy · below usual or Garmin LOW → easy aerobic only · fresher + Garmin HIGH/PRIME → key session · else planned training fine |
 
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.

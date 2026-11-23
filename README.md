@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.3.1, Phase 2: full history (export + official API + unofficial extras) in tidy local tables, with a one-call health snapshot. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.4.0, Phase 3: recovery & readiness on top of full history in local tables. See [CHANGELOG.md](CHANGELOG.md).
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -34,6 +34,9 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `daily_summary(day?)` | Every stored metric for one day |
 | `activities(days=30, activity_type?, end?)` | Activities with a per-type summary |
 | `activity_detail(activity_id)` | Laps with pace, HR zones, weather, Garmin training effect, running form from the FIT file (cadence, ground contact, vertical oscillation, power) |
+| `daily_brief(day?)` | Morning report: how recovered and why, a training suggestion with its reason, yesterday, week so far |
+| `readiness_today(day?)` | Our transparent readiness (HRV, resting HR, sleep, respiration vs your baselines, each shown) next to Garmin's; HRV normal band; sleep debt; illness/strain flag |
+| `recovery_trend(days=28)` | Day-by-day readiness, HRV vs normal band, sleep, Garmin readiness |
 | `trend(metric, days=30)` | Series + averages for any `table.column`, e.g. `daily.resting_hr`, `sleep.sleep_s`, `health_status.hrv`, `readiness.score`, `race_predictions.t5k_s` |
 | `refresh_data(days=3)` | Sync recent days from Garmin, then rebuild tables |
 | `data_coverage()` | What is stored, date ranges, last sync and errors |
@@ -175,7 +178,9 @@ src/garmin_mcp/
   sync.py     # incremental sync engine + CLI
   importer.py # Garmin data export importer
   normalize.py# tidy per-day tables from all sources
-  insights.py # health snapshot, trends, activity views
+  insights.py # health snapshot, daily brief, trends, activity views
+  recovery.py # Phase 3: HRV baseline, readiness, illness flag
+  verify.py   # data-quality checks (garmin-mcp-verify)
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/
 ```

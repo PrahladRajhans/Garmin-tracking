@@ -78,6 +78,35 @@ def trend(metric: str, days: int = 30, end: str | None = None) -> dict[str, Any]
 
 
 @mcp.tool()
+def readiness_today(day: str | None = None) -> dict[str, Any]:
+    """Our transparent readiness vs your own baselines (HRV 7-day vs normal band, resting HR,
+    sleep, respiration as z-scores, each shown) next to Garmin's Training Readiness; HRV
+    status with normal band and CV; sleep debt and bedtime consistency; illness/strain flag."""
+    from garmin_mcp import recovery
+
+    return _with_db(lambda c: recovery.readiness(
+        c, parse_date(day) if day else insights._latest_day(c) or parse_date(None)))
+
+
+@mcp.tool()
+def recovery_trend(days: int = 28, end: str | None = None) -> dict[str, Any]:
+    """Day-by-day readiness, HRV 7-day value vs normal band, sleep and Garmin readiness for the
+    last `days` days (7-120)."""
+    from garmin_mcp import recovery
+
+    days = max(7, min(days, 120))
+    return _with_db(lambda c: recovery.recovery_trend(
+        c, parse_date(end) if end else insights._latest_day(c) or parse_date(None), days))
+
+
+@mcp.tool()
+def daily_brief(day: str | None = None) -> dict[str, Any]:
+    """Morning report: how recovered you are and why, a training suggestion with its reason,
+    yesterday's activities, the week so far and flags. Narrate it in 2-4 sentences."""
+    return _with_db(lambda c: insights.daily_brief(c, parse_date(day) if day else None))
+
+
+@mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the
     tidy tables. Use when data looks stale."""
