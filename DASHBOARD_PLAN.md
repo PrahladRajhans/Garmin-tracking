@@ -166,3 +166,7 @@ The default is Light and a visible Light/Dark switch is offered when scripting r
 Both themes preserve axis contrast and focus. The self-contained HTML draws the charts
 and links without script support. Some file previews may render only that static view.
 See the latest [UI review](docs/UI_REVIEW.md#direct-interaction-review-v0150).
+
+In v0.15.1 the smaller chart marker and thinner guides keep the data visible. The cursor
+renders at most once per frame while moving and horizontal touch intent is detected before
+updating it. Vertical swipes use native scrolling. A tap still selects the release point.

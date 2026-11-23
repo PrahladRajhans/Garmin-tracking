@@ -204,7 +204,7 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
                f'<line class="cursor-y" x1="{left}" x2="{right}"/>'
-               '<circle r="4.5"/></g>')
+               '<circle r="3.3"/></g>')
     return (f'<figure class="chart-interaction" data-chart="{kind}">'
             f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
             f'<span>{_e(initial)}</span></figcaption><span class="sr-only" role="status"></span>'
@@ -1059,7 +1059,7 @@ border-top:1px solid var(--grid)}
 .chart,.gauge{display:block;width:100%;height:auto;overflow:visible}
 .chart-interaction{margin:10px 0 0}
 [data-ready] .chart{touch-action:pan-y pinch-zoom;cursor:crosshair;user-select:none}
-.chart-readout{display:none;color:var(--ink2);border-radius:10px;padding:8px 12px;min-height:67px;
+.chart-readout{display:none;color:var(--ink2);border-radius:10px;padding:8px 12px;min-height:72px;
 font-size:13px;line-height:1.35}
 [data-ready] .chart-readout{display:flex;flex-direction:column;justify-content:center}
 .chart-readout.selected{background:var(--accent);color:var(--ink)}
@@ -1067,8 +1067,8 @@ font-size:13px;line-height:1.35}
 .chart-readout span{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .chart-cursor{visibility:hidden;pointer-events:none}
 .chart-cursor.visible{visibility:visible}
-.chart-cursor line{stroke:var(--cursor);stroke-width:1.25;stroke-dasharray:4 3}
-.chart-cursor circle{fill:var(--surface);stroke:var(--active);stroke-width:2.5}
+.chart-cursor line{stroke:var(--cursor);stroke-width:.9;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.chart-cursor circle{fill:var(--surface);stroke:var(--active);stroke-width:1.6}
 .chart-note{font-size:12px;color:var(--muted);margin:3px 0 0}
 .source-link{text-decoration:underline;color:var(--active)}
 .grid line.grid,.chart .grid{stroke:var(--grid);stroke-width:1}

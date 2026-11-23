@@ -49,3 +49,6 @@ Goal: a free personal FR955 connector. **Local sync → SQLite → thin MCP serv
   contrast/focus references, browser evidence and device limitations for v0.14.1.
 - This index retains the original research proposals. Current tools (43), exclusions and
   deployment state are governed by HANDOVER/ROADMAP, rather than the early proposals above.
+
+[Environmental context feasibility](environmental_context_feasibility.md) covers weather,
+air-quality and sleep research, public data limits, and a staged validation proposal.

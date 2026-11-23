@@ -57,6 +57,9 @@ SCRIPT = r"""
     let selected = -1;
     let pointer = null;
     let pinned = false;
+    let touchOrigin = null;
+    let moveFrame = 0;
+    let latestMove;
     const scatter = figure.dataset.chart === 'scatter';
     const hint = primary.textContent;
     const details = secondary.textContent;
@@ -88,12 +91,12 @@ SCRIPT = r"""
       secondary.textContent = point.value;
     }
 
-    function selectNearest(event) {
+    function selectNearest(clientX, clientY) {
       const matrix = svg.getScreenCTM();
       if (!matrix) return;
       const position = svg.createSVGPoint();
-      position.x = event.clientX;
-      position.y = event.clientY;
+      position.x = clientX;
+      position.y = clientY;
       const at = position.matrixTransform(matrix.inverse());
       let nearest = 0;
       let best = Infinity;
@@ -107,40 +110,68 @@ SCRIPT = r"""
       select(nearest);
     }
 
+    function cancelMove() {
+      if (moveFrame) cancelAnimationFrame(moveFrame);
+      moveFrame = 0;
+    }
+
+    function queueMove(event) {
+      latestMove = [event.clientX, event.clientY];
+      if (moveFrame) return;
+      moveFrame = requestAnimationFrame(() => {
+        moveFrame = 0;
+        selectNearest(...latestMove);
+      });
+    }
+
     figure.dataset.ready = 'true';
     svg.setAttribute('tabindex', '0');
     svg.querySelectorAll('title[data-native]').forEach(title => title.remove());
     svg.addEventListener('pointerdown', event => {
-      if (!event.isPrimary || event.button !== 0) return;
+      if (!event.isPrimary || event.button !== 0 || pointer !== null) return;
+      cancelMove();
       pointer = event.pointerId;
-      pinned = true;
       svg.setPointerCapture(pointer);
-      selectNearest(event);
+      if (event.pointerType === 'touch') {
+        // Let a vertical scroll start without flashing a new point.
+        touchOrigin = [event.clientX, event.clientY];
+      } else {
+        selectNearest(event.clientX, event.clientY);
+      }
     });
     svg.addEventListener('pointermove', event => {
-      if (pointer === event.pointerId || (event.pointerType === 'mouse' && !pinned)) {
-        selectNearest(event);
+      if (pointer !== event.pointerId &&
+          !(pointer === null && event.pointerType === 'mouse' && !pinned)) return;
+      if (touchOrigin) {
+        const dx = Math.abs(event.clientX - touchOrigin[0]);
+        const dy = Math.abs(event.clientY - touchOrigin[1]);
+        if (dx < 6 || dx <= dy) return;
+        touchOrigin = null;
       }
-    });
+      queueMove(event);
+    }, { passive: true });
     svg.addEventListener('pointerup', event => {
       if (pointer !== event.pointerId) return;
+      cancelMove();
+      selectNearest(event.clientX, event.clientY);
       pointer = null;
+      touchOrigin = null;
       pinned = event.pointerType !== 'mouse';
     });
-    svg.addEventListener('pointercancel', event => {
+    function endGesture(event) {
       if (pointer !== event.pointerId) return;
+      cancelMove();
       pointer = null;
-      pinned = false;
-      clear();
-    });
-    svg.addEventListener('lostpointercapture', event => {
-      if (pointer === event.pointerId) {
-        pointer = null;
-        pinned = false;
-      }
-    });
+      touchOrigin = null;
+      if (!pinned) clear();
+    }
+    svg.addEventListener('pointercancel', endGesture);
+    svg.addEventListener('lostpointercapture', endGesture);
     svg.addEventListener('pointerleave', event => {
-      if (event.pointerType === 'mouse' && pointer === null && !pinned) clear();
+      if (event.pointerType === 'mouse' && pointer === null && !pinned) {
+        cancelMove();
+        clear();
+      }
     });
     svg.addEventListener('keydown', event => {
       let next;
@@ -152,6 +183,7 @@ SCRIPT = r"""
         case 'Home': next = 0; break;
         case 'End': next = points.length - 1; break;
         case 'Escape':
+          cancelMove();
           pinned = false;
           clear();
           event.preventDefault();
@@ -159,6 +191,7 @@ SCRIPT = r"""
         default: return;
       }
       event.preventDefault();
+      cancelMove();
       select(Math.min(points.length - 1, Math.max(0, next)), true);
     });
   }

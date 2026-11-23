@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.15.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.15.1, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -268,3 +268,6 @@ In v0.15.0 the health snapshot, trends and relationships share the same valid ni
 source merge as recovery and monthly history. Underlying readiness weights and association
 thresholds are unchanged. Training shows a seven-day overview with the sleep-night count.
 The screenshot and input checks are in `docs/UI_REVIEW.md`.
+
+The v0.15.1 environmental research is linked in ROADMAP. Source coverage and sleep exposure
+limits are open. No weather or air-quality collection change is enabled.
