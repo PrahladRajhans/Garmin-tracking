@@ -103,3 +103,26 @@ def test_high_readiness_does_not_add_a_hard_session():
     r = {"ours": {"state": "fresher than usual"}, "garmin": {"level": "HIGH"},
          "illness_flag": {"raised": False}}
     assert recovery.suggestion(r)["suggest"] == "follow your planned session if you feel well"
+
+
+def test_focus_detects_consistently_short_sleep_and_paired_changes():
+    from garmin_mcp.daily_focus import daily_focus
+
+    night = {"sleep_h": 6.2, "need_h": 8.0, "source": "8 h planning fallback"}
+    r = {"ours": {"state": "normal"}, "hrv": {"state": "within normal"},
+         "sleep": {"debt_inputs": [night] * 5}, "illness_flag": {"raised": False},
+         "garmin": {"level": "MODERATE"}}
+    signals = {"resting_hr": {"delta": 5, "state": "above"}, "sleep_spo2": {},
+               "sleep_h": {"delta": 0, "state": "within"}}
+    pair = {"x": "sleep_h", "y": "garmin_readiness", "notable": True, "lag_days": 0,
+            "slope": 5.8, "n": 21}
+    out = daily_focus(r, signals, {}, training_status="DETRAINING", running_km=4.6, patterns=[pair])
+    assert out["title"] == "Follow your planned effort if you feel well."
+    sleep, training, pulse = out["findings"]
+    assert "108 minutes short" in sleep["detail"] and "5 recorded nights" in sleep["basis"]
+    assert "6 more points" in sleep["basis"] and "21 paired days" in sleep["basis"]
+    assert "4.6 km" in training["detail"] and "5 bpm" in pulse["detail"]
+    signals["sleep_h"] = {"delta": -0.75, "state": "below"}
+    assert daily_focus(r, signals, {})["title"] == "Keep today’s effort easy."
+    r["activity_status"] = "injured"
+    assert daily_focus(r, signals, {})["title"] == "Pause training today."

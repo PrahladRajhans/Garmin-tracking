@@ -216,3 +216,12 @@ from 3.07 MB to 2.02 MB. Chromium and WebKit checks exercised 190 page, width, t
 and coverage combinations. A script-disabled browser could still open an older month
 and read its day summaries. Test the scheduled Mac output on a physical iPhone before
 drawing conclusions about Files preview speed or script support.
+
+## Today-first flow (v0.19.0)
+
+Today answers three questions in order: what to do today, what the watch recorded, and
+what to plan for the next seven days. Up to three follow-ups give a reason, an action and
+a link to evidence. Trends links to the older overview pages. Recovery uses a collapsed
+14-day history. Workout comparison has two time-aligned tracks with separate scales and
+actual units. Conditions stay near the workout. See the [product review](docs/PRODUCT_REVIEW_2026-11.md)
+and [visual checks](docs/UI_REVIEW.md#today-first-flow-v0190).

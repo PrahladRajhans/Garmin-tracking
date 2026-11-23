@@ -14,7 +14,6 @@ import math
 import os
 import sqlite3
 import stat
-import statistics
 import tempfile
 import warnings
 from datetime import UTC, date, datetime, timedelta
@@ -78,6 +77,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
                                  (night,)).fetchone() if night else None
     ds = scores.daily_scores(conn, end)
     signals = signal_context.collect(conn, end)
+    explore = engine.explore(conn, end, 365, 8)
     hrv = recovery.load_series(conn, end, 67)["hrv"]
     previous_week = (e - timedelta(days=7)).isoformat()
     hrv_info = recovery.hrv_status(hrv, end)
@@ -96,11 +96,10 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
                      trace=coaching.activity_stream(conn, aid, interval))
             runs.append(b)
     return {
-        "_conn": conn, "end": end, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
-        "older_snapshot": (datetime.now(zone).date() - e).days > 1,
+        "_conn": conn, "end": end, "zone": zone, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
+        "older_snapshot": e != datetime.now(zone).date(),
         "history": scores.history(conn, end, 14),
-        "brief": insights.daily_brief(conn, end),
-        "ranges": engine.personal_ranges(conn, end)["metrics"],
+        "brief": insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"]),
         "night": health.sleep_breakdown(conn, night) if night else None,
         "night_summary": night_summary,
         "sleep": conn.execute("SELECT day, sleep_s/3600.0, sleep_start FROM sleep WHERE day "
@@ -125,13 +124,11 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "calendar": dashboard_history.collect(conn, end, zone),
         "last_full_sync": _last_full_sync(conn, zone),
         "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
-        "explore": engine.explore(conn, end, 365, 8),
+        "explore": explore,
         "tests": running.test_runs(conn, read_metrics=read_run),
         "vo2_reference": norms.comparison(conn, end),
         "sync_retry_required": conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
         is not None,
-        "feed": engine.insight_feed(conn, end, include_relationships=False,
-                                    signals=signals)["insights"],
     }
 
 
@@ -194,28 +191,6 @@ ICONS = {
 def icon(name: str, cls: str = "") -> str:
     return (f'<svg class="ic {cls}" viewBox="0 0 16 16" aria-hidden="true"><path d="'
             f'{ICONS[name]}"/></svg>')
-
-
-def dial(pct: float | None, label: str, value: str, sub: str, tone: str, href: str,
-         frac: float | None = None) -> str:
-    """270-degree ring. frac overrides pct/100 (used for strain 0-21)."""
-    import math
-
-    r, cx, cy, sw = 52, 64, 64, 10
-    circ = 2 * math.pi * r
-    arc = circ * 0.75
-    f = frac if frac is not None else (pct or 0) / 100
-    f = max(0.0, min(1.0, f))
-    track = (f'<circle cx="{cx}" cy="{cy}" r="{r}" class="dial-track" stroke-width="{sw}" '
-             f'stroke-dasharray="{arc:.1f} {circ:.1f}" transform="rotate(135 {cx} {cy})"/>')
-    val = (f'<circle cx="{cx}" cy="{cy}" r="{r}" class="dial-val {tone}" stroke-width="{sw}" '
-           f'stroke-dasharray="{arc * f:.1f} {circ:.1f}" transform="rotate(135 {cx} {cy})">'
-           f'<title>{_e(label)}: {_e(value)}</title></circle>') if pct is not None or frac else ""
-    return (f'<a class="dial" href="{href}"><svg viewBox="0 0 128 112" role="img" '
-            f'aria-label="{_e(label)} {_e(value)}">{track}{val}'
-            f'<text x="64" y="66" class="dial-num">{_e(value)}</text></svg>'
-            f'<span class="dial-label">{_e(label)}</span><span class="dial-sub">{_e(sub)}'
-            f'</span></a>')
 
 
 def _scale(vals: list[float], pad: float = 0.08) -> tuple[float, float]:
@@ -528,8 +503,11 @@ def _card(title: str, body: str, sub: str = "", wide: bool = False, href: str = 
 
 
 def _page(pid: str, title: str, lede: str, body: str, back: str = "#today") -> str:
-    nav = "" if pid == "today" else (f'<a class="back" href="{back}">{icon("back")}'
-                                     f'<span>Back</span></a>')
+    parent = {"#today": "Today", "#trends": "Trends", "#running": "Runs",
+              "#month-detail": "Year", "#history": "History"}.get(back)
+    parent = parent or ("Run overview" if back.startswith("#run-") else "Month")
+    nav = ("" if pid == "today" else f'<a class="back" href="{back}">{icon("back")}'
+           f'<span>{parent}</span></a>')
     return (f'<article class="page" id="{pid}">{nav}<header class="ph"><h2>{_e(title)}</h2>'
             f'<p class="lede">{lede}</p></header><div class="grid">{body}</div></article>')
 
@@ -540,145 +518,91 @@ def _row(label: str, value: str, note: str = "", state: str = "") -> str:
             f'<span class="n">{ic.get(state, "")}{_e(note)}</span></li>')
 
 
-_TREND_LABELS = {
-    "hrv": ("Overnight HRV", "ms", "recovery"),
-    "rhr": ("Resting heart rate", "bpm", "recovery"),
-    "sleep_h": ("Sleep duration", "min", "sleep"),
-    "vo2max": ("Garmin VO₂max", "mL/kg/min", "body"),
-    "steps": ("Daily steps", "steps", "training"),
-}
-
 _PATTERN_LABELS = {
     "sleep_h": "Sleep duration", "hrv": "Overnight HRV", "rhr": "Resting heart rate",
     "garmin_readiness": "Garmin readiness", "bedtime_h": "Bedtime",
     "trimp": "Training load", "sleep_score": "Sleep score", "last_training_end_h": "Workout end time",
     "stress": "Daytime stress", "steps": "Daily steps", "intensity_min": "Intensity minutes",
 }
-_VITAL_LABELS = {
-    "hrv_ms": ("Heart rate variability", "ms", 0),
-    "resting_hr_bpm": ("Resting heart rate", "bpm", 0),
-    "respiration_brpm": ("Breathing rate", "/min", 1),
-    "sleep_spo2_pct": ("Blood oxygen in sleep", "%", 0),
-    "sleep_hr_bpm": ("Heart rate in sleep", "bpm", 0),
-}
+def _insight(item: dict[str, Any]) -> str:
+    action = f'<span class="finding-action">{_e(item["action"])}</span>' if item.get("action") else ""
+    basis = (f'<details><summary>Why this?</summary><p class="sub">{_e(item["basis"])}</p></details>'
+             if item.get("basis") else "")
+    return (f'<li><a class="finding" href="#{item["target"]}"><span>'
+            f'<strong>{_e(item["title"])}</strong>'
+            f'<span class="finding-detail">{_e(item["detail"])}</span>{action}</span>{icon("chev")}</a>'
+            f'{basis}</li>')
 
 
-def _insight(title: str, details: str, target: str) -> str:
-    return (f'<li><a class="finding" href="#{target}"><span><strong>{_e(title)}</strong>'
-            f'<span class="finding-detail">{_e(details)}</span></span>{icon("chev")}</a></li>')
+def _overview_tile(label: str, value: str, note: str, target: str) -> str:
+    return (f'<a class="overview-tile" href="#{target}"><span>{_e(label)}{icon("chev")}</span>'
+            f'<strong>{_e(value)}</strong><small>{_e(note)}</small></a>')
 
 
-def _standouts(d: dict[str, Any]) -> str:
-    rows = []
-    has_weekly_signal = any(s["kind"] == "signal_shift" for s in d["feed"])
-    for item in d["feed"]:
-        if item["kind"] == "trend" and item["per_30_days"] and item["metric"] in _TREND_LABELS:
-            name, unit, link = _TREND_LABELS[item["metric"]]
-            change = abs(item["per_30_days"]) * (60 if item["metric"] == "sleep_h" else 1)
-            direction = "rose" if item["direction"] == "rising" else "fell"
-            rows.append(_insight(f"{name} {direction} about {change:.2g} {unit} per month",
-                                 f'{item["points"]} readings over the last 90 days', link))
-        elif item["kind"] == "hrv_guided":
-            direction = "below" if "below" in item["title"] else "above"
-            rows.append(_insight(f"Overnight HRV is {direction} your usual range",
-                                 "Based on your seven-day average", "recovery"))
-        elif item["kind"] == "signal_shift":
-            metric = item["metric"]
-            target = "sleep" if metric == "sleep_h" else "recovery"
-            sign = d["signals"][metric]
-            rows.append(_insight(item["title"],
-                                 f'{_f(sign["recent"], 1)} {sign["unit"]} over '
-                                 f'{sign["recent_count"]} of 7 days', target))
-        elif item["kind"] == "vitals" and not has_weekly_signal:
-            changes = [f'{_VITAL_LABELS[k][0]} {v["state"]} usual' for k, v in d["ranges"].items()
-                       if k in _VITAL_LABELS and v["state"] in ("above", "below")]
-            rows.append(_insight("Several readings differ from your usual range",
-                                 " · ".join(changes), "recovery"))
-        elif item["kind"] == "load":
-            title = "Your weekly load increased" if item["title"] == "Load jump" else "Your longest run increased"
-            rows.append(_insight(title, item["detail"], "training"))
-        if len(rows) == 2:
-            break
-    best = next((p for p in d["explore"]["pairs"] if p["notable"]), None)
-    if best:
-        x, y = _PATTERN_LABELS[best["x"]], _PATTERN_LABELS[best["y"]]
-        rows.append(_insight(f"{x} and {y} showed a relationship",
-                             f'{best["n"]} paired days · personal association', "patterns"))
-    if not rows:
-        return '<p class="sub">There are no clear changes or recurring patterns in the records available.</p>'
-    return '<ul class="findings">' + "".join(rows) + '</ul>'
+def _sleep_time(hours: float) -> str:
+    minutes = round(hours * 60)
+    h, m = divmod(minutes, 60)
+    return f"{h}h {m:02d}m" if m else f"{h}h"
 
 
 def page_today(d: dict[str, Any]) -> str:
-    s = d["scores"]
-    rec, sl, st = s["recovery"], s["sleep"], s["strain"]
-    tone = TONE.get(rec.get("band") or "", "muted")
-    sleep_sub = (f'{_f(sl.get("hours"), 1)} of {_f(sl.get("need_h"), 1)} h'
-                 if sl.get("hours") else "last night not recorded")
-    tr = st.get("target_range") or [None, None]
-    dials = (
-        dial(rec.get("pct"), "Recovery", _f(rec.get("pct"), 0, "%"),
-             (rec.get("label") or "calibrating").capitalize(), tone, "#recovery")
-        + dial(sl.get("pct"), "Sleep goal", _f(sl.get("pct"), 0, "%"), sleep_sub, "s1", "#sleep")
-        + dial(None, "Strain", _f(st.get("value"), 1),
-               f"target {tr[0]}–{tr[1]}" if tr[0] is not None else "target unavailable", "s2",
-               "#training", frac=(st.get("value") or 0) / 21))
-    sug = d["brief"].get("suggestion") or {}
-    bt = d["bedtime"]
-    plan = (sug.get("suggest") or "Training guidance is unavailable").capitalize()
-    reason = (sug.get("why") or "").capitalize().rstrip(".")
-    if plan == "Planned training is fine":
-        plan = "Train as planned if you feel well"
-        if "our readiness is normal" in (sug.get("why") or ""):
-            reason = "Your recovery signals are within their usual range overall"
-    today = f'<p class="say">{_e(plan)}.</p>'
-    if reason:
-        today += f'<p class="sub">{_e(reason)}.</p>'
-    if bt.get("available"):
-        today += (f'<p class="pill">{icon("moon")}<span>Bed by <b>{_e(bt["suggested_bedtime"])}'
-                  f'</b> for a usual {_e(bt["usual_wake"])} wake time</span></p>')
-    garmin = (f'<span class="chip">Garmin readiness {_f(rec["garmin_readiness"])}'
-              f'{_e(" · " + rec["garmin_level"].title()) if rec.get("garmin_level") else ""}</span>'
-              if rec.get("garmin_readiness") is not None else "")
-    week_ahead = d["brief"]["week_ahead"]
-    week_card = _card("Next seven days", f'<p class="say">{_e(week_ahead["plan"])}</p>'
-                      f'<p class="sub">{_e(week_ahead["basis"])}</p>', wide=True)
-    if d.get("older_snapshot") or d.get("sync_retry_required"):
-        week_card = ""
-    if d.get("older_snapshot"):
-        today = (f'<p class="say">Sync for current training guidance.</p>'
-                 f'<p class="sub">This snapshot uses your records through {_short(d["end"])}.</p>')
-    elif d.get("sync_retry_required"):
-        today = '<p class="say">Finish syncing for current training guidance.</p>'
-    rows = []
-    for k, (lab, unit, nd) in _VITAL_LABELS.items():
-        m = d["ranges"].get(k)
-        if not m or m.get("value") is None:
-            continue
-        rg = m.get("range") or [None, None]
-        state = {"in range": "good", "above": "up", "below": "down"}.get(m.get("state"), "")
-        note = (f'{m.get("state", "")} · usual {_f(rg[0], nd)}–{_f(rg[1], nd)}'
-                if m.get("range") else "Personal range is still calibrating")
-        rows.append(_row(lab, f'{_f(m["value"], nd)} <small>{unit}</small>', note, state))
-    hist = d["history"]
-    week = bar_chart([(h["day"], h["recovery"]) for h in hist], "%", y_label="Recovery (%)",
-                     tones=[TONE.get(h.get("band") or "", "muted") for h in hist])
-    why = f'<ul class="rows">{"".join(rows)}</ul>' if rows else (
-        '<p class="empty">Not enough recent measurements to compare with your personal ranges.</p>')
-    body = (_card("Training plan", today + garmin)
-            + f'<section class="card hero"><div class="dials">{dials}</div>'
-              f'<p class="hero-note">Recovery uses {rec.get("signals_used", 0)} of '
-              f'{rec.get("signals_total", 4)} signals. Strain covers recorded workouts.</p></section>'
-            + week_card
-            + _card("What stands out", _standouts(d)
-                    + '<a class="source-link" href="#history">Open your history</a>')
-            + _card("Your measurements", why, "Latest readings against your usual range")
-            + _card("Recovery over 14 days", week, "Green ≥ 67 · amber 34–66 · red ≤ 33",
-                    href="#recovery", wide=True))
-    lede = f'Data through {_short(d["end"])}'
-    if d.get("sync_retry_required"):
-        lede += " Latest sync is incomplete; some measurements may be missing."
-    return _page("today", "Today", lede, body)
+    rec, sleep = d["scores"]["recovery"], d["scores"]["sleep"]
+    day = d["end"]
+    snapshot = d["calendar"]["days"].get(day, {})
+    training_n = len(snapshot.get("activities", []))
+    focus = d["brief"]["focus"]
+    current = not (d.get("older_snapshot") or d.get("sync_retry_required"))
+    ready = rec["pct"] is not None
+    tiles = (
+        _overview_tile("Recovery", _f(rec["pct"], unit="%") if ready else "—",
+                       (rec["label"] or "").capitalize() if ready else "Still learning", "recovery")
+        + _overview_tile("Sleep", _sleep_time(sleep["hours"]) if sleep["hours"] else "—",
+                         f'Goal {_sleep_time(sleep["need_h"])}' if sleep["hours"]
+                         else "No night recorded", "sleep")
+        + _overview_tile("Training", str(training_n), "Workout logged" if training_n == 1
+                         else "Workouts logged", "training"))
+    body = ""
+    if not current:
+        status = ("Sync to get today’s guidance." if d.get("older_snapshot")
+                  else "Finish syncing to get today’s guidance.")
+        body += f'<section class="card today-focus wide"><h3>{_e(status)}</h3></section>'
+    else:
+        target = focus["target"]
+        link = {"recovery": "See recovery", "sleep": "See sleep", "training": "See training"}
+        more = (f'<a class="flow-link" href="#{target}">{link[target]}{icon("chev")}</a>'
+                if target else "")
+        detail = f'<p>{_e(focus["detail"])}</p>' if focus["detail"] else ""
+        body += (f'<section class="card today-focus wide"><h3>{_e(focus["title"])}</h3>'
+                 f'{detail}{more}</section>')
+    body += f'<div class="overview-tiles wide" aria-label="Today’s readings">{tiles}</div>'
+
+    if current:
+        week = d["brief"]["week_ahead"]
+        body += _card("Next seven days", f'<p class="sub week-cue">{_e(week["plan"])}</p>'
+                      f'<details><summary>How this was chosen</summary>'
+                      f'<p class="sub">{_e(week["basis"])}</p></details>', wide=True)
+    findings = list(focus["findings"]) if current else []
+    if current and d["runs"]:
+        latest_run = d["runs"][0]
+        cue = latest_run.get("cadence_experiment")
+        if cue and focus["title"] != "Pause training today.":
+            findings.insert(1, {"title": "Try shorter steps on an easy run",
+                                "detail": cue["suggestion"], "basis": cue["check"],
+                                "target": f'run-{latest_run["activity_id"]}'})
+    if findings:
+        rows = "".join(_insight(item) for item in findings[:3])
+        body += _card("What to work on", f'<ul class="findings">{rows}</ul>', wide=True)
+    if training_n:
+        runs = {r["activity_id"] for r in d["runs"]}
+        rows = [_record_link(a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize(),
+                             " · ".join(filter(None, [a["duration"],
+                                         _f(a["distance_km"], 1, " km") if a["distance_km"] else ""])),
+                             f'#run-{a["id"]}' if a["id"] in runs else None)
+                for a in snapshot.get("activities", [])]
+        body += _card("Today’s workouts" if current else "Workouts on this date", f'<ul class="record-list">{"".join(rows)}</ul>', wide=True)
+    body += (f'<a class="flow-link history-entry wide" href="#trends">'
+             f'Browse trends and history{icon("chev")}</a>')
+    return _page("today", "Today", _date_label(day), body)
 
 
 def page_sleep(d: dict[str, Any]) -> str:
@@ -819,7 +743,19 @@ def page_recovery(d: dict[str, Any]) -> str:
     shift_rows = "".join(_row(names[k][0], f'{v["change"]:+.1f} <small>{names[k][1]}</small>',
                               f'since {_short(v["date"])} ({v["before_mean"]:.1f} → '
                               f'{v["after_mean"]:.1f})') for k, v in sh.items())
-    body = (_card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
+    rec = d["scores"]["recovery"]
+    garmin = (f'Garmin readiness {_f(rec["garmin_readiness"])}'
+              if rec["garmin_readiness"] is not None else "")
+    status = (f'{rec["pct"]}% · {rec["label"].capitalize()}' if rec["pct"] is not None
+              else "Still learning your usual readings")
+    hist = d["history"]
+    chart = both(bar_chart, [(h["day"], h["recovery"]) for h in hist], "%",
+                 y_label="Recovery (%)", tones=[TONE.get(h["band"] or "", "muted") for h in hist])
+    score = (f'<p class="sub">{_e(garmin)}</p>' if garmin else "")
+    if any(h["recovery"] is not None for h in hist):
+        score += f'<details class="recovery-history"><summary>Last 14 days</summary>{chart}</details>'
+    body = (_card("Recovery score", score, _e(status), wide=True)
+            + _card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
                   "7-day HRV · shaded: usual range", wide=True)
             + "".join(_vital_chart(metric, d["signals"][metric])
                       for metric in ("resting_hr", "sleep_spo2", "sleep_resp"))
@@ -828,7 +764,7 @@ def page_recovery(d: dict[str, Any]) -> str:
                           if any(n >= 28 for n in coverage.values()) else
                           '<p class="empty">Too few readings to assess a lasting change yet.</p>'),
                     "Step changes found in the last 180 days"))
-    return _page("recovery", "Recovery", "How well your body is absorbing training and life.",
+    return _page("recovery", "Recovery", "Your recent readings compared with your usual range.",
                  body)
 
 
@@ -960,6 +896,8 @@ def _tests(t: dict[str, Any]) -> str:
 
 def page_run(r: dict[str, Any]) -> str:
     rows = ""
+    units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
+             "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
     for key, fm in r["form"].items():
         rng = GAUGE_RANGE.get(key)
         g = gauge(fm["value"], running.GAUGES[key], *rng,
@@ -971,9 +909,13 @@ def page_run(r: dict[str, Any]) -> str:
                                         if vs is not None else [])
         vs_txt = " · ".join(b for b in bits if b)
         rows += (f'<div class="form-row"><div class="fr-head"><span>{_e(fm["label"])}</span>'
-                 f'<b>{fm["value"]}</b></div>{g}<p class="sub">{_e(vs_txt)}</p></div>')
+                 f'<b>{fm["value"]:g}{units[key]}</b></div>{g}<p class="sub">{_e(vs_txt)}</p></div>')
     p = r["pacing"]
-    work = "".join(f'<li>{_e(w)}</li>' for w in r["work_on"])
+    first, *other = r["work_on"]
+    work = f'<p class="run-first">{_e(first)}</p>'
+    if other:
+        rest = "".join(f'<li>{_e(w)}</li>' for w in other)
+        work += f'<details><summary>More notes</summary><ul class="work">{rest}</ul></details>'
     facts = (_row("Pace", f'{_e(r["pace"])}<small>/km</small>')
              + _row("Average heart rate", f'{_f(r.get("avg_hr"))}<small> bpm</small>')
              + _row("Heart-rate change", f'{_f(p.get("hr_drift_bpm"), 1)}<small> bpm</small>',
@@ -986,10 +928,9 @@ def page_run(r: dict[str, Any]) -> str:
     if cue:
         followup = (f'<p class="sub">{_e(cue["check"])} '
                     f'<a href="{_e(cue["source"])}" class="source-link">Cadence study</a></p>')
-    body = (_card("What to try next", f'<ol class="work">{work}</ol>' + followup, wide=True)
-            + _card("Form", rows + '<p class="legend"><i class="mk"></i>this run <i class='
-                    '"mk2"></i>your usual at this pace · colours = Garmin rating</p>',
-                    "Garmin's colour bands, plus how this run compares with you", wide=True)
+    body = (_card("What to try next", work + followup, wide=True)
+            + _card("Running form", rows + '<p class="legend"><i class="mk"></i>This run <i class='
+                    '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True)
             + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
                     href=f'#run-{r["activity_id"]}-pacing')
             + _card("Numbers", f'<ul class="rows">{facts}</ul>'))
@@ -1003,7 +944,7 @@ def page_run(r: dict[str, Any]) -> str:
         body += _card("Run timeline", "", "Explore effort, form and elevation",
                       href=f'#run-{r["activity_id"]}-trace', wide=True)
     return _page(f'run-{r["activity_id"]}', _run_label(r),
-                 "Pacing, effort and running form.", body, back="#running")
+                 _date_label(r["date"]), body, back="#running")
 
 
 def page_run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
@@ -1115,82 +1056,115 @@ def _conditions_card(context: dict) -> str:
     return _card("Outdoor conditions", body, note, wide=True)
 
 
-def _paired_chart(stream: list[dict[str, Any]], a: tuple, b: tuple, interval: int, w: int = W,
-                  *, context_by_second: dict[int, dict] | None = None) -> str:
-    akey, alabel, afmt = a
-    bkey, blabel, bfmt = b
-    paired = [(p["t_s"], p[akey], p[bkey]) for p in stream
-              if all(isinstance(p.get(k), (int, float)) and math.isfinite(p[k]) and p[k] > 0
-                     for k in (akey, bkey))]
-    if len(paired) < 3 or paired[0][0] == paired[-1][0]:
-        return '<p class="empty">Too few samples have both readings.</p>'
-    med_a = statistics.median(p[1] for p in paired)
-    med_b = statistics.median(p[2] for p in paired)
-    standard = [(t, 100 * (v1 / med_a - 1), 100 * (v2 / med_b - 1)) for t, v1, v2 in paired]
-    ticks = _ticks(*_scale([0] + [v for _, a1, b1 in standard for v in (a1, b1)]))
-    h, left, right, top, bottom = 200, 50, w - 32, 29, 151
+def _paired_chart(stream: list[dict[str, Any]], primary: tuple, secondary: tuple,
+                  interval: int, w: int = W, *, context_by_second: dict[int, dict] | None = None,
+                  faster_at_top: bool = False) -> str:
+    """Keep the primary measurement readable on its own, with a time-aligned second track."""
+    akey, alabel, axis_a, afmt = primary
+    bkey, blabel, axis_b, bfmt = secondary
+
+    def series(key: str) -> list[tuple[int, float]]:
+        return [(p["t_s"], value) for p in stream
+                if isinstance(value := p.get(key), (float, int)) and math.isfinite(value) and value > 0]
+
+    a, b = series(akey), series(bkey)
+    if len(a) < 2 or stream[0]["t_s"] == stream[-1]["t_s"]:
+        return '<p class="empty">Too few recorded points for this chart.</p>'
+    paired = dict(b)
+    compare = sum(t in paired for t, _ in a) >= 3
+    h, left, right, top, bottom = 186, 52, w - 24, 28, 140
+    start, end = stream[0]["t_s"], stream[-1]["t_s"]
 
     def x(seconds: float) -> float:
-        return left + (right - left) * (seconds - paired[0][0]) / (paired[-1][0] - paired[0][0])
+        return left + (right - left) * (seconds - start) / (end - start)
 
-    def y(v: float) -> float:
-        return bottom - (bottom - top) * (v - ticks[0]) / (ticks[-1] - ticks[0])
+    def track(values, caption, t, base, fmt, colour, reverse=False):
+        ticks = _ticks(*_scale([v for _, v in values]))
+        low, high = ticks[0], ticks[-1]
 
-    g = _horizontal_scale(ticks, left, right, y, _tick_number)
-    g += _axes(left, right, top, bottom, h, "Elapsed time", "Change from run median (%)")
-    g.append(f'<line x1="{left}" x2="{right}" y1="{y(0):.2f}" y2="{y(0):.2f}" class="zero"/>')
-    for i, layer in ((1, "ln s1"), (2, "moving-average overlay-secondary")):
-        path = " ".join(f'{"M" if j == 0 or row[0] - standard[j - 1][0] > 2 * interval else "L"}'
-                        f'{x(row[0]):.2f},{y(row[i]):.2f}' for j, row in enumerate(standard))
-        g.append(f'<path class="{layer}" d="{path}"/>')
-    for i, ((t, v1, v2), (_, p1, _)) in enumerate(zip(paired, standard, strict=True)):
-        starts_segment = i == 0 or t - paired[i - 1][0] > 2 * interval
+        def y(value: float) -> float:
+            ratio = (value - low) / (high - low)
+            return t + (base - t) * ratio if reverse else base - (base - t) * ratio
+
+        parts = _horizontal_scale(ticks, left, right, y, fmt)
+        parts += _axes(left, right, t, base, base + 35, "", caption)[:2]
+        path = []
+        for i, (second, value) in enumerate(values):
+            split = i == 0 or second - values[i - 1][0] > 2 * interval
+            path.append(f'{"M" if split else "L"}{x(second):.2f},{y(value):.2f}')
+        parts.append(f'<path class="ln {colour}" d="{" ".join(path)}"/>')
+        return parts, y
+
+    g, y_a = track(a, axis_a, top, bottom, afmt if faster_at_top else _tick_number,
+                   "s1", faster_at_top)
+    for i, (t, v) in enumerate(a):
+        starts_segment = i == 0 or t - a[i - 1][0] > 2 * interval
         context = _condition_readout((context_by_second or {}).get(t))
-        value = " · ".join(v for v in (f"{alabel}: {afmt(v1)}", context) if v)
-        g.append(_point(x(t), y(p1), loads._hms(t), value,
-                        cls="context-dot" if starts_segment else "hit",
-                        extra=f"{blabel}: {bfmt(v2)}"))
-    labels = [loads._hms(t) for t, _, _ in paired]
-    g += _x_ticks(labels, lambda i: x(paired[i][0]), bottom, w > W)
-    control = (f'<button type="button" class="overlay-control" '
-               f'data-overlay-control aria-pressed="false">Overlay {_e(blabel.lower())}</button>')
-    return _chart("line", g, w, h, (left, right, top, bottom),
-                  "Elapsed time", "Change from run median (%)", "Tap or hover to read actual values",
-                  controls=control, readout_below=bool(context_by_second))
+        value = " · ".join(item for item in (f"{alabel} {afmt(v)}", context) if item)
+        extra = f"{blabel} {bfmt(paired[t])}" if compare and t in paired else ""
+        g.append(_point(x(t), y_a(v), loads._hms(t), value,
+                        cls="context-dot" if starts_segment else "hit", extra=extra))
+    ticks_at = [start, (end + start) // 2, end]
+    labels = [loads._hms(t) for t in ticks_at]
+    g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W)
+    g.append(f'<text x="{(left + right) / 2:.1f}" y="{h - 8}" text-anchor="middle" '
+             'class="axis-label">Elapsed time</text>')
+    control = ""
+    if compare:
+        second_bottom = h + 126
+        parts, _ = track(b, axis_b, h + 23, second_bottom, _tick_number, "s2")
+        g.append(f'<g class="overlay-secondary">{"".join(parts)}</g>')
+        control = (f'<button type="button" class="overlay-control" data-overlay-control '
+                   f'data-open-height="{second_bottom + 20}" data-open-bottom="{second_bottom}" '
+                   f'data-track-name="{_e(blabel.lower())}" aria-pressed="false">'
+                   f'Show {_e(blabel.lower())}</button>')
+    return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
+                  "Tap or hover for readings", controls=control, readout_below=True)
 
 
 def page_run_trace(r: dict[str, Any]) -> str:
     trace = r["trace"]
     stream = trace.get("stream") or []
+    for_chart = [{**p, "pace_s_km": 1000 / p["speed_m_s"] if p.get("pace") else None} for p in stream]
     interval = trace.get("every_s", 10)
     context = r["conditions"]
     near_sample = conditions.for_samples(trace.get("start_utc"), stream, context)
-    speed_hr = both(_paired_chart, stream, ("speed_m_s", "Speed", lambda v: _f(v, 2, " m/s")),
-                    ("hr", "Heart rate", lambda v: _f(v, unit=" bpm")), interval,
-                    context_by_second=near_sample)
+    pace_hr = both(_paired_chart, for_chart, ("pace_s_km", "Pace", "Pace (min/km)", loads._hms),
+                   ("hr", "Heart rate", "Heart rate (bpm)", lambda v: _f(v, unit=" bpm")), interval,
+                   context_by_second=near_sample, faster_at_top=True)
     cadence_step = both(_paired_chart, stream,
-                        ("cadence_spm", "Cadence", lambda v: _f(v, unit=" steps/min")),
-                        ("step_length_m", "Step length", lambda v: _f(v, 2, " m")), interval)
+                        ("cadence_spm", "Cadence", "Cadence (steps/min)",
+                         lambda v: _f(v, unit=" steps/min")),
+                        ("step_length_m", "Step length", "Step length (m)",
+                         lambda v: _f(v, 2, " m")), interval)
     elevation = both(line_chart, [(loads._hms(pt["t_s"]), pt["altitude_m"]) for pt in stream],
                      " m", x_label="Elapsed time", y_label="Elevation (m)",
                      elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream},
                      details={loads._hms(t): _condition_readout(w) for t, w in near_sample.items()})
-    body = (_card("Speed and heart rate", speed_hr, "Blue: speed · dashed: heart rate", wide=True)
-            + _conditions_card(context)
-            + _card("Cadence and step length", cadence_step, "Blue: cadence · dashed: step length", wide=True)
-            + _card("Recorded elevation", elevation, wide=True))
+    drift = r["pacing"].get("hr_drift_bpm")
+    cue = ("Show heart rate to compare it with pace at the same point in the run."
+           if drift is None else
+           f'Heart rate averaged {_f(abs(drift), 1)} bpm {"higher" if drift > 0 else "lower"} '
+           "in the second half of moving time." if drift else
+           "Average heart rate was the same in both halves of moving time.")
+    body = (_card("Pace", pace_hr, cue, wide=True)
+            + _card("Running form", cadence_step,
+                    "Show step length to see how it changed alongside cadence.", wide=True)
+            + _card("Elevation", elevation, wide=True)
+            + _conditions_card(context))
     aid = r["activity_id"]
-    return _page(f"run-{aid}-trace", "Run timeline",
-                 f'Samples about every {interval} s. Overlay lines use each signal’s own median. '
-                 'Tap or hover for actual units.', body, back=f"#run-{aid}")
+    return _page(f"run-{aid}-trace", "Run timeline", _e(_run_label(r)), body, back=f"#run-{aid}")
 
 
 def page_body(d: dict[str, Any]) -> str:
     fa = d["fitness_age"]
-    lev = "".join(_row(x["lever"].capitalize(), f'{_f(x["current"], 1)} → {_f(x["target"], 1)}'
-                       f'<small> {x.get("unit") or ""}</small>',
-                       f'fitness age {_f(x["fitness_age_if_reached"], 1)} if reached')
-                  for x in (fa.get("levers") or [])[:4])
+    lev = "".join(_row(x["lever"] if x["lever"] == "BMI" else x["lever"].capitalize(),
+                       f'{_f(x["current"], 1)} → {_f(x["target"], 1)}'
+                       f'<small> {_e(x.get("unit"))}</small>',
+                       f'Garmin estimates age {_f(x["fitness_age_if_reached"], 1)} at that target'
+                       if x["fitness_age_if_reached"] is not None else "")
+                  for x in (fa.get("levers") or [])
+                  if x["current"] is not None and x["target"] is not None)
     ag = d["ageing"]
     ag_html = (f'<div class="big">{ag["pace_of_ageing"]:.1f}<small>years/year</small></div>'
                f'<p class="sub">{_e(ag["meaning"])}</p>' if ag.get("available")
@@ -1204,19 +1178,21 @@ def page_body(d: dict[str, Any]) -> str:
                          f'{mo["change"].get(k):+,.{nd}f} vs month before'
                          if isinstance(mo["change"].get(k), (int, float)) else "")
                     for k, (lab, nd) in names.items())
-    body = (_card("Fitness age", f'<div class="big">{_f(fa.get("garmin_fitness_age"), 1)}'
+    body = ""
+    if fa.get("garmin_fitness_age") is not None:
+        body += _card("Fitness age", f'<div class="big">{_f(fa.get("garmin_fitness_age"), 1)}'
                   f'<small> yrs</small></div><p class="sub">Calendar age '
                   f'{_e(fa.get("chronological_age"))} · best reachable '
                   f'{_f(fa.get("achievable_age"), 1)}</p><ul class="rows">{lev}</ul>',
-                  "Garmin's estimate and the levers that move it")
-            + _card("Fitness-age trend", ag_html, "Change in Garmin's estimate per calendar year")
-            + _card(f"Month report · {mo['month']}", f'<ul class="rows">{mrows}</ul>',
-                    "Open monthly history and check how many days were recorded",
-                    wide=True, href="#month-detail"))
+                  "Garmin’s estimate")
+    if ag.get("available"):
+        body += _card("Fitness-age trend", ag_html, "Change in Garmin’s estimate per year")
+    body += _card(f"Month report · {mo['month']}", f'<ul class="rows">{mrows}</ul>',
+                  "See your month in detail", wide=True, href="#month-detail")
     if "vo2_reference" in d:
         body += _card("VO₂max reference", vo2_reference(d["vo2_reference"]),
                       "Garmin and our effective estimate, shown separately", wide=True)
-    return _page("body", "Body & long term", "Slow signals that change over months.", body)
+    return _page("body", "Body", "Changes over months.", body, back="#trends")
 
 
 def _month_label(month: str) -> str:
@@ -1288,7 +1264,7 @@ def page_history_week(d: dict[str, Any]) -> str:
     body = (_history_nav(d, "Week")
             + _card("Steps by day", chart, wide=True)
             + _card("Open a day", _date_list(calendar["week"], calendar), wide=True))
-    return _page("history", "Week history", span, body)
+    return _page("history", "Week history", span, body, back="#trends")
 
 
 def page_history_month(d: dict[str, Any], month: str) -> str:
@@ -1468,7 +1444,7 @@ def page_patterns(d: dict[str, Any]) -> str:
                        wide=True)
     count = "No clear patterns yet" if not shown else f"{shown} patterns shown"
     return _page("patterns", "Patterns", count, cards or _card(
-        "Patterns", '<p class="empty">Not enough data yet.</p>'))
+        "Patterns", '<p class="empty">Not enough data yet.</p>'), back="#trends")
 
 
 
@@ -1503,7 +1479,7 @@ padding:0 13px;border-radius:11px;cursor:pointer}
 color:var(--ink2)}
 .top a:hover,.top a[aria-current=page]{background:var(--accent);color:var(--active)}
 @media(max-width:620px){
-.top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}
+.top{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible}
 .top a{justify-content:center;padding:4px;font-size:12px}
 }
 .sr-only{width:1px;height:1px;position:absolute;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -1527,23 +1503,37 @@ margin:0 0 5px;font-weight:680;line-height:1.28}
 .big{font-size:48px;line-height:1.05;font-weight:700;letter-spacing:-.02em;margin:8px 0 4px}
 .big small{font-size:.45em;font-weight:500;color:var(--ink2);margin-left:2px}
 .empty{color:var(--muted);font-size:13px;margin:12px 0}
-.hero{padding:16px 12px}
-.hero-note{font-size:12px;color:var(--ink2);text-align:center;margin:9px 0 0}
-.dials{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:640px;margin:0 auto}
-.dial{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px}
-.dial svg{width:100%;max-width:90px}
-.dial-track{fill:none;stroke:var(--grid);stroke-linecap:round}
-.dial-val{fill:none;stroke-linecap:round}
-.dial-val.good{stroke:var(--good)}.dial-val.warn{stroke:var(--warn)}
-.dial-val.bad{stroke:var(--bad)}.dial-val.s1{stroke:var(--s1)}.dial-val.s2{stroke:var(--s2)}
-.dial-val.muted{stroke:var(--muted)}
-.dial-num{font-size:28px;font-weight:700;letter-spacing:-.02em;fill:var(--ink);
-text-anchor:middle}
-.dial-label{font-size:15px;font-weight:600}.dial-sub{font-size:12px;color:var(--ink2)}
-.pill{display:inline-flex;align-items:center;gap:8px;background:var(--page);border-radius:999px;
-padding:8px 14px;font-size:13px;margin:12px 0 0}
-.chip{display:inline-block;margin-top:12px;font-size:12px;color:var(--muted);
-border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+.today-focus{border-top:3px solid var(--s1);padding:20px max(16px,2.4vw);}
+.today-focus h3{font-size:clamp(22px,4vw,31px);line-height:1.2;max-width:29ch}
+.today-focus p{margin:8px 0 0;color:var(--ink2);max-width:65ch}
+.flow-link{display:inline-flex;align-items:center;gap:7px;min-height:44px;color:var(--active);
+font-size:14px;font-weight:650}
+.history-entry{justify-self:start}
+.overview-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.overview-tile{display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);
+border-radius:13px;padding:11px 9px;background:var(--surface);min-width:0}
+.overview-tile:hover{background:var(--accent)}
+.overview-tile>span{display:flex;align-items:center;justify-content:space-between;gap:1px;
+color:var(--ink2);font-size:12px}
+.overview-tile .ic{width:13px;height:13px}
+.overview-tile strong{font-size:clamp(17px,3.1vw,27px);line-height:1.2}
+.overview-tile small{font-size:11px;color:var(--ink2);line-height:1.25}
+.week-cue{font-size:16px;margin:7px 0 0;color:var(--ink)}
+.run-first{font-size:17px;margin:8px 0 12px;max-width:64ch}
+@media(max-width:360px){
+#today .grid{gap:10px}
+#today .ph{margin-bottom:12px}
+#today .today-focus{padding:13px}
+#today .today-focus h3{font-size:21px}
+#today .today-focus p{font-size:13px}
+#today .flow-link{min-height:44px}
+#today .overview-tile{padding:8px 7px}
+#today .overview-tile .ic{display:none}
+#today .card:not(.today-focus){padding:12px}
+#today .week-cue{font-size:14px}
+}
+.recovery-history svg{max-height:168px}
+.recovery-history figure{max-width:700px}
 .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;
 stroke-linecap:round;stroke-linejoin:round}
 .ic.good{color:var(--goodtext)}.ic.warn{color:var(--serious)}.ic.chev{color:var(--muted)}
@@ -1646,7 +1636,8 @@ caption{text-align:left;font-size:12px;color:var(--ink2);padding:8px 0}
 .findings{list-style:none;margin:0;padding:0}
 .findings li+li{border-top:1px solid var(--grid)}
 .finding{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:10px 0}
-.finding-detail{display:block;color:var(--ink2);font-size:13px;margin-top:3px}
+.finding-detail,.finding-action{display:block;color:var(--ink2);font-size:13px;margin-top:3px}
+.finding-action{color:var(--ink)}.findings details{margin:0 10px}.findings details p{max-width:62ch}
 .finding:hover strong{text-decoration:underline}
 .history-tabs{display:flex;gap:5px;flex-wrap:wrap}
 .history-tabs a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;
@@ -1663,17 +1654,29 @@ footer{margin-top:48px;font-size:12px;color:var(--muted);line-height:1.6}
 """
 
 
+def page_trends() -> str:
+    links = (("Recovery", "Heart rate, HRV and overnight readings", "#recovery"),
+             ("Body", "Fitness, VO₂max and longer-term changes", "#body"),
+             ("Patterns", "How measurements move together", "#patterns"),
+             ("History", "Find past workouts and daily readings", "#history"))
+    body = "".join(_card(title, "", note, href=target) for title, note, target in links)
+    return _page("trends", "Trends", "Explore your records over time.", body)
+
+
 def render(d: dict[str, Any]) -> str:
-    links = (
-        ("today", "Today"), ("sleep", "Sleep"), ("recovery", "Recovery"),
-        ("training", "Training"), ("running", "Running"), ("body", "Body"),
-        ("patterns", "Patterns"), ("history", "History"))
+    built_at = datetime.now(UTC)
+    snapshot = f"{__version__}/{built_at.isoformat()}"
+    links = (("today", "Today"), ("sleep", "Sleep"), ("training", "Training"),
+             ("running", "Running"), ("trends", "Trends"))
     if d.get("available") is False:
-        pages = [_page(pid, title, "Your dashboard is waiting for data.",
-                       _card("No data yet", f'<p>{_e(d["reason"])}</p>')) for pid, title in links]
+        secondary = (("recovery", "Recovery"), ("body", "Body"), ("patterns", "Patterns"),
+                     ("history", "History"))
+        pages = [_page(pid, title, "", _card("No data yet", f'<p>{_e(d["reason"])}</p>'))
+                 for pid, title in (*links[:-1], *secondary)]
+        pages.append(page_trends())
         freshness = "No Garmin measurements are available yet."
     else:
-        pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d),
+        pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d), page_trends(),
                  page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
@@ -1686,10 +1689,12 @@ def render(d: dict[str, Any]) -> str:
         pages.extend(page_history_day(d, day) for day in calendar["detail_days"])
         freshness = f'Data through {_e(d["end"])} from your own Garmin records.'
     sync = d.get("last_full_sync") or "none recorded"
-    status = f'Last complete sync {_e(sync)} · Code v{__version__}.'
+    build_time = built_at.astimezone(d.get("zone", UTC)).strftime("%-d %b %Y, %H:%M %Z")
+    status = f'Last complete sync {_e(sync)} · Dashboard built {build_time} · Code v{__version__}.'
     nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        f'<meta name="garmin-dashboard" content="{_e(snapshot)}">'
         f'<meta http-equiv="Content-Security-Policy" content="{_e(CONTENT_POLICY)}">'
         '<meta name="viewport" '
         'content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Garmin Health'
@@ -1701,8 +1706,7 @@ def render(d: dict[str, Any]) -> str:
         'Home and End move to the first and last readings. Escape clears the selection.</p>'
         '<nav class="top" '
         f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status} '
-        'Our scores are estimates; Garmin values shown in grey for comparison. Not '
-        f'medical advice.</footer></main><script>{SCRIPT}</script></body></html>')
+        f'</footer></main><script>{SCRIPT}</script></body></html>')
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -1721,19 +1725,39 @@ def _atomic_write(path: Path, content: str) -> None:
             temp.unlink(missing_ok=True)
 
 
-def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
+def _snapshot_paths(out_dir: Path | None = None) -> tuple[Path, Path | None]:
     from garmin_mcp.config import data_dir
 
-    out_dir = out_dir or data_dir() / "dashboard"
-    out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path = out_dir / "index.html"
+    local = (out_dir or data_dir() / "dashboard") / "index.html"
+    icloud = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
+    return local, icloud / "Garmin" / "dashboard.html" if icloud.is_dir() else None
+
+
+def _snapshot_id(path: Path) -> bytes:
+    try:
+        with path.open("rb") as source:
+            head = source.read(512)
+    except OSError:
+        return b""
+    return head.partition(b'<meta name="garmin-dashboard" content="')[2].partition(b'"')[0]
+
+
+def needs_rebuild(out_dir: Path | None = None) -> bool:
+    local, icloud = _snapshot_paths(out_dir)
+    snapshot = _snapshot_id(local)
+    return (not snapshot.startswith(f"{__version__}/".encode())
+            or (icloud is not None and _snapshot_id(icloud) != snapshot))
+
+
+def build(conn: sqlite3.Connection, out_dir: Path | None = None) -> Path:
+    path, icloud = _snapshot_paths(out_dir)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     content = render(collect(conn))
     _atomic_write(path, content)
-    icloud = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
-    if icloud.is_dir():
+    if icloud is not None:
         try:
-            (icloud / "Garmin").mkdir(mode=0o700, exist_ok=True)
-            _atomic_write(icloud / "Garmin" / "dashboard.html", content)
+            icloud.parent.mkdir(mode=0o700, exist_ok=True)
+            _atomic_write(icloud, content)
         except OSError:
             warnings.warn("iCloud copy failed; the local dashboard is available.",
                           RuntimeWarning, stacklevel=2)

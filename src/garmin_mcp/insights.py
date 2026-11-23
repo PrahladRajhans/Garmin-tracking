@@ -155,7 +155,9 @@ def health_snapshot(conn: sqlite3.Connection, day: str | None = None) -> dict[st
     # Garmin Training Readiness.
     rd = _row(conn, "readiness", day) or {}
     if rd.get("level") in ("LOW", "POOR"):
-        flags.append(f"Garmin Training Readiness {rd.get('level')} ({rd.get('score'):.0f}).")
+        score = rd.get("score")
+        number = f" ({score:.0f})" if isinstance(score, (int, float)) else ""
+        flags.append(f"Garmin Training Readiness {rd['level']}{number}.")
     readiness_out = {
         "garmin_score": rd.get("score"), "garmin_level": rd.get("level"),
         "morning_score": rd.get("morning_score"),
@@ -345,17 +347,29 @@ def trend(conn: sqlite3.Connection, metric: str, days: int = 30,
 
 
 # --------------------------------------------------------------------------- daily brief
-def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, Any]:
+def daily_brief(conn: sqlite3.Connection, day: str | None = None, *,
+                signals: dict | None = None, patterns: list[dict] | None = None) -> dict[str, Any]:
     """Morning-report style brief: the facts Claude narrates (Athlete-Intelligence style)."""
-    from garmin_mcp import recovery, training_plan
+    from garmin_mcp import daily_focus, engine, recovery, signal_context, training_plan
 
     day = day or _latest_day(conn) or date.today().isoformat()
     r = recovery.readiness(conn, day)
+    recommendation = recovery.suggestion(r)
+    if signals is None:
+        signals = signal_context.collect(conn, day, with_history=False)
+    if patterns is None:
+        patterns = engine.relationships(conn, day)["notable"]
     snap = health_snapshot(conn, day)
+    by_type = snap["recent_activities"]["by_type"]
+    running_km = sum(by_type.get(t, {}).get("km", 0) for t in training_plan.RUN_ACTIVITY_TYPES)
+    focus = daily_focus.daily_focus(
+        r, signals, recommendation, training_status=snap["training"]["garmin_status"],
+        running_km=running_km, patterns=patterns)
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     return {
         "day": day,
-        "suggestion": recovery.suggestion(r),
+        "suggestion": recommendation,
+        "focus": focus,
         "week_ahead": training_plan.week(conn, day, r),
         "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state",
                                                           "holding_back", "helping")},
@@ -369,7 +383,7 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None) -> dict[str, A
         "week_so_far": snap["recent_activities"],
         "intensity_minutes_7d": snap["everyday_activity"]["intensity_minutes_7d"],
         "flags": snap["flags"],
-        "narrate_as": "2-4 sentences: how recovered, why, what to do today, one thing to watch.",
+        "narrate_as": "Lead with focus. Connect the action to the recorded changes in plain language.",
     }
 
 

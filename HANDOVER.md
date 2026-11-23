@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.18.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.19.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -297,3 +297,22 @@ missing ascent/heart rate are excluded. Check raw Garmin readiness's recorded ti
 the run and that AQI stops at the exclusive end of its imported interval. The synthetic
 regressions are in `tests/test_run_evidence.py`. For the live follow-up see
 [MAC_SETUP](MAC_SETUP.md#archive-timing-comparison) and [ROADMAP](ROADMAP.md).
+
+### Handoff for Claude after v0.19.0
+
+Read the [product review](docs/PRODUCT_REVIEW_2026-11.md), then the release and the
+[roadmap](ROADMAP.md). Today leads with an action, actual readings, an easy week and up
+to three findings. Sleep shortfall, Garmin Detraining with recorded kilometres,
+personal recovery changes, and a qualifying cadence cue have paths to their evidence.
+Recovery history moved to a collapsed detail. Run comparisons use separate tracks on
+one elapsed clock. Git can now be current while data are unchanged without leaving
+HTML on an older release; the footer reports each timestamp separately.
+
+Start locally by opening the scheduled dashboard and comparing its build/version to
+the iCloud copy. Time the owner’s five-second test with their actual iPhone and archive.
+Next, build the cadence experiment follow-up with a user-entered comfort note and a
+comparable later run. Test any sleep or training takeaway on later records before
+strengthening its wording. Keep uploading workouts a separate approval. Then reduce
+the remaining file weight and measure Files/Safari load time. The 600 KB review target
+was not reached in this pass. Keep all active work in ROADMAP; audit logs record past
+decisions and do not define a second plan.

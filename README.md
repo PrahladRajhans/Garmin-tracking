@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.18.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.19.0. The 44 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -170,8 +170,10 @@ published FRIEND 2015 age/sex reference. It shows the exact table/source and exp
 neither estimate is a laboratory measurement; the effective estimate depends on HRmax.
 No age/sex is assumed when profile data are missing. See [the primary-table transcription](research_notes/Garmin%20connector%20feature%20research/friend_2015_reference.md).
 
-**Today** shows a starting plan for the next seven days, based on recent running and
-available recovery. Recovery stays in calibration until three signals are usable. The
+**Today** opens with one training cue and supporting evidence. The next seven days
+use recent running and recovery. The five navigation tabs lead to Sleep, Training,
+Running and Trends. Recovery remains one tap away. Trends also links to Body, Patterns
+and History. The recovery history opens on Recovery. Recovery stays in calibration until three signals are usable. The
 footer gives the last complete sync and the code version that built the file.
 **History** opens day, week, month and year. Full day pages cover the last 30 days.
 Older months retain day-by-day summaries. For older full detail use the daily MCP tools. **Recovery** shows usual ranges and seven-day changes for resting

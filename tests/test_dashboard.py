@@ -19,7 +19,7 @@ def test_dashboard_builds_on_small_database(conn, tmp_path):
     text = path.read_text()
     assert "<title>Garmin Health</title>" in text
     assert text.count("<script>") == 1 and "<script src" not in text
-    assert "View values" not in text and "What stands out" in text
+    assert "View values" not in text and "Today’s readings" in text
     for page in ("today", "sleep", "recovery", "training", "running", "body", "patterns"):
         assert f'id="{page}"' in text and f'href="#{page}"' in text
     assert "#today:not(:target)" in text  # home hides only when another page is targeted
@@ -165,3 +165,45 @@ def test_patterns_draw_only_qualifying_pairs():
     assert html.count('data-chart="scatter"') == 2  # phone and desktop drawings of one chart
     assert "1 had enough data but showed no clear pattern." in html
     assert "TRIMP" not in html and "Bedtime" not in html
+
+
+def test_today_leads_with_action_and_recovery_history_is_in_details(conn):
+    from datetime import UTC, datetime
+
+    day = datetime.now(UTC).date().isoformat()
+    db.put_daily(conn, "ex_daily_summary", day, "export",
+                 {"calendarDate": day, "totalSteps": 1000})
+    rebuild(conn)
+    d = dashboard.collect(conn, day)
+    d["history"][0]["recovery"] = 49
+    html = dashboard.render(d)
+    today = html.split('id="today"', 1)[1].split("</article>", 1)[0]
+    recovery_page = html.split('id="recovery"', 1)[1].split("</article>", 1)[0]
+    assert today.index("Start gently if you feel well") < today.index("Next seven days")
+    assert 'data-chart=' not in today and "Still learning" in today and "of 4" not in today
+    assert '<summary>Last 14 days</summary>' in recovery_page
+    assert html.split('<nav class="top"', 1)[1].split("</nav>", 1)[0].count("<a href=") == 5
+
+
+def test_history_gives_an_intraday_only_record_a_real_target(conn):
+    from datetime import UTC, datetime
+
+    day = "2026-11-23"
+    stamp = int(datetime(2026, 11, 23, 8, tzinfo=UTC).timestamp() * 1000)
+    db.put_daily(conn, "pa_heart_rate", day, "personal_api", {"heartRateValues": [[stamp, 66]]})
+    db.put_daily(conn, "ex_daily_summary", "2026-11-22", "export", {"calendarDate": "2026-11-22", "totalSteps": 100})
+    rebuild(conn)
+    html = dashboard.render(dashboard.collect(conn, day))
+    assert f'href="#day-{day}"' in html and f'id="day-{day}"' in html
+
+
+def test_workout_pace_stays_visible_when_secondary_readings_are_missing():
+    rows = [{"t_s": 0, "pace": 340, "hr": 140}, {"t_s": 10, "pace": 330},
+            {"t_s": 20, "pace": 345, "hr": 141}, {"t_s": 30, "pace": 337, "hr": 142}]
+    chart = dashboard._paired_chart(
+        rows, ("pace", "Pace", "Pace (min/km)", lambda v: str(v)),
+        ("hr", "Heart rate", "Heart rate (bpm)", lambda v: f"{v} bpm"), 10,
+        faster_at_top=True)
+    assert chart.count("data-point ") == 4 and chart.count("data-extra=") == 3
+    assert "Pace (min/km)" in chart and "Heart rate (bpm)" in chart
+    assert "Show heart rate" in chart and "Change from run median" not in chart

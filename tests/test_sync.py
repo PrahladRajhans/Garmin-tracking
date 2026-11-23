@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from conftest import make_fit
 
-from garmin_mcp import db
+from garmin_mcp import db, sync
 from garmin_mcp.sources.base import DataSource
 from garmin_mcp.sync import Syncer
 
@@ -187,3 +187,44 @@ def test_sync_and_probe_use_athlete_local_today(conn, tmp_path, monkeypatch):
     src.list_activities = lambda s, e: spans.append((s, e)) or []
     assert sync._probe_today() == []
     assert spans == [(local_day.isoformat(), local_day.isoformat())]
+
+
+def test_current_garmin_download_gate_can_refresh_old_html(monkeypatch, tmp_path, capsys):
+    import sys
+
+    from garmin_mcp import dashboard
+
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("GARMIN_DASHBOARD_PUBLISH", "")
+    monkeypatch.setattr(sys, "argv", ["garmin-mcp-sync", "--no-update"])
+    monkeypatch.setattr(sync, "gate", lambda: {"sync": False})
+    target = tmp_path / "dashboard" / "index.html"
+    target.parent.mkdir()
+    target.write_text("previous release")
+    sync.main()
+    assert "Dashboard built" in target.read_text() and not dashboard.needs_rebuild()
+    assert "dashboard" in capsys.readouterr().out
+    before = target.read_text()
+    sync.main()
+    assert target.read_text() == before
+
+
+def test_failed_dashboard_build_retries_even_if_the_next_fetch_is_skipped(monkeypatch, tmp_path):
+    from garmin_mcp import dashboard
+
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("GARMIN_DASHBOARD_PUBLISH", "")
+    conn = db.connect(tmp_path / "garmin.db")
+    dashboard.build(conn)
+    build = dashboard.build
+
+    def failed(_conn):
+        raise RuntimeError("bad renderer")
+
+    monkeypatch.setattr(dashboard, "build", failed)
+    assert "dashboard_error" in sync._rebuild_dashboard(conn)
+    assert conn.execute("SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
+    monkeypatch.setattr(dashboard, "build", build)
+    assert "dashboard" in sync._refresh_dashboard_if_needed()
+    assert not conn.execute("SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
+    conn.close()

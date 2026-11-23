@@ -16,6 +16,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.19.0] - 2026-11-24
+
+- Lead Today with one action, compact readings, a seven-day plan and up to three linked
+  follow-ups. Add plain-language sleep, recovery and training findings to the daily MCP brief.
+- Reduce top navigation to Today, Sleep, Training, Running and Trends. Move the 14-day
+  recovery chart behind an expandable card on Recovery.
+- Give workout pace, heart rate, cadence and step length their own units on a shared clock.
+  The second track is optional. Primary readings stay available when a partner sample is missing.
+- Show data-through date, complete sync, HTML build time and code version separately.
+  Rebuild stale or missing local/iCloud HTML even when the Garmin fetch gate skips. Retry
+  a render failure independently, and handle a Garmin readiness label without a score.
+- Repair History links for days that have only intraday pulse readings. Omit incomplete
+  fitness-age targets.
+
 ## [0.18.0] - 2026-11-24
 
 - Add a conservative seven-day starting plan to Today and the daily brief. Use recent

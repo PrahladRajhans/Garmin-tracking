@@ -415,3 +415,20 @@ time zone for the latest seven days.
   conservative trial design. Lab studies measure per-step mechanics; they do not establish
   that this trial will change knee symptoms or long-term injury risk.
   [Heiderscheit et al. (2011)](https://pubmed.ncbi.nlm.nih.gov/20581720/)
+
+## Today coaching priorities (v0.19.0)
+
+- The daily cue respects tagged days, an illness/recovery warning and Garmin Poor/Low.
+  A rise in resting pulse of at least 1 rounded bpm versus the preceding seven-day
+  period, above the personal range, supports an easy-day cue when sleep is also
+  at least ten minutes shorter and below its range, or HRV is below its range.
+  This rule uses existing personal comparisons and is a training choice,
+  with no validated prediction for the next workout.
+- Offer a sleep action when four or more nights in the last seven average at least 30
+  minutes below their mean recorded Garmin targets or the stated 8-hour fallback.
+  The 30-minute earlier routine is a simple trial. A qualifying same-day
+  sleep/readiness relationship can supply its estimated points per hour and paired-day
+  count. It uses the existing baseline adjustment and discovery rule and describes history.
+- Show Garmin Detraining with actual seven-day running kilometres and the existing
+  conservative plan. That label does not measure personal fitness lost or establish a
+  minimum exercise dose. Never add hard training based on the label alone.
