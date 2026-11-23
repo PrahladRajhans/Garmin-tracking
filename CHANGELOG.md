@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+- Dashboard build crashed on the Mac (`AttributeError: 'int' object has no attribute 'title'`), so no dashboard or iCloud copy was written. Garmin's live training-status feed sends a numeric code, while the export sends a word. `normalize._status_word` now stores the word (from the feedback phrase, e.g. `PRODUCTIVE_7` → `PRODUCTIVE`) and never the bare code. The Training page shows a dash for anything unreadable instead of crashing.
+
 ### Changed
 - CI uses the Node 24 checkout and Python setup actions, pinned to their upstream release
   commits. Workflow permissions are read-only and checkout credentials are not retained.

@@ -543,6 +543,13 @@ def page_recovery(d: dict[str, Any]) -> str:
                  body)
 
 
+def _status_label(st: Any) -> str:
+    """Readable Garmin training status; unknown codes show as a dash, never crash the page."""
+    if not isinstance(st, str) or not st or st.isdigit():
+        return "–"
+    return st.replace("_", " ").title()
+
+
 def page_training(d: dict[str, Any]) -> str:
     fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], h=160, nd=1)
     wl = both(bar_chart, d["weekly_load"], " load", h=140)
@@ -551,7 +558,7 @@ def page_training(d: dict[str, Any]) -> str:
             + _card("Load per week", wl, "Sum of daily training load, Monday to Sunday",
                     wide=True))
     st = d["brief"].get("garmin_training_status")
-    return _page("training", "Training", f"Garmin training status: <b>{_e((st or '–').title())}"
+    return _page("training", "Training", f"Garmin training status: <b>{_e(_status_label(st))}"
                  "</b>.", body)
 
 
