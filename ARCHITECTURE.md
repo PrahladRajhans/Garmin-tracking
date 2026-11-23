@@ -108,3 +108,18 @@ of a model or network query. Sync persists a local render-pending flag before bu
 HTML. The Garmin fetch gate and HTML refresh are separate decisions. It compares the
 version/build stamp of local and available iCloud snapshots, and retries rendering
 without advancing the completed Garmin sync time.
+
+## Local narrator (v0.22.0)
+
+With opt-in enabled, a complete sync writes its HTML before starting a detached worker.
+The worker uses the same collected dashboard shape to select small fact packets and keeps its
+20-second item and 120-second batch deadlines outside the sync and browser. It checks
+`/api/status` on loopback for disabled cloud access and requests the `:local` model variant.
+There is no proxy, redirect, bearer token or configurable server URL.
+Ollama selects one to three sentences within a schema of approved phrasings. The worker
+independently checks the result before caching it. [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs.md)
+
+Settings and content-addressed results are in local SQLite `meta`. The renderer only reads
+accepted cache entries for the current facts and model. The worker checks the snapshot ID
+before replacing the Mac and iCloud files and serializes the replacement with other builds.
+The regular publishing path is responsible for any separately enabled private hosted copy.

@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.21.0. The 50 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.22.0. The 51 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama summaries and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -43,6 +43,9 @@ Garmin Connect --(scheduled sync)--> local SQLite (~/.garmin-mcp) <--reads-- MCP
 
 The sync job stores every Garmin response verbatim plus parsed FIT streams, so the assistant reads
 fast local data and Garmin is called only by the scheduled sync (or the `refresh_data` tool).
+
+The optional [local narrator](MAC_SETUP.md#local-ai-narrator-optional) summarizes selected
+dashboard facts on the Mac. Python supplies every number, recommendation, and training decision.
 
 It uses the unofficial [`garminconnect`](https://github.com/cyberjunky/python-garminconnect)
 Python library, which talks to the same endpoints as the Garmin Connect website.
@@ -96,6 +99,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `log_experiment(knee_during?, knee_next_morning?, felt?, effort?, note?)` | Record how the latest attempt felt; Garmin's own feel/effort answers are read automatically |
 | `experiment_status()` / `end_experiment(note?)` | Each attempt versus your comparable runs before the experiment, the verdict so far and the next step; close it |
 | `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
+| `ai_narrator(enable?, model?)` | Show or change optional local Ollama summaries. Off by default. Python checks the prose against the supplied facts |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |

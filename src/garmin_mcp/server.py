@@ -647,6 +647,21 @@ def _mark_dashboard_stale(conn: sqlite3.Connection) -> None:
 
 
 @mcp.tool()
+def ai_narrator(enable: bool | None = None, model: str | None = None) -> dict[str, Any]:
+    """Show or change optional local-only Ollama narration. Off by default.
+
+    Pull the local model before enabling. The next sync tries to write summaries in
+    the background. During setup and any failures the dashboard uses its Python text.
+    """
+    from garmin_mcp import narrator
+
+    try:
+        return _with_db(lambda conn: narrator.update_settings(conn, enable, model))
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
 def weather_retrieval(enable: bool | None = None, fetch_now: bool = False) -> dict[str, Any]:
     """Opt-in weather and air quality for outdoor runs from Open-Meteo (free, no account).
     Off by default. enable=True/False turns it on or off; fetch_now fills the last 14 days.

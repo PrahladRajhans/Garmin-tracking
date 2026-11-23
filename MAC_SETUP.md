@@ -49,6 +49,48 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
 8. **Verify**: `.venv/bin/garmin-mcp-sync --coverage`, and in Claude Desktop ask
    "show my health snapshot". Report results to the user.
 
+## Local AI narrator (optional)
+
+Garmin uses Python for scores, workout guidance, and the weekly plan. The narrator adds a brief
+summary from those existing readings and runs in the background after a completed sync.
+
+1. Install the current [Ollama for macOS](https://docs.ollama.com/macos) and open it. The
+   [official installer](https://ollama.com/download) also offers a Terminal installer,
+   `curl -fsSL https://ollama.com/install.sh | sh`. Local inference needs no sign-in or API key.
+   Apple Silicon uses Metal acceleration. Intel Macs use the CPU and may take longer.
+2. In `~/.ollama/server.json`, set `"disable_ollama_cloud": true`. Create the file with
+   `{"disable_ollama_cloud": true}` if it does not exist. Keep any other settings already in the
+   file. Quit and reopen Ollama. Leave its listener on localhost and check that it returns
+   `"cloud":{"disabled":true,...}`:
+
+   ```bash
+   curl --noproxy '*' -fsS http://localhost:11434/api/status
+   ```
+
+   If this endpoint is unavailable, update Ollama. The narrator requires this confirmation
+   before it sends any facts. See [Ollama's local-only settings](https://docs.ollama.com/faq#how-do-i-disable-ollama-cloud-features).
+3. Pull a local model. From the updated repo, reinstall the package and enable the narrator:
+
+   ```bash
+   ollama pull qwen2.5:3b-instruct
+   .venv/bin/pip install -e .
+   .venv/bin/garmin-mcp-narrator --enable --model qwen2.5:3b-instruct
+   ```
+
+   Start with a 3–4B model on an 8 GB Mac. The default 3B tag is about 1.9 GB to download.
+   On 16 GB or more you can try a 7–8B model, such as `qwen2.5:7b-instruct` (about 4.7 GB).
+   Allow memory for macOS and the model's working context. The
+   [3B tag](https://ollama.com/library/qwen2.5:3b-instruct) uses the Qwen license and the
+   [7B tag](https://ollama.com/library/qwen2.5:7b-instruct) uses Apache 2.0.
+4. Wait for the next full sync, then reload the local or iCloud dashboard. Today and run
+   pages show **AI summary · facts checked** and **Show the facts** when prose is available.
+   Slow or unavailable Ollama leaves the normal dashboard available. An existing private
+   hosted copy receives cached summaries on its next successful publish.
+
+Turn it off with `.venv/bin/garmin-mcp-narrator --disable` or `ai_narrator(enable=False)`.
+The Mac and iCloud copies rebuild without summaries. The CLI without arguments shows the
+current status. Cached prose stays in the local database.
+
 ## Private phone access (optional)
 
 This part is new in v0.13.1. It is implemented and tested with stand-ins, but **not yet deployed

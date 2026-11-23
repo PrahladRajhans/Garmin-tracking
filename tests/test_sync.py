@@ -218,7 +218,7 @@ def test_failed_dashboard_build_retries_even_if_the_next_fetch_is_skipped(monkey
     dashboard.build(conn)
     build = dashboard.build
 
-    def failed(_conn):
+    def failed(_conn, **_options):
         raise RuntimeError("bad renderer")
 
     monkeypatch.setattr(dashboard, "build", failed)

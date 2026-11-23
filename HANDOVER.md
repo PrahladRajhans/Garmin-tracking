@@ -1,8 +1,24 @@
-# Handover: Garmin-tracking (state at v0.20.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.22.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
+
+## Latest changes for reviewers
+
+- **v0.21.0 (Claude, PR #25):** `trials.py` follows up on experiments, the dashboard keeps
+  high-resolution details for recent runs, and `weather_fetch.py` retrieves opt-in Open-Meteo
+  readings. See the [release entry](CHANGELOG.md#0210---2026-11-24).
+- **v0.22.0:** `narrator.py` supplies optional local prose from small JSON packets. Python
+  still owns every calculation, verdict and action. Sync publishes the normal dashboard first.
+  The worker verifies cloud is disabled, requests local-only inference, applies the lexical and
+  whole-sentence checks, and caches the results. A matching snapshot can receive the cached prose
+  in the Mac and iCloud copies. See [validator rules](METRICS.md#optional-local-narration-v0220),
+  [Mac setup](MAC_SETUP.md#local-ai-narrator-optional), and `tests/test_narrator.py`.
+- **Acceptance:** synthetic phone, tablet and laptop layouts show recovery, today's action and
+  the weekly plan above the fold in both themes. Remaining checks on the owner's Mac and iPhone
+  include actual model latency, the five-second impression with real data, the private link and
+  the product review's 600 KB target.
 
 ## 1. The goal
 

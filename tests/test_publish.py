@@ -200,7 +200,7 @@ def test_sync_keeps_local_dashboard_when_upload_is_refused(conn, tmp_path, monke
     path.write_text("local dashboard")
     monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
     monkeypatch.setattr(sync, "_personal_api", FakeSource)
-    monkeypatch.setattr(dashboard, "build", lambda c: path)
+    monkeypatch.setattr(dashboard, "build", lambda c, **options: path)
     monkeypatch.setattr(publish, "publish_if_enabled", lambda p: {
         "status": "error", "reason": "Access is not configured"})
     result = sync.run_sync(days=1, source="personal_api", delay=0)
