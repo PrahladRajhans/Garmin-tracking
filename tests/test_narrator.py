@@ -54,7 +54,8 @@ def test_checked_sentences_reject_wrong_units_and_unsourced_advice(text):
     facts = {"recovery percent": 46, "Garmin readiness score": 52}
     assert not narrator._grounded(text, facts)
     assert narrator._grounded("Recovery is 46 %. Your Garmin readiness score is 52.", facts)
-    assert not narrator._grounded("Recovery is 46%. Your recovery score is 46%.", facts)
+    assert narrator._grounded("Recovery is 46%. Your recovery score is 46%.", facts) == \
+        "Recovery is 46%."
 
 
 def test_provider_text_in_numeric_fields_is_not_included(conn, collected):

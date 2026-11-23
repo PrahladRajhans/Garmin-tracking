@@ -221,10 +221,15 @@ def _sentences(facts: Facts) -> dict[str, str]:
             for pattern in _CLAUSES[label]}
 
 
-def _grounded(text: str, facts: Facts) -> bool:
+def _grounded(text: str, facts: Facts) -> str | None:
     allowed = {_sentence_key(sentence): label for sentence, label in _sentences(facts).items()}
-    used = [_sentence_key(sentence) for sentence in re.split(r"(?<=[.!?])\s+", text)]
-    return set(used) <= allowed.keys() and len({allowed[sentence] for sentence in used}) == len(used)
+    verified = {}
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        label = allowed.get(_sentence_key(sentence))
+        if label is None:
+            return None
+        verified.setdefault(label, sentence)
+    return " ".join(verified.values())
 
 
 def _response_text(response: Any, facts: Facts) -> str | None:
@@ -243,7 +248,7 @@ def _response_text(response: Any, facts: Facts) -> str | None:
     ):
         return None
     text = validate(" ".join(sentences), facts)
-    return text if text and _grounded(text, facts) else None
+    return _grounded(text, facts) if text else None
 
 
 def _read(db: sqlite3.Connection, item: Item, model: str) -> tuple[str | None] | None:
@@ -329,7 +334,7 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float) -> bool:
                 "model": model + ":local", "system": item.system, "prompt": item.prompt,
                 "format": {"type": "object", "additionalProperties": False,
                            "required": ["sentences"], "properties": {"sentences": {
-                               "type": "array", "minItems": 1, "maxItems": 3,
+                               "type": "array", "minItems": 1, "maxItems": min(3, len(item.facts)),
                                "items": {"type": "string", "enum": list(_sentences(item.facts))},
                            }}},
                 "stream": False, "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 128},

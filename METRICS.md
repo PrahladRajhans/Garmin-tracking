@@ -205,7 +205,8 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 - Ollama receives a JSON schema of permitted sentences, and Python independently checks the
   response. Each sentence must match a permitted phrasing for its metric, number, unit, and
   source. This prevents a valid number from being swapped into another measurement or
-  used for new advice, a prediction, or a medical claim. The text and its facts are escaped in HTML.
+  used for new advice, a prediction, or a medical claim. Repeated facts display once.
+  The text and its facts are escaped in HTML.
 - Valid and rejected results are cached locally by a hash of model, prompt rules and input facts.
   Unavailable Ollama, a timeout or an unfinished response leaves the existing dashboard text
   available and can be retried on a later complete sync.
