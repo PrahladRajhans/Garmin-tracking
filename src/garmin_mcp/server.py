@@ -30,7 +30,8 @@ mcp = MCPServer(
 def _provenance(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         through = conn.execute("SELECT MAX(day) FROM daily").fetchone()[0]
-        last = conn.execute("SELECT MAX(ts) FROM sync_log WHERE status='ok'").fetchone()[0]
+        row = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
+        last = row[0] if row else None
     except sqlite3.OperationalError:
         through = last = None
     return {"data_through": through, "last_successful_sync": last,
@@ -272,8 +273,9 @@ def update_athlete_setting(key: str, value: str, note: str | None = None) -> dic
 
     def run(c: sqlite3.Connection) -> dict[str, Any]:
         athlete.set_value(c, key, parsed, note)
-        rebuild(c)
-        return {"saved": {key: parsed}, "recalculated": True}
+        counts = rebuild(c)
+        return {"saved": {key: parsed}, "recalculated": not bool(counts.get("loads_error")),
+                "rebuild": counts}
 
     return _with_db(run)
 

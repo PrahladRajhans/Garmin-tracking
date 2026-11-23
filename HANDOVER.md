@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.14.0, 2026-11-23)
+# Handover: Garmin-tracking (state at v0.14.1, 2026-11-23)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -78,7 +78,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Training suggestion | `recovery.suggestion` | Rule table; paused if the day is tagged sick/injured/break | — | M § v0.4.0, v0.12.0 |
 | Activity status | `health.status_days`, used in `recovery.load_series` | Tagged days are left out of baselines | Bevel | M § v0.12.0 |
 | Recovery % | `scores.daily_scores`, `scores.phi` | 100·Φ(readiness z); green ≥ 67, yellow 34–66, red ≤ 33 | Whoop bands | M § v0.11.0 |
-| Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need; < 3 h = incomplete | Whoop | M § v0.11.0 |
+| Sleep % | `scores.daily_scores` | Hours ÷ Garmin sleep need (8 h planning fallback); < 3 h = incomplete | Whoop | M § v0.11.0 |
 | Sleep debt, bedtime | `recovery.sleep_status`, `scores.bedtime_suggestion` | Σ shortfall over 7 valid nights; bedtime = median wake − need − min(60, debt/7) | Garmin sleep coach / Whoop | M § v0.4.0, v0.11.0 |
 | Sleep breakdown | `health.sleep_breakdown` | Garmin `sleepScores` parts with ratings and optimal ranges | Garmin, Fitbit | M § v0.12.0 |
 | Heart-rate difference | `health.heart_rate_dip` | (recorded awake mean − sleep mean) ÷ awake mean; UTC, known sleep windows excluded; no health cutoff | Descriptive; prior BP-derived cutoff removed | M § v0.13.3 |
@@ -101,7 +101,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Run metrics | `coaching.run_metrics` | Efficiency factor, decoupling, HR drift, cadence ×2, vertical ratio, km splits | Friel, TrainingPeaks | M § v0.6.0 |
 | Running form bands | `running.GAUGES`, `running.rate` | Garmin 5-colour bands (cadence, ground contact, vertical oscillation, vertical ratio) | Garmin manual (`running_form_benchmarks.md`) | M § v0.12.0 |
 | Pace-matched form | `running.personal_lines`, `running.running_breakdown` | Least squares of each metric vs speed over earlier runs | Moore 2016 | M § v0.12.0 |
-| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 %; split CV > 8 % | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
+| What to work on | `running.suggestions` | Cadence +5 % if < 170; vertical ratio; ground contact; drift > 5 % with confounders; split CV > 8 %; usual-form claims need history | Heiderscheit 2011, Lenhart 2014, Willy 2016 | M § v0.12.0 |
 | Running effectiveness | `running.running_breakdown` | speed ÷ (W/kg) | Coggan / WKO (Palladino) | M § v0.12.0 |
 | Marathon shape | `health.marathon_shape` | Runalyze: weekly target V^1.135, long-run target 12·ln(V/4) | Runalyze source code | M § v0.12.0 |
 
@@ -113,7 +113,7 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
 | Monthly report | `health.monthly_report` | Month vs previous month | Fitbit/Whoop | M § v0.12.0 |
 | Relationships | `engine.relationship`, `engine.relationships`, `engine.bh_adjust` | Baseline-adjusted Pearson r, 7-day block bootstrap CI, Benjamini-Hochberg q < 0.10, abs(r) ≥ 0.15; measured false-positive rate 1.7 % | Standard statistics | M § v0.9.0 |
 | Constant signals | `engine.relationship` | Returns unavailable with a reason instead of indexing an empty bootstrap result | No change to formulas or statistical thresholds | M § v0.13.1 |
-| Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; Garmin baseline bands or 60-day ± 1 SD | Fitbit "in your range" | M § v0.9.0 |
+| Trends, ranges | `engine.trends`, `engine.theil_sen`, `engine.personal_ranges` | Theil-Sen with bootstrap CI; current-day Garmin bands or preceding 60-day ± 1 SD with minimum observations; no stale values | Fitbit "in your range" | M § v0.9.0, Personal-range freshness v0.14.1 |
 | Correlations explorer | `engine.pair_points`, `engine.explore`; page `dashboard.page_patterns` | Same statistics as relationships, plus per-day points; "how sure" from CI and FDR (`dashboard._sure`) | — | M § v0.13.0 |
 | Test-run tracking | `running.test_runs` | Steady runs within ±10 % of usual distance (or named test/calibration); efficiency factor Theil-Sen trend | Friel EF | M § v0.13.0 |
 | Recovery weighting study | `scores.weight_study` | Each signal and composite vs next-night ln-HRV z and vs Garmin readiness; change weights only if better on both by > 0.05 r | — | M § v0.13.0 |
@@ -182,8 +182,8 @@ Paths are under `src/garmin_mcp/`. "M §" means the section of `METRICS.md`.
    account. No health data was uploaded. Cloudflare's preview Access switch alone does not
    protect the production address. The helper requires both apps and refuses conflicting
    paths, bypasses, custom domains, and policies that allow anyone beyond the configured email.
-10. **Fresh database:** the dashboard CLI still requires normalized, populated data. It fails
-    on an empty database (missing tidy tables, then no latest day). This predates v0.13.1.
+10. **Fresh database (resolved v0.14.1):** all seven dashboard pages now show a waiting state
+    until data is available; no fake scores or reassuring advice are generated.
 11. **Review update:** network access is restored; PR #8 passed both CI jobs and was merged.
     The primary FRIEND paper is now accessible and its Table 3 bar is implemented in v0.14.0.
     Local checks still do not establish Mac/iPhone/live Garmin health.
@@ -216,8 +216,9 @@ In order. Each item says where it goes and what "done" means.
 
 The user's continuation order is A private phone hosting → B primary-source VO2max table/bar
 → C design review and small improvements → D documentation alongside every change. This
-release prepares A; it does not mark A–C complete. The 390/768/1200 light/dark checks used
-synthetic data; rendered HTML is unchanged. See `docs/CONTINUATION_REVIEW.md` for evidence and
+release series implements A's publishing helper and B's exact reference bar. C's review and
+small improvements are recorded in `docs/UI_REVIEW.md` (v0.14.1). A's live account/device
+activation remains pending. Browser checks use synthetic data. See `docs/CONTINUATION_REVIEW.md` for evidence and
 known documentation drift. `ROADMAP.md` remains the only plan.
 
 **Deliberately not building** (`ROADMAP.md`, "Explicitly not building" and the dropped-items table):
@@ -239,3 +240,12 @@ known documentation drift. `ROADMAP.md` remains the only plan.
 - **Commands:** `garmin-mcp` (server), `garmin-mcp-sync [--force]`, `garmin-mcp-import <zip>`, `garmin-mcp-verify`, `garmin-mcp-dashboard`.
 - **Rules:** `AGENTS.md`. Changelog entry every change, sense-check against real data, never commit credentials, plain language on screen.
 - **Data:** not in the repo. It lives in the user's data folder on the Mac (`config.data_dir()`).
+
+## Review handoff: v0.14.1
+
+PRs #8–11 landed through passing Python 3.12/3.13 CI. The dashboard follow-up fixes stale
+personal ranges, empty data, chart accessibility and atomic/private file output. Full-sync
+provenance also includes derived-load success. See `docs/UI_REVIEW.md` and `docs/OPERATIONS.md`.
+Do not treat historical recovery-study figures as rerun results. The owner's real database,
+Mac/iCloud behavior, watch writes, untested maximum HR and live hosting still require their
+respective checks. MCP results go to the user's chosen AI provider; hosted HTML goes to Cloudflare.

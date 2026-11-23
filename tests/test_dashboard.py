@@ -36,3 +36,92 @@ def test_gauge_and_charts_render():
     b = dashboard.bar_chart([("a", 1.0), ("b", 2.0)], ref=1.5, ref_label="need")
     assert b.count('class="bar') == 2 and "need" in b
     assert dashboard._clock(25.5) == "01:30"
+
+
+def test_run_without_history_does_not_claim_normal_form_or_aerobic_base():
+    from garmin_mcp import running
+
+    advice = running.suggestions({"decoupling_pct": -10}, {}, None)
+    assert "Not enough comparable earlier runs" in advice[0]
+    assert "in line with your usual" not in advice[0]
+
+
+def test_empty_database_builds_honest_dashboard_without_fake_scores(conn, tmp_path):
+    for normalized in (False, True):
+        if normalized:
+            rebuild(conn)
+        path = dashboard.build(conn, tmp_path / "empty")
+        text = path.read_text()
+        assert "No Garmin data is available yet" in text and "<script" not in text
+        assert 'id="patterns"' in text and 'href="#patterns"' in text
+        assert 'class="dial-num"' not in text and "planned training is fine" not in text
+
+
+def test_date_charts_preserve_elapsed_time_and_have_exact_values():
+    import re
+
+    text = dashboard.line_chart([("2026-01-11", 3.), ("2026-01-01", 1.), ("2026-01-02", 2.)])
+    xs = [float(x) for x in re.findall(r'<circle cx="([\d.]+)"[^>]*class="hit"', text)]
+    assert xs == [34., 63.8, 332.]  # Jan 2 is one tenth of the span, not the middle
+    assert "<caption>Recorded trend values" in text and 'scope="row"' in text
+    assert "2026-01-02" in text and "View values" in text
+
+
+def test_missing_bar_keeps_remaining_status_colour_and_escapes_labels():
+    text = dashboard.bar_chart([("missing", None), ("<unsafe>", 34.)], tones=["muted", "bad"])
+    assert 'class="bar bad"' in text and 'class="bar muted"' not in text
+    assert "<unsafe>" not in text and "&lt;unsafe&gt;" in text
+
+
+def test_failed_atomic_write_preserves_previous_file_and_cleans_temp(tmp_path, monkeypatch):
+    import pytest
+
+    path = tmp_path / "index.html"
+    path.write_text("previous complete dashboard")
+
+    def fail(*args):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(dashboard.os, "replace", fail)
+    with pytest.raises(OSError):
+        dashboard._atomic_write(path, "new dashboard")
+    assert path.read_text() == "previous complete dashboard"
+    assert not list(tmp_path.glob(".dashboard-*"))
+
+
+def test_icloud_failure_keeps_local_build(conn, tmp_path, monkeypatch):
+    import pytest
+
+    drive = tmp_path / "Library/Mobile Documents/com~apple~CloudDocs"
+    drive.mkdir(parents=True)
+    monkeypatch.setattr(dashboard.Path, "home", classmethod(lambda cls: tmp_path))
+    real_write = dashboard._atomic_write
+
+    def write(path, content):
+        if drive in path.parents:
+            raise PermissionError("iCloud unavailable")
+        return real_write(path, content)
+
+    monkeypatch.setattr(dashboard, "_atomic_write", write)
+    with pytest.warns(RuntimeWarning, match="local dashboard is available"):
+        path = dashboard.build(conn, tmp_path / "local")
+    assert path.is_file() and "No Garmin data" in path.read_text()
+
+
+def test_new_health_files_are_owner_only_on_posix(conn, tmp_path):
+    import os
+    import stat
+
+    import pytest
+
+    if os.name != "posix":
+        pytest.skip("POSIX file mode check")
+    path = dashboard.build(conn, tmp_path / "private-dashboard")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    database = tmp_path / "private.db"
+    db.connect(database).close()
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+    path.chmod(0o640)
+    dashboard._atomic_write(path, "updated")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640

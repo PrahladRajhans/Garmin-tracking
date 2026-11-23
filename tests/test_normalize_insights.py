@@ -123,3 +123,15 @@ def test_verify_passes_on_consistent_sources(conn):
     rebuild(conn)
     result = verify.run(conn)
     assert result["ok"], result["problems"]
+def test_provenance_distinguishes_completed_sync_from_successful_request(conn):
+    from garmin_mcp import db, server
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    db.log(conn, "partial", "personal_api", "sleep", "2026-11-23", "ok")
+    conn.commit()
+    assert server._provenance(conn)["last_successful_sync"] is None
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync','2026-11-22T12:00:00+00:00')")
+    conn.commit()
+    assert server._provenance(conn)["last_successful_sync"] == "2026-11-22T12:00:00+00:00"
+    assert db.coverage(conn)["last_full_sync"] == "2026-11-22T12:00:00+00:00"

@@ -161,6 +161,17 @@ def test_request_log_alone_is_not_a_completed_sync(conn, tmp_path, monkeypatch):
     assert sync.gate(probe=list)["sync"] is True
 
 
+def test_derived_load_failure_keeps_sync_pending(conn, tmp_path, monkeypatch):
+    from garmin_mcp import normalize, sync
+
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(sync, "_personal_api", FakeSource)
+    monkeypatch.setattr(normalize, "rebuild", lambda c: {"loads_error": "failed"})
+    result = sync.run_sync(days=1, source="personal_api", delay=0)
+    assert result["full_sync_complete"] is False
+    assert sync.gate(probe=list)["sync"] is True
+
+
 def test_sync_and_probe_use_athlete_local_today(conn, tmp_path, monkeypatch):
     from garmin_mcp import sync
 

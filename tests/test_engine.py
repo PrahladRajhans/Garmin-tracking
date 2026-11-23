@@ -51,3 +51,21 @@ def test_constant_signal_is_unavailable_instead_of_crashing():
     assert result["n"] >= engine.MIN_PAIRS
     assert result["available"] is False and result["status"] == "insufficient variation"
     assert "constant" in result["reason"] and "r" not in result
+
+
+def test_personal_ranges_do_not_present_stale_values_as_today(conn):
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    conn.execute("INSERT INTO health_status(day,hrv,hrv_low,hrv_high) "
+                 "VALUES ('2026-01-01',50,40,60)")
+    assert "hrv_ms" not in engine.personal_ranges(conn, "2026-11-23")["metrics"]
+    conn.execute("INSERT INTO hrv(day,last_night_avg) VALUES ('2026-11-23',70)")
+    metric = engine.personal_ranges(conn, "2026-11-23")["metrics"]["hrv_ms"]
+    assert metric["value"] == 70 and metric["as_of"] == "2026-11-23"
+    assert metric["range"] is None and metric["state"] == "calibrating"
+    conn.execute("INSERT INTO health_status(day,hrv,hrv_low,hrv_high) "
+                 "VALUES ('2026-11-23',70,40,NULL)")
+    assert engine.personal_ranges(conn, "2026-11-23")["outside_range"] == 0
+    detail = engine.insight_feed(conn, "2026-11-23")["insights"][0]["detail"]
+    assert isinstance(detail, str) and "not enough recovery data" in detail

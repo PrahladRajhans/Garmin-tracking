@@ -78,3 +78,13 @@ assumptions. Existing real-data figures in earlier changelog entries remain hist
 Future work and priorities stay in ROADMAP. No source was cited as read when it only returned
 an error. Literature helper packaging lacked a shared support file; research here used the
 actual full-text websites and Europe PMC records, not fabricated tool results.
+
+### Dashboard interpretation follow-up (v0.14.1)
+
+The UI review removed the unconditional “under 5% = solid aerobic base” drift label, and
+run advice does not claim a personal comparison when prior form history is absent. A
+nonpositive/nonfinite fitted form expectation is unavailable, rather than a denominator.
+Current-day personal ranges exclude stale measurements and require preceding observations;
+see METRICS for exact minimums. These changes qualify interpretation without changing the
+underlying physiological formulas. W3C sources, screenshots and accessibility evidence are
+linked in [UI_REVIEW](../../docs/UI_REVIEW.md). No new competitor or clinical validation is claimed.

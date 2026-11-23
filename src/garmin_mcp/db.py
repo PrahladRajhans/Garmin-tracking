@@ -109,6 +109,8 @@ def now_iso() -> str:
 
 
 def connect(path: Path | str) -> sqlite3.Connection:
+    if str(path) != ":memory:" and not Path(path).exists():
+        Path(path).touch(mode=0o600, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -250,4 +252,8 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
             ).fetchone())
         except sqlite3.OperationalError:
             pass  # not built yet
-    return {"tidy": tidy, "daily": daily, "ranges": ranges, "activities": acts, "last_sync": dict(last) if last else None}
+    completed = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
+    retry = conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
+    return {"tidy": tidy, "daily": daily, "ranges": ranges, "activities": acts,
+            "last_sync": dict(last) if last else None,
+            "last_full_sync": completed[0] if completed else None, "retry_required": retry is not None}

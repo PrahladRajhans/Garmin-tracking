@@ -1,6 +1,6 @@
 [project]
 name = "garmin-mcp"
-version = "0.14.0"
+version = "0.14.1"
 description = "Free, self-hosted MCP server that exposes your Garmin Connect data to AI assistants."
 readme = "README.md"
 requires-python = ">=3.12"

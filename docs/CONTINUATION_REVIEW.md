@@ -80,3 +80,22 @@ roadmap explicitly drops those. The supplied handover's A–D order is the curre
 Transient synthetic fixtures and browser output are under `/tmp/garmin-review`, outside the
 checkout. Existing screenshots in `docs/screenshots` are retained. The final test result is
 recorded in CHANGELOG; live rollout checks belong to ROADMAP A and MAC_SETUP.
+
+## Resolution update — v0.14.1, 23 November 2026
+
+The earlier sections describe the v0.13.1 review point, not today's unresolved issue list.
+Owner-enabled internet restored GitHub API and PMC access. PRs #8, #9, #10 and #11 passed
+both CI jobs and merged; the FRIEND Table 3 source/bar is implemented. Empty databases now
+render a waiting state. Dashboard design changes and evidence are in `UI_REVIEW.md`.
+
+The expanded review fixed chunk/pagination termination, updater recovery, partial-sync gating,
+local dates, sleep fallback/sufficiency, UTC HR comparisons, study pairing/zero correlations,
+malformed/cyclic workout inputs, stale current-day ranges, missing bounds, incomplete derived
+loads, atomic output and provenance. Each has tests in the affected module's test file.
+Installed API client timeouts and bounded/date-advancing loops were inspected. This is a
+bounded review of current paths, not a claim that every upstream/network failure is impossible.
+No real-data weighting study, Garmin login, watch write or private hosting activation occurred.
+
+Next operational checks are the Mac/device items already in ROADMAP; no additional feature
+roadmap is introduced here. Historical source-retrieval limitations in older notes remain
+dated evidence; the accuracy-review ledger names the sources subsequently verified.

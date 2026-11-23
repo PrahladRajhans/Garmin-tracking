@@ -55,7 +55,8 @@ compute: activity recaps, daily brief, weekly review.
 | 0.13.1 | Private hosting preparation (off by default), constant-signal crash fix, continuation review | merged PR #8 after CI; hosting activation/device checks pending |
 | 0.13.2 | Sync completion/retry, local dates, updater recovery, loop guards | merged in PR #9 after both CI jobs passed |
 | 0.13.3 | Sleep/data sufficiency, HR interpretation, study pairing, input validation | merged PR #10 after both CI jobs passed |
-| 0.14.0 | Exact FRIEND VO2max reference bar, source transcription and tests | implemented; live profile check pending; race/taper and phone deployment still wait on inputs |
+| 0.14.0 | Exact FRIEND VO2max reference bar, source transcription and tests | merged PR #11 after both CI jobs passed; live profile check pending |
+| 0.14.1 | Dashboard accessibility, current-day ranges, atomic/private files and provenance | implemented; CI/merge evidence recorded in GitHub PR |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -72,12 +73,12 @@ This review extends A–D without changing the exclusions or adding unverified s
 
 | Order | Front | Changes to implement and validate | Status |
 |---|---|---|---|
-| 1 | Operations | Record completed syncs instead of individual successful requests; use athlete-local dates; guard pagination/chunk loops; stop/retry safely after dependency-install failures; run CI on topic branches | implemented in v0.13.2; validation/rollout in progress |
-| 2 | Accuracy | Align sleep fallback/baselines, UTC and advice; repair study sampling/zero handling; validate workout/override inputs | implemented v0.13.3, validation in progress; weights unchanged |
-| 3 | UI/UX | Honest empty states, elapsed-date charts, readable contrast, keyboard focus, touch targets, accessible chart values; test phone/tablet/desktop and dark mode | queued |
+| 1 | Operations | Record completed syncs instead of individual successful requests; use athlete-local dates; guard pagination/chunk loops; stop/retry safely after dependency-install failures; run CI on topic branches | merged PR #9 after CI; actual Mac rollout pending |
+| 2 | Accuracy | Align sleep fallback/baselines, UTC and advice; repair study sampling/zero handling; validate workout/override inputs | merged PR #10 after CI; weights unchanged |
+| 3 | UI/UX | Honest empty states, elapsed-date charts, readable contrast, keyboard focus, touch targets, accessible chart values; test phone/tablet/desktop and dark mode | implemented v0.14.1; 276 browser states checked; device checks pending |
 | 4 | Evidence and rollout | Source-backed research ledger, realistic synthetic regression checks, synced documentation, PR/CI/merge and actual Mac/phone checks | network access restored; PR #8 merged after both CI jobs passed; live device checks remain pending |
 
-Deferred research: retrieve primary VO2max tables, re-check statistical calibration and formula
+Primary VO2max Table 3 retrieval is complete (PR #11). Deferred research: re-check statistical calibration and formula
 sources against full papers, benchmark competitor workflows with actual captures. Do not invent
 norms, alter recovery weights, label correlations causal, or expose a cloud MCP endpoint before
 an authentication/authorization and private-data deployment design has been verified.
@@ -205,11 +206,11 @@ Continuation order requested by the owner:
 |---|---|---|
 | A: private phone access | Optional Cloudflare Pages publisher implemented in v0.13.1; disabled | Confirm current Access free plan, configure account and two Access apps, save token locally, verify owner OTP/anonymous denial and next scheduled update on Mac/phone |
 | B: age/sex VO2max bar | Implemented v0.14.0 from primary FRIEND 2015 Table 3 | 84 code values checked against direct transcription; live Mac profile/data check remains |
-| C: dashboard design | Source screenshots inspected; current HTML unchanged; 48 synthetic browser states checked | Complete visual review of all pages with representative data, contrast/keyboard/table checks, then make small evidence-backed improvements |
-| D: docs with every change | Updated for v0.13.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
+| C: dashboard design | Review and small improvements implemented in v0.14.1; see `docs/UI_REVIEW.md` for screenshots and browser evidence | Check Safari/iCloud and private hosted phone navigation on real devices; collect owner feedback |
+| D: docs with every change | Updated through v0.14.1 | Keep handover, roadmap, changelog, README, metrics and setup synchronized as relevant |
 
 The constant-signal explorer crash found while validating A is fixed without changing statistical
-thresholds. The empty-database dashboard failure remains recorded for later work. See
+thresholds. The empty-database dashboard failure is resolved in v0.14.1. See
 `docs/CONTINUATION_REVIEW.md` for findings and validation, not a second plan.
 
 ### Deployment track (runs alongside, needs you once)

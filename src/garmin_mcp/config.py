@@ -8,7 +8,7 @@ from pathlib import Path
 
 def data_dir() -> Path:
     path = Path(os.getenv("GARMIN_DATA_DIR", str(Path.home() / ".garmin-mcp"))).expanduser()
-    path.mkdir(parents=True, exist_ok=True)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
     return path
 
 
@@ -18,5 +18,5 @@ def db_path() -> Path:
 
 def fit_dir() -> Path:
     path = data_dir() / "fit"
-    path.mkdir(parents=True, exist_ok=True)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
     return path
