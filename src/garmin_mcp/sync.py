@@ -258,6 +258,11 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
     out: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat(), "sources": {}}
     conn = db.connect(db_path())
     try:
+        from garmin_mcp import athlete
+
+        seeded = athlete.seed_from_file(conn)
+        if seeded:
+            out["settings_seeded"] = seeded
         for name, factory in plan:
             try:
                 src = factory()
@@ -287,7 +292,14 @@ def main() -> None:
                         help="both (default): official API + unofficial extras")
     parser.add_argument("--delay", type=float, default=0.4, help="seconds between API calls")
     parser.add_argument("--coverage", action="store_true", help="print stored-data coverage only")
+    parser.add_argument("--no-update", action="store_true",
+                        help="skip the automatic code update from GitHub main")
     args = parser.parse_args()
+    if not args.no_update and not args.coverage:
+        from garmin_mcp import autoupdate
+
+        info = autoupdate.update()  # re-executes on new code if it changed
+        print(json.dumps({"auto_update": info}))
     if args.coverage:
         conn = db.connect(db_path())
         print(json.dumps(db.coverage(conn), indent=2))

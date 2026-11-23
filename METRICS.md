@@ -141,6 +141,21 @@ Calibrating from other sports:
 | Load flags | 7-day load > 1.3 × 4-week weekly mean; longest run > 1.3 × longest of prior 30 days |
 | Tag impact | next-day baseline-adjusted HRV, sleep score and resting HR, tagged vs untagged days (≥ 5 tagged) |
 
+## Implemented in v0.11.0 (Phase 10a): daily scores
+| Score | Formula | Sense check (your data) |
+|---|---|---|
+| Recovery % | 100·Φ(composite z); green ≥ 67, yellow 34–66, red ≤ 33 | vs Garmin readiness r = 0.35 (> 0.3); bands 35 % green / 22 % red |
+| Sleep % | sleep h / need h × 100; need = Garmin sleep need, else 8 h; < 3 h = incomplete | vs Garmin sleep score r = 0.85 |
+| Strain | min(21, 6.3·ln(1 + TRIMP/20)); target band green 10–14, yellow 8–12, red 0–8 (heuristic) | 0–21; easy run ≈ 9, hard 2 h ≈ 16 |
+| Bedtime | median wake (14 valid nights, local) − need − min(60 min, debt/7) | wake times cross-checked with Garmin local timestamps |
+
+### Open question: max HR
+188 (observed repeatable peak 177 + Tanaka) vs about 209 (Garmin's model).
+- Using 209, effective VO2max is about 48, close to Garmin's 51.
+- Using 188, it is about 40.
+
+Zones, TRIMP and effective VO2max all depend on it, so the sense check stays flagged until a hard-effort test settles it.
+
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.
 

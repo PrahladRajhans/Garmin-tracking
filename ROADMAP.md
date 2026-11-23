@@ -49,7 +49,9 @@ compute: activity recaps, daily brief, weekly review.
 | 0.8.0 | Phase 7: workouts to the watch | done (upload untested until the Mac setup) |
 | 0.9.0 | Phase 8: insight engine, levels 1–3 | done (core); see status per item |
 | 0.10.0 | Phase 9: dashboard | done |
-| 0.11.0 | Phase 10: competitor-parity scores & presentation (Fitbit, Whoop, Bevel, Oura) | **next** |
+| 0.11.0 | Phase 10a: daily scores (Recovery %, Sleep %, Strain), bedtime; self-update; CI | done |
+| 0.12.0 | Phase 11: dashboard v2, rebuilt from the ground up (`DASHBOARD_PLAN.md`) | **next** |
+| 0.13.0 | Phase 12: remaining parity and Level-3 items (10.2, 10.5–10.9) | planned |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -147,26 +149,32 @@ never averaged; provenance footer on every chart.
 | 9.5 | Weekly summary; calendar heatmap; swim and strength trends |
 | 9.6 | Correlations explorer (Phase 8 results) |
 
-### Phase 10: Competitor-parity scores & presentation → v0.11.0
+### Phase 10: Competitor-parity scores → v0.11.0 (10a done; rest moved to Phase 12)
 Source: `research_notes/.../fitbit_whoop_bevel.md` (Fitbit/Google Health, Whoop, Bevel, Oura;
 verified page reads marked [R]). Each item keeps Garmin's values beside ours.
 | ID | Item | Inspired by |
 |---|---|---|
-| 10.1 | Readiness gauge 0–100 with contributor chips and plain-word bands (85/70/60) | Oura, Fitbit |
+| 10.1 | ✅ Recovery % 0–100 = Φ(our readiness z), bands green ≥ 67 / yellow 34–66 / red ≤ 33 (Whoop-style), contributors, signals-used count. Oura 85/70/60 bands dropped: Whoop's three colours are easier to read | Oura, Fitbit, Whoop |
 | 10.2 | Sleep score breakdown (duration, time to sound sleep, sound sleep, restlessness, awakenings, interruptions) + heart-rate dip | Fitbit 2026, Bevel |
-| 10.3 | Sleep need, debt and bank, suggested bedtime | Whoop, Garmin sleep coach |
-| 10.4 | Daily strain on a log scale of TRIMP with a target band from readiness | Whoop, Bevel |
+| 10.3 | ✅ Sleep % (hours vs need), 7-day debt, suggested bedtime from your usual wake time (Asia/Kolkata) | Whoop, Garmin sleep coach |
+| 10.4 | ✅ Strain 0–21 = min(21, 6.3·ln(1 + TRIMP/20)) with target band by recovery colour (training sessions only) | Whoop, Bevel |
 | 10.5 | Activity status (sick/injured/break) that pauses advice and excludes days from baselines | Bevel |
 | 10.6 | Pace of ageing (30 days vs 6 months), ± years per input; own fitness age (8.14) | Whoop Healthspan |
 | 10.7 | Marathon shape (8.8) and Banister fit (8.9), changepoints (8.10), standardised test tracking (8.11) | Runalyze, Phase 8 carry-over |
 | 10.8 | VO2max range bar by age and sex; Active Zone Minutes view | Fitbit |
 | 10.9 | Interactive correlations explorer; monthly report page | Whoop, Fitbit |
-| 10.10 | "Calibrating" badge on every score with too little data | Oura, Fitbit |
+| 10.10 | ✅ partial: `calibrating` flag and signals used (2 of 4) on recovery; rest with the dashboard | Oura, Fitbit |
+
+### Phase 11: Dashboard v2 → v0.12.0
+Full plan: `DASHBOARD_PLAN.md`. Steps 11.2–11.7: wireframe of hero + Today + Why → validated palette → tabs (Recovery, Sleep, Training, Running, Body) with table views → Patterns with a "how sure" meter → browser checks at 390/768/1200 px, dark mode → optional private phone snapshot.
+
+### Phase 12: Remaining parity and Level-3 items → v0.13.0
+10.2 sleep breakdown + heart-rate dip · 10.5 activity status (sick/injured) · 10.6 pace of ageing + own fitness age · 10.7 marathon shape, Banister fit, changepoints, test tracking · 10.8 VO2max range bar, Active Zone Minutes · 10.9 correlations explorer, monthly report · 8.12 race readiness/taper (when a race is chosen).
 
 ### Deployment track (runs alongside, needs you once)
 | ID | Item | Target |
 |---|---|---|
-| D.1 | Mac setup via one local Claude Code session (`MAC_SETUP.md`): import, 1-year backfill (✅ done 23 Nov: 2,894 calls, 0 errors), Claude Desktop config, 3-hourly sync (✅ scheduled). Remaining: restart Claude Desktop and pull the latest code | v1.0.0 |
+| D.1 | Mac setup (`MAC_SETUP.md`): import, 1-year backfill (✅ 2,894 calls, 0 errors), Claude Desktop config, 3-hourly sync (✅). **Self-update (v0.11): after one last pull, every sync updates itself from `main`; settings come from `config/athlete.json`.** | v1.0.0 |
 
 ### Later / optional (only if you ask)
 R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe · Grafana view ·
@@ -176,18 +184,34 @@ remote hosting.
 Skin temperature/ECG (no FR955 sensor) · ACWR as injury risk · Strava as a source ·
 our own Body Battery/Stress (no valid open method; Garmin's are shown).
 
-## Needs from you (placeholders live in `athlete_settings`; set them by telling Claude)
+## Needs from you
 | # | Input / action | State |
 |---|---|---|
-| 1 | Mac setup (D.1) | ✅ backfill and schedule done. Remaining: in the local Claude Code session say "git pull and pip install -e ." then restart the Claude desktop app |
-| 2 | Max HR | ✅ answered: no test. Using 188 = max(repeatable peak 177, Tanaka age estimate 188); the 193 treadmill peak is flagged as a probable optical spike |
-| 3 | Goal race | ✅ none yet; goal = general fitness, marathon some day |
-| 4 | Goals, injuries/limits | ✅ right knee a little weak → knee cautions in workouts |
-| 5 | Timezone | ✅ Asia/Kolkata |
-| 6 | Save 2–5 on the Mac: tell Claude Desktop once: "save my settings: timezone Asia/Kolkata, injuries: right knee a little weak, goals: general fitness, marathon in future" | open (settings live in each machine's database) |
-| 7 | Optional hard efforts (calibration-test workout) | open: past swims/strength can't calibrate run thresholds (see METRICS.md) |
-| 8 | Optional: weights in strength sessions; watch "Log HRV" | open |
-| 9 | Rotate the Personal API key | deferred by you |
+| 1 | **One last manual update** (Terminal): `cd ~/Garmin-tracking && git pull && .venv/bin/pip install -e .`, then quit and reopen the Claude desktop app. After this, updates and settings arrive automatically with every sync | open; the final manual step |
+| 2 | **Max HR test** (calibration workout, or 3 × 3-min hard hill repeats): the one open question that moves most numbers (zones, load, effective VO2max). Data says 188 (age formula + repeatable peak 177); Garmin's model implies ~209 | open, recommended |
+| 3 | Goal race | ✅ none yet (general fitness; marathon some day) |
+| 4 | Goals, knee, timezone | ✅ saved, applied automatically via `config/athlete.json` |
+| 5 | Optional: weights in strength sessions; watch "Log HRV"; Garmin Connect max HR setting once #2 is known | open |
+| 6 | Rotate the Personal API key | deferred by you |
+
+## What's left (full backlog, 2026-11-23)
+| Area | Items | State |
+|---|---|---|
+| Dashboard | Phase 11 (v2 rebuild) | next |
+| Parity / Level 3 | Phase 12 list above | planned |
+| Deployment | #1 above, then v1.0.0 | waiting on #1 |
+| Research | Whoop details snippet-only (site blocks bots); HRV4Training rule page empty; fitness-age norm formula unverified | accepted, flagged |
+| Optional sources | R32 intervals.icu, R33 Apple Health, R34 multi-device dedupe | only if you ask |
+
+## Planned earlier, now not relevant (flagged)
+| Item | Why dropped |
+|---|---|
+| FIT workout encoder (7.1 fallback) | Garmin Connect provides the workout FIT after upload |
+| Oura 85/70/60 readiness bands (10.1) | Whoop's three-colour bands read faster |
+| Grafana view | Wrong tool for a personal glance view; the static dashboard replaces it |
+| Remote hosting | Not needed; optional private phone snapshot instead |
+| Our own Body Battery/Stress, ACWR injury risk, Strava source, skin temp/ECG | Already excluded (no valid method / API terms / no sensor) |
+| Copy-paste setup in a second Claude chat | Replaced by self-update + settings file |
 
 ## Problems caused by incomplete information (and what fixes them)
 | Problem | Effect | Fix |

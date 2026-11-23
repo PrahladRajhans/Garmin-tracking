@@ -582,5 +582,10 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
         add(f"Running form unit check: {k}", v["median_abs_diff_pct"] <= 3,
             f"median diff {v['median_abs_diff_pct']}% over {v['runs']} runs",
             "within 3% of Garmin's FIT session average")
+    # 8. Phase 10 scores vs Garmin's nearest equivalents.
+    from garmin_mcp import scores
+
+    for c in scores.sense_checks(conn, asof):
+        add(c["check"], c["ok"], c["detail"], c["tolerance"])
     return {"asof": asof, "all_ok": all(c["ok"] is not False for c in checks),
             "checks": checks, "threshold_notes": th["notes"]}

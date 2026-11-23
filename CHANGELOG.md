@@ -6,6 +6,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-23
+
+Phase 10a: glanceable daily scores, self-update, CI, dashboard plan.
+
+### Added
+- `scores.py` + tool `daily_scores` (35 tools):
+  - Recovery % = Φ(our readiness z), with Whoop-style bands and the number of signals used.
+  - Sleep % = hours / need, with 7-day debt.
+  - Strain 0–21 on a log scale of TRIMP, with a target band set by the recovery colour.
+  - Suggested bedtime from your usual wake time in Asia/Kolkata.
+- Sense checks for the new scores, in `garmin-mcp-verify`:
+  - Recovery % vs Garmin readiness r = 0.35.
+  - Sleep % vs Garmin sleep score r = 0.85.
+  - Bands spread (35 % green, 22 % red), strain within 0–21.
+- `DASHBOARD_PLAN.md`: platform comparison (local web page chosen), Whoop/Oura/Fitbit-inspired layout, design rules from the dataviz skill, build steps (Phase 11).
+- Self-update from `main` on every sync, settings seeding from `config/athlete.json`, GitHub CI (see entries below).
+
+### Fixed
+- Strain calibration: the first anchor (TRIMP 250 = 21) put a 27-min easy run at 16.1. Now `6.3·ln(1 + TRIMP/20)`: easy run ≈ 9, hard 2 h ≈ 16, cap 21. Pinned by tests.
+
+### Findings
+- Sleep timing verified against Garmin's local timestamps: typical sleep ~02:30–05:30 IST, wake ~08:00–11:00 IST, about 6.3 h vs ~8.5 h need. This is the main thing holding recovery back.
+- Max HR is the key open question. Data supports 188, but Garmin's model implies ~209: with 209, effective VO2max (≈ 48) matches Garmin's 51 and its "aerobic base" labels fit. The sense check stays flagged until a hard-effort test settles it.
+
+### Changed
+- ROADMAP: Phase 10 split (10a done); Phase 11 dashboard v2; Phase 12 remaining items; full backlog; dropped items flagged with reasons.
+
+### Added
+- **Self-update** (`autoupdate.py`): every scheduled sync fast-forwards the Mac checkout to the latest tested `main`, reinstalls only when the code changed, and re-runs on the new code. Skipped on local changes; disable with `GARMIN_AUTO_UPDATE=0` or `--no-update`. Ends manual "git pull" steps.
+- **Settings seeding:** `config/athlete.json` (private repo, no secrets) is applied to any machine's database for keys not yet set: timezone, goals, knee limitation.
+- **GitHub CI** (`.github/workflows/ci.yml`): ruff + pytest on Python 3.12 and 3.13 for every push and PR.
+
 ## [0.10.0] - 2026-11-23
 
 Phase 9: dashboard.

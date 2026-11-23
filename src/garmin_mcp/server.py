@@ -419,6 +419,25 @@ def build_dashboard() -> dict[str, Any]:
                                "open_with": "open <path> (Mac) or any browser"})
 
 
+# ----------------------------------------------------------------- Phase 10: daily scores
+@mcp.tool()
+def daily_scores(day: str | None = None, history_days: int = 0) -> dict[str, Any]:
+    """Three glanceable scores: Recovery % (0-100, bands green/yellow/red), Sleep % (hours vs
+    need) and Strain (0-21, log scale) with today's strain target, each beside Garmin's nearest
+    value; plus a suggested bedtime. history_days > 0 adds a day-by-day series (max 120)."""
+    from garmin_mcp import scores
+
+    def run(c: sqlite3.Connection) -> dict[str, Any]:
+        d = _end(c, day)
+        out = scores.daily_scores(c, d)
+        out["bedtime"] = scores.bedtime_suggestion(c, d)
+        if history_days > 0:
+            out["history"] = scores.history(c, d, min(history_days, 120))
+        return out
+
+    return _with_db(run)
+
+
 @mcp.tool()
 def refresh_data(days: int = 3) -> dict[str, Any]:
     """Sync the last `days` days (1-30) from Garmin into the local database, then rebuild the

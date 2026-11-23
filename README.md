@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.10.0: Phases 1–9 done, including the insight engine and the dashboard. 34 tools. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** v0.11.0: Phases 1–10a done (data, recovery, load, coaching, goals, workouts, insight engine, prototype dashboard, daily scores). 35 tools. Dashboard v2 planned in [DASHBOARD_PLAN.md](DASHBOARD_PLAN.md). Updates install themselves on every sync.
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).
 > **Plan:** [ROADMAP.md](ROADMAP.md) is the single main plan (phases, versions, sources, open items).
 
@@ -54,6 +54,7 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `workout_templates()` | Easy, tempo, VO2 intervals and calibration-test specs from your HR thresholds |
 | `create_workout(spec, upload=False, schedule_date?)` | Validate and build a structured workout; optional upload and schedule to Garmin Connect (Mac) |
 | `garmin_workouts(action='list'\|'delete', workout_id?)` | Workouts saved in Garmin Connect (Mac) |
+| `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
 | `trends_and_patterns(days=90)` | Robust trends, weekday patterns, streaks, personal ranges, form % |
@@ -215,7 +216,9 @@ src/garmin_mcp/
   goals.py    # Phase 6: goal reality check
   workouts.py # Phase 7: structured workouts, validation, upload
   engine.py   # Phase 8: insight engine (levels 1-3, statistics)
-  dashboard.py# Phase 9: static HTML dashboard
+  dashboard.py# Phase 9: static HTML dashboard (v1 prototype)
+  scores.py   # Phase 10: Recovery %, Sleep %, Strain
+  autoupdate.py # self-update from GitHub main on every sync
   verify.py   # data-quality checks (garmin-mcp-verify)
   sources/    # garminconnect (unofficial), personal_api (pending key)
 tests/

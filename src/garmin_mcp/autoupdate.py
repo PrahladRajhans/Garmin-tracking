@@ -1,0 +1,75 @@
+"""Self-update: keep the installed connector on the latest tested `main` without manual steps.
+
+Runs at the start of every scheduled sync (disable with GARMIN_AUTO_UPDATE=0). Safe by design:
+- only when the code directory is a git checkout with no local changes;
+- only fast-forward to origin/main (never rewrites or merges);
+- reinstalls the package only when the code changed, then re-runs the command on the new code;
+- any failure is logged and the sync continues on the current code.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+BRANCH = "main"
+
+
+def repo_dir() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / ".git").exists() and (parent / "pyproject.toml").exists():
+            return parent
+    return None
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                          text=True, timeout=120).stdout.strip()
+
+
+def update(reexec: bool = True) -> dict[str, Any]:
+    if os.getenv("GARMIN_AUTO_UPDATE", "1") == "0":
+        return {"skipped": "disabled by GARMIN_AUTO_UPDATE=0"}
+    if os.getenv("GARMIN_AUTO_UPDATED") == "1":
+        return {"skipped": "already updated in this run"}
+    repo = repo_dir()
+    if repo is None:
+        return {"skipped": "not a git checkout"}
+    try:
+        if _git(repo, "status", "--porcelain", "--untracked-files=no"):
+            return {"skipped": "local changes present; not touching them"}
+        before = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "fetch", "--quiet", "origin", BRANCH)
+        current = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        if current != BRANCH:
+            # Earlier setups checked out a feature branch; move to main if it only fast-forwards.
+            _git(repo, "merge-base", "--is-ancestor", "HEAD", f"origin/{BRANCH}")
+            if _has_branch(repo):
+                _git(repo, "checkout", "--quiet", BRANCH)
+            else:
+                _git(repo, "checkout", "--quiet", "-b", BRANCH, f"origin/{BRANCH}")
+        _git(repo, "merge", "--ff-only", "--quiet", f"origin/{BRANCH}")
+        after = _git(repo, "rev-parse", "HEAD")
+    except (subprocess.SubprocessError, OSError) as exc:
+        return {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    if before == after:
+        return {"updated": False, "commit": after[:9]}
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", str(repo)],
+                   check=False, timeout=600)
+    result = {"updated": True, "from": before[:9], "to": after[:9]}
+    if reexec:
+        os.environ["GARMIN_AUTO_UPDATED"] = "1"
+        os.execv(sys.executable, [sys.executable, "-m", "garmin_mcp.sync", *sys.argv[1:]])
+    return result
+
+
+def _has_branch(repo: Path) -> bool:
+    try:
+        _git(repo, "rev-parse", "--verify", "--quiet", BRANCH)
+        return True
+    except subprocess.CalledProcessError:
+        return False

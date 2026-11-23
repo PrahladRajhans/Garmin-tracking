@@ -104,3 +104,25 @@ def pace_to_speed(pace: str) -> float | None:
         return 1000 / (int(m) * 60 + int(s))
     except (ValueError, AttributeError):
         return None
+
+
+def seed_from_file(conn: sqlite3.Connection, path: str | None = None) -> list[str]:
+    """Apply settings from config/athlete.json (in the private repo) for keys not yet set in
+    this machine's database, so every machine gets them without manual steps. Settings you
+    change later via update_athlete_setting are never overwritten."""
+    from pathlib import Path
+
+    p = Path(path) if path else Path(__file__).resolve().parents[2] / "config" / "athlete.json"
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text())
+    except ValueError:
+        return []
+    ensure(conn)
+    applied = []
+    for key, value in data.items():
+        if key in PLACEHOLDERS and value is not None and get(conn, key) is None:
+            set_value(conn, key, value, "seeded from config/athlete.json")
+            applied.append(key)
+    return applied
