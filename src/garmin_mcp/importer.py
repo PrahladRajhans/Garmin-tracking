@@ -106,8 +106,8 @@ def _record_day(rec: dict[str, Any]) -> str | None:
 def _match_prefix(filename: str, table: dict[str, str]) -> str | None:
     base = filename.rsplit("/", 1)[-1]
     for prefix, dataset in table.items():
-        # Names look like "UDSFile_2024-...json", "2024-..._122485380_sleepData.json",
-        # "TrainingReadinessDTO_2026..._122485380.json", "user@x_personalRecord.json".
+        # Names look like "UDSFile_2024-...json", "2024-..._<userId>_sleepData.json",
+        # "TrainingReadinessDTO_2026..._<userId>.json", "user@x_personalRecord.json".
         if re.search(rf"(^|_){re.escape(prefix)}(_|\.json$)", base):
             return dataset
     return None
