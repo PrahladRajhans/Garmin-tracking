@@ -116,3 +116,7 @@ The small offline script also enables selecting values directly on charts. On iP
 the Files preview may show the static charts only. Check whether the theme switch
 appears to confirm the reader runs the controls. An Access-protected website in Safari
 is the alternative when Files does not support the interactions.
+
+The history panel includes up to 12 completed months plus the current month. A private
+hosted upload would include the same recorded day summaries and recent workout traces
+shown locally. Verify Access and consent before publishing a real archive snapshot.

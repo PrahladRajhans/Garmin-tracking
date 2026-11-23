@@ -31,7 +31,8 @@ SCRIPT = r"""
 
   function markPage() {
     const id = location.hash.slice(1) || 'today';
-    const section = id.startsWith('run-') ? 'running' : id === 'month-detail' ? 'body' : id;
+    const section = id.startsWith('run-') ? 'running'
+      : id.startsWith('day-') || id.startsWith('month-') ? 'history' : id;
     for (const link of document.querySelectorAll('.top a')) {
       if (link.hash === '#' + section) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
@@ -46,13 +47,14 @@ SCRIPT = r"""
     const primary = readout.querySelector('strong');
     const secondary = readout.querySelector('span');
     const status = figure.querySelector('[role=status]');
+    const overlayControl = figure.querySelector('[data-overlay-control]');
     const cursor = figure.querySelector('.chart-cursor');
     const vertical = cursor.querySelector('.cursor-x');
     const horizontal = cursor.querySelector('.cursor-y');
     const marker = cursor.querySelector('circle');
     const points = [...svg.querySelectorAll('[data-point]')].map(el => ({
       x: Number(el.getAttribute('cx')), y: Number(el.getAttribute('cy')),
-      title: el.dataset.title, value: el.dataset.value
+      title: el.dataset.title, value: el.dataset.value, extra: el.dataset.extra
     }));
     let selected = -1;
     let pointer = null;
@@ -60,6 +62,7 @@ SCRIPT = r"""
     let touchOrigin = null;
     let moveFrame = 0;
     let latestMove;
+    let overlay = false;
     const scatter = figure.dataset.chart === 'scatter';
     const hint = primary.textContent;
     const details = secondary.textContent;
@@ -76,7 +79,8 @@ SCRIPT = r"""
     function select(index, announce = false) {
       const point = points[index];
       if (!point) return;
-      if (announce) status.textContent = point.title + '. ' + point.value;
+      const value = overlay && point.extra ? point.value + ' · ' + point.extra : point.value;
+      if (announce) status.textContent = point.title + '. ' + value;
       if (index === selected) return;
       selected = index;
       vertical.setAttribute('x1', point.x);
@@ -88,7 +92,7 @@ SCRIPT = r"""
       cursor.classList.add('visible');
       readout.classList.add('selected');
       primary.textContent = point.title;
-      secondary.textContent = point.value;
+      secondary.textContent = value;
     }
 
     function selectNearest(clientX, clientY) {
@@ -125,6 +129,14 @@ SCRIPT = r"""
     }
 
     figure.dataset.ready = 'true';
+    if (overlayControl) overlayControl.addEventListener('click', () => {
+      overlay = !overlay;
+      figure.classList.toggle('has-overlay', overlay);
+      overlayControl.setAttribute('aria-pressed', String(overlay));
+      const index = selected;
+      selected = -1;
+      select(index, true);
+    });
     svg.setAttribute('tabindex', '0');
     svg.querySelectorAll('title[data-native]').forEach(title => title.remove());
     svg.addEventListener('pointerdown', event => {

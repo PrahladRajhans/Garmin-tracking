@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.15.1. The 43 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
+> **Status:** v0.16.0. The 43 MCP tools and offline dashboard include touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional private phone hosting is off by default.
 
 ## What this is, in one minute
 
@@ -145,7 +145,7 @@ After this, the server reuses the saved tokens; your password is not stored.
 
 `garmin-mcp-dashboard` writes `dashboard/index.html` in your data folder (rebuilt after every
 sync). It is one self-contained file with linked pages: Today → Sleep, Recovery, Training,
-Running (→ each run), Body, Patterns. Hover, tap or slide over a chart for values. Keyboard
+Running (→ each run), Body, Patterns and History. Hover, tap or slide over a chart for values. Keyboard
 users can focus a chart and use arrow keys. Choose **Light** or **Dark** at the top. A bundled
 script handles these controls offline. The file has no remote scripts or requests.
 
@@ -168,6 +168,13 @@ The Body page compares Garmin VO₂max and the separate effective pace/HR estima
 published FRIEND 2015 age/sex reference. It shows the exact table/source and explains that
 neither estimate is a laboratory measurement; the effective estimate depends on HRmax.
 No age/sex is assumed when profile data are missing. See [the primary-table transcription](research_notes/Garmin%20connector%20feature%20research/friend_2015_reference.md).
+
+**History** opens day, week, month and year. Date links reveal the underlying recorded
+readings and workouts. **Recovery** shows usual ranges and seven-day changes for resting
+pulse and overnight metrics when enough readings exist. Open **Running → a recent run
+→ Run timeline** to try the optional heart-rate and step-length overlays.
+
+See [the progress audit](docs/PROGRESS_AUDIT.md) for validation and remaining work.
 
 ### Import your full history (one time)
 

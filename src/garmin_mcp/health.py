@@ -170,18 +170,23 @@ def detect_shift(series: list[tuple[str, float]], min_seg: int = 14) -> dict[str
 
 
 def shifts(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[str, Any]:
+    from garmin_mcp.recovery import nightly_hrv
+
     lo = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
     out = {}
+    coverage = {}
     for name, sql in (("resting_hr", ("SELECT day, resting_hr FROM daily WHERE day BETWEEN ? AND"
                                       " ? AND resting_hr IS NOT NULL ORDER BY day")),
-                      ("hrv", ("SELECT day, hrv FROM health_status WHERE day BETWEEN ? AND ? AND"
-                              " hrv IS NOT NULL ORDER BY day")),
                       ("sleep_h", ("SELECT day, sleep_s/3600.0 FROM sleep WHERE day BETWEEN ? "
-                                  "AND ? AND sleep_s >= 3*3600 ORDER BY day"))):
-        found = detect_shift(conn.execute(sql, (lo, end)).fetchall())
+                                  "AND ? AND sleep_s >= 3*3600 ORDER BY day")),
+                      ("hrv", None)):
+        points = (conn.execute(sql, (lo, end)).fetchall() if sql else
+                  sorted(nightly_hrv(conn, lo, end).items()))
+        coverage[name] = len(points)
+        found = detect_shift(points)
         if found:
             out[name] = found
-    return {"window_days": days, "shifts": out,
+    return {"window_days": days, "shifts": out, "coverage": coverage,
             "method": "largest two-segment mean shift; reported if >= 1 SD and >= 14 days each "
                       "side"}
 

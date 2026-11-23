@@ -16,6 +16,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Added
 - `docs/CHATGPT_HANDOVER_PROMPT.md`: a ready-to-paste handover prompt for ChatGPT. It covers the vision, reading order, system summary, pitfalls, and the next tasks: private dashboard hosting, a VO2max norm bar from a cited table, and a design review.
 
+## [0.16.0] - 2026-11-23
+
+- Add personal ranges, seven-day averages, prior-week changes and short context for resting
+  heart rate, overnight Pulse Ox and breathing. HRV shows a prior-week comparison when
+  available. Sleep adds a seven-day average beside the target, and weekly load shows an
+  earlier four-week reference when all four values exist. The insight feed includes coverage,
+  recent changes and descriptive range departures.
+- Add linked day, week, month and year history. Day pages retain available sleep stages,
+  wearable readings and workouts, with hourly pulse for recent records when present.
+- Add a recent-running timeline with trial toggles for speed and heart rate, and cadence and
+  step length. Overlays compare relative changes on a common time axis and retain actual
+  units in the readout. The snapshot caps plotted workout samples and omits GPS tracks.
+- Read and catalogue the owner’s outside references and related research. Weather and
+  air-quality collection remain deferred. See `docs/PROGRESS_AUDIT.md` for status.
+
 ## [0.15.1] - 2026-11-23
 
 - Reduce the selected chart dot and crosshair weight. Coalesce mouse and touch updates

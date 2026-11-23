@@ -52,3 +52,7 @@ Goal: a free personal FR955 connector. **Local sync → SQLite → thin MCP serv
 
 [Environmental context feasibility](environmental_context_feasibility.md) covers weather,
 air-quality and sleep research, public data limits, and a staged validation proposal.
+
+[Owner reference review](owner_reference_review_2026-11.md) records the submitted
+product, tutorial, forum and upstream library links, the ideas used, and retrieval limits.
+Current personal signal and telemetry formulas are in [METRICS](../../METRICS.md).

@@ -134,3 +134,18 @@ The selected point and both guide lines have less visual weight. Chromium rechec
 200 layouts and actual mouse, keyboard and touch inputs. A vertical gesture started on a
 different bar scrolled the page while retaining the already selected reading. Horizontal
 scrubs continued to select exact points. Mouse updates are synchronized to animation frames.
+
+### Personal context and telemetry trial (v0.16.0)
+
+[Resting pulse on phone](screenshots/personal-context/resting-pulse-phone.png) shows the
+daily readings, seven-day average, and personal range. [Paired telemetry on phone](screenshots/personal-context/run-overlays-phone.png)
+shows the optional HR and step-length traces with actual values in the cursor readout.
+Both captures use synthetic records.
+
+Chromium verified 280 layout states in both themes from 320 to 1280 px. It exercised
+pointer, tap, scrub, scrolling, keyboard, the two overlay toggles and history navigation.
+The test opened week, day, year, a prior month and a day in that month. An approximately
+1.9 MB snapshot with 371 day panels showed no overflow, broken links, page errors, remote
+asset requests, or overlapping sections in the checked states. Linux WebKit rechecked
+the main chart gestures, theme persistence and local file opening. The 124 Python tests
+and MCP smoke checks cover data, coverage, charts and the updated tool responses.
