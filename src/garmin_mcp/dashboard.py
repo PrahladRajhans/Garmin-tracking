@@ -921,14 +921,15 @@ def _outdoor_patterns_card(review: dict) -> str:
             pairs.append(_record_link(f'{hi["day"]} vs {lo["day"]}',
                                       f'{hi["exposure"]:g} vs {lo["exposure"]:g} {item["unit"]}'
                                       + (f" · {evidence}" if evidence else "")))
-        sections.append(f'<h4>{_e(name)}</h4><ul class="rows">{rows}</ul>'
-                        f'<details><summary>See the pairs</summary><p class="sub">{kind} · '
+        sections.append(f'<h4>{_e(name)}</h4><p class="sub">{kind}</p><ul class="rows">{rows}</ul>'
+                        f'<details><summary>See the pairs</summary><p class="sub">'
                         f'{_e(item["source"])}</p><ul class="record-list">{"".join(pairs)}</ul>'
                         '</details>')
     return _card("Weather, air quality and training", "".join(sections)
-                 + '<p class="sub">Median difference on the days with higher readings. '
-                 'Other conditions can vary too. Outdoor readings describe the run area.</p>',
-                 "Paired outdoor runs at similar effort, location and time of day.", wide=True)
+                 + '<p class="sub">Other conditions can vary too. Outdoor readings describe '
+                 'the run area.</p>',
+                 "Median differences on days with higher readings, paired by similar runs.",
+                 wide=True)
 
 
 def page_training(d: dict[str, Any]) -> str:

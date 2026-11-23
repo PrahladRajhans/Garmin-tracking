@@ -81,7 +81,8 @@ def for_activity(conn: sqlite3.Connection, aid: int) -> dict:
                 and window.get("precipitation_alignment") != ALIGNED_RAIN):
             # Older fetches assigned rain to the hour after the API's accumulation.
             window.pop("precipitation_mm", None)
-    return {"garmin_snapshot": snapshot or None, "windows": windows}
+    return {"garmin_snapshot": snapshot or None,
+            "windows": [window for window in windows if FIELDS.keys() & window.keys()]}
 
 
 def import_windows(conn: sqlite3.Connection, aid: int, path: Path) -> int:
