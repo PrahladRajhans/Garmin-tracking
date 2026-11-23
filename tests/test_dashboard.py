@@ -202,8 +202,24 @@ def test_workout_pace_stays_visible_when_secondary_readings_are_missing():
             {"t_s": 20, "pace": 345, "hr": 141}, {"t_s": 30, "pace": 337, "hr": 142}]
     chart = dashboard._paired_chart(
         rows, ("pace", "Pace", "Pace (min/km)", lambda v: str(v)),
-        ("hr", "Heart rate", "Heart rate (bpm)", lambda v: f"{v} bpm"), 10,
+        (("hr", "Heart rate", "Heart rate (bpm)", lambda v: f"{v} bpm"),
+         ("altitude_m", "Elevation", "Elevation (m)", str)), 10,
         faster_at_top=True)
-    assert chart.count("data-point ") == 4 and chart.count("data-extra=") == 3
+    assert chart.count("data-point ") == 4
+    assert 'data-overlay-track="hr"' in chart and 'data-overlay-track="altitude_m"' not in chart
+    assert "null" in chart and "data-open-height" not in chart
     assert "Pace (min/km)" in chart and "Heart rate (bpm)" in chart
-    assert "Show heart rate" in chart and "Change from run median" not in chart
+    assert "Compare with" in chart and "Change from run median" not in chart
+
+
+def test_charts_use_recorded_bands_and_label_color_status():
+    assert dashboard._trace_rating("cadence_spm", 153, ()) == (
+        "orange", "Garmin band: below average")
+    assert dashboard._trace_rating("hr", 120, [120, 140, 160]) == (
+        "green", "Recorded heart-rate band 2")
+    assert dashboard._trace_rating("hr", 120, ()) is None
+    assert dashboard._hr_zone_bounds("[140, 120]") == []
+    line = dashboard.line_chart([("a", 4), ("b", 7), ("c", 10)], band=(5, 9), rate_range=True)
+    assert all(label in line for label in ("below usual", "within usual range", "above usual"))
+    bars = dashboard.bar_chart([("a", 5), ("b", 8)], ref=8, rate_goal=True)
+    assert "below goal" in bars and "met goal" in bars

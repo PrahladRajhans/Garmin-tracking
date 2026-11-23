@@ -40,6 +40,8 @@ def test_reference_bar_keeps_estimates_separate_and_caveated():
          "garmin_as_of": "2026-11-23", "effective_runs": 5, "hr_max_user_override": False,
          "caveat": "Not a laboratory measurement."}
     text = dashboard.vo2_reference(r)
+    assert 'viewBox="0 0 340 84"' in text and 'viewBox="0 0 720 84"' in text
+    assert text.count('class="chart-interaction chart-compact"') == 2
     assert 'class="vo2-garmin"' in text and 'class="vo2-effective"' in text
     assert "untested max HR" in text and norms.SOURCE in text
     assert "51.4" in text and "40.0" in text and "<script" not in text

@@ -373,6 +373,11 @@ def activity_stream(conn: sqlite3.Connection, aid: int, every_s: int = 10) -> di
                         "pace": _pace(r["speed"]) if r["speed"] and r["speed"] > 0.5 else None,
                         "cadence_spm": r["cadence"] * 2 if r["cadence"] else None,
                         "step_length_m": _r(r["step_length"] / 1000, 3) if r["step_length"] else None,
+                        "ground_contact_ms": r["stance_time"],
+                        "vertical_oscillation_cm": _r(r["vertical_oscillation"] / 10, 2)
+                        if r["vertical_oscillation"] else None,
+                        "vertical_ratio_pct": _r(r["vertical_oscillation"] / r["step_length"] * 100, 2)
+                        if r["vertical_oscillation"] and r["step_length"] else None,
                         "speed_m_s": r["speed"],
                         "altitude_m": _r(r["altitude"]), "power_w": r["power"],
                         "distance_km": _r((r["distance"] or 0) / 1000, 3)})

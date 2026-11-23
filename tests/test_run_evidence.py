@@ -123,8 +123,7 @@ def test_local_conditions_preserve_zero_coverage_gaps_and_units(conn, tmp_path):
     assert (joined[0]["aqi"], joined[540]["precipitation_mm"]) == (0, 0)
     assert 600 not in joined and 1140 not in joined and joined[1200]["aqi"] == 91
     run = running.running_breakdown(conn, 1)
-    html = dashboard.page_run_trace({**run, "trace": stream, "date": CLOCK.date().isoformat(),
-                                     "km": 4.5})
+    html = dashboard._run_trace({**run, "trace": stream})
     assert "AQI 0 (India CPCB)" in html and "AQI 91 (US EPA)" in html
     assert "0 mm precipitation" in html and "Private" not in html
     csv.write_text(header + "2026-10-01T01:00:00,2026-10-01T01:10:00Z,Station A,"

@@ -83,7 +83,7 @@ summary from those existing readings and runs in the background after a complete
    [3B tag](https://ollama.com/library/qwen2.5:3b-instruct) uses the Qwen license and the
    [7B tag](https://ollama.com/library/qwen2.5:7b-instruct) uses Apache 2.0.
 4. Wait for the next full sync, then reload the local or iCloud dashboard. Today and run
-   pages show **AI summary · facts checked** and **Show the facts** when prose is available.
+   and recent workout detail pages show **AI summary · facts checked** and **Show the facts** when prose is available.
    Slow or unavailable Ollama leaves the normal dashboard available. An existing private
    hosted copy receives cached summaries on its next successful publish.
 

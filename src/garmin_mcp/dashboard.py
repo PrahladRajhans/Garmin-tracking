@@ -105,9 +105,18 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
                                          / TRACE_POINTS))
             trace = (coaching.activity_stream(conn, aid, interval)
                      if len(runs) < TRACE_RUNS else {})  # older runs: summary page only
+            row = conn.execute("SELECT hr_zone_bounds FROM fit_zones WHERE activity_id=?",
+                               (aid,)).fetchone()
+            if row:
+                b["hr_zone_bounds"] = _hr_zone_bounds(row[0])
             b.update(date=start[:10], start_local=start, km=round((dist or 0) / 1000, 2),
                      trace=trace)
             runs.append(b)
+    calendar = dashboard_history.collect(conn, end, zone)
+    run_ids = {run["activity_id"] for run in runs}
+    workouts = [workout for day in sorted(calendar["detail_days"], reverse=True)
+                for workout in calendar["days"][day].get("activities", [])
+                if workout["id"] not in run_ids][:8]
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
         "older_snapshot": e != datetime.now(zone).date(),
@@ -136,7 +145,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "fitness_age": coaching.fitness_age(conn),
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
-        "calendar": dashboard_history.collect(conn, end, zone),
+        "calendar": calendar, "workouts": workouts,
         "last_full_sync": _last_full_sync(conn, zone),
         "trial": trials.status(conn), "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run),
         "explore": explore,
@@ -227,18 +236,18 @@ def _tick_number(value: float, signed: bool = False) -> str:
     return f"{value:+,g}" if signed and value else f"{value:,g}"
 
 
-def _point(x: float, y: float, label: str, value: str, cls: str = "hit", extra: str = "",
+def _point(x: float, y: float, label: str, value: str, cls: str = "hit",
            *, condition_index: int | None = None) -> str:
-    overlay = f' data-extra="{_e(extra)}"' if extra else ""
     context = f' data-condition-index="{condition_index}"' if condition_index is not None else ""
     return (f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3.4" class="{cls}" data-point '
-            f'data-title="{_e(label)}" data-value="{_e(value)}"{overlay}{context}>'
+            f'data-title="{_e(label)}" data-value="{_e(value)}"{context}>'
             f'<title data-native>{_e(label)} · {_e(value)}</title></circle>')
 
 
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
            x_label: str, y_label: str, initial: str, controls: str = "",
-           *, readout_below: bool = False, condition_labels: list[str] | None = None) -> str:
+           *, readout_below: bool = False, condition_labels: list[str] | None = None,
+           compact: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
@@ -247,7 +256,8 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
     caption = (f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
                f'<span>{_e(initial)}</span></figcaption>')
     lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
-    return (f'<figure class="chart-interaction" data-chart="{kind}"{lookup}>'
+    layout = " chart-compact" if compact else ""
+    return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}>'
             f'{"" if readout_below else caption}{controls}<span class="sr-only" role="status"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
@@ -296,6 +306,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                averages: dict[str, float] | None = None, break_gaps: bool = False,
                elapsed: dict[str, float] | None = None, *, connect_points: bool = True,
                reference: float | None = None, band_label: str = "Your usual range",
+               rate_range: bool = False,
                details: dict[str, str] | None = None) -> str:
     """Date spacing reflects elapsed days. Missing observations stay out of the cursor."""
     bounds = band_series if band_series and len(band_series) == len(points) else [band] * len(points)
@@ -366,6 +377,15 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
             display += f" · {details[label]}"
         marker = ("dot s1" if i == len(rows) - 1 else
                   "context-dot" if break_gaps or not connect_points else "hit")
+        if rate_range and interval:
+            if value < interval[0]:
+                colour, status = "orange", "below usual"
+            elif value > interval[1]:
+                colour, status = "blue", "above usual"
+            else:
+                colour, status = "green", "within usual range"
+            marker = f"zone-dot zone-{colour}"
+            display += f" · {status}"
         g.append(_point(x(i), y(value), label, display, marker))
     g += _x_ticks(labels, x, bottom, w > W)
     return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label,
@@ -375,7 +395,8 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
 def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None = None,
               ref_label: str = "", h: int = 190, nd: int = 0,
               tones: list[str] | None = None, w: int = W, x_label: str = "Date",
-              y_label: str = "Value", averages: dict[str, float] | None = None) -> str:
+              y_label: str = "Value", averages: dict[str, float] | None = None,
+              rate_goal: bool = False) -> str:
     if not any(isinstance(v, (int, float)) and math.isfinite(v) for _, v in items):
         return '<p class="empty">No measurements recorded for this chart.</p>'
     values = [v for _, v in items if isinstance(v, (int, float)) and math.isfinite(v)]
@@ -405,6 +426,9 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
             continue
         tone = tones[i] if tones and i < len(tones) else "s1"
         display = _f(value, nd, unit)
+        if rate_goal and ref is not None:
+            tone, status = ("good", "met goal") if value >= ref else ("warn", "below goal")
+            display += f" · {status}"
         g.append(f'<rect x="{x(i) - width / 2:.2f}" y="{y(value):.2f}" width="{width:.2f}" '
                  f'height="{max(0, bottom - y(value)):.2f}" rx="2" class="bar {_e(tone)}">'
                  f'<title data-native>{_e(label)} · {_e(display)}</title></rect>')
@@ -491,8 +515,8 @@ def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: f
 
 def both(fn: Any, *a: Any, **k: Any) -> str:
     """Phone and desktop drawings of the same chart so text stays readable on both."""
-    return (f'<div class="sm">{fn(*a, w=W, **k)}</div><div class="lg">{fn(*a, w=720, **k)}'
-            f'</div>')
+    return (f'<div class="chart-layout"><div class="sm">{fn(*a, w=W, **k)}</div>'
+            f'<div class="lg">{fn(*a, w=720, **k)}</div></div>')
 
 
 def _clock(h: float) -> str:
@@ -522,7 +546,7 @@ def _card(title: str, body: str, sub: str = "", wide: bool = False, href: str = 
 
 def _page(pid: str, title: str, lede: str, body: str, back: str = "#today") -> str:
     parent = {"#today": "Today", "#trends": "Trends", "#running": "Runs",
-              "#month-detail": "Year", "#history": "History"}.get(back)
+              "#month-detail": "Year", "#history": "History", "#training": "Training"}.get(back)
     parent = parent or ("Run overview" if back.startswith("#run-") else "Month")
     nav = ("" if pid == "today" else f'<a class="back" href="{back}">{icon("back")}'
            f'<span>{parent}</span></a>')
@@ -666,7 +690,7 @@ def page_today(d: dict[str, Any]) -> str:
         rows = [_record_link(a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize(),
                              " · ".join(filter(None, [a["duration"],
                                          _f(a["distance_km"], 1, " km") if a["distance_km"] else ""])),
-                             f'#run-{a["id"]}' if a["id"] in runs else None)
+                             _workout_link(d, a["id"], runs))
                 for a in snapshot.get("activities", [])]
         body += _card("Today’s workouts" if current else "Workouts on this date", f'<ul class="record-list">{"".join(rows)}</ul>', wide=True)
     body += (f'<a class="flow-link history-entry wide" href="#trends">'
@@ -731,7 +755,7 @@ def page_sleep(d: dict[str, Any]) -> str:
     rolling = {x["day"]: x["average"] for x in sleep_signal["days"] if x["average"] is not None}
     durations = both(bar_chart, nights, " h", ref=need, averages=rolling,
                      nd=1, y_label="Sleep duration (h)",
-                     x_label="Wake date")
+                     x_label="Wake date", rate_goal=True)
     bed = []
     tz = engine._tz(d['_conn'])
     for day, _, start in d["sleep"]:
@@ -748,7 +772,7 @@ def page_sleep(d: dict[str, Any]) -> str:
     body = (_card("Latest recorded night", headline + f'<p class="sub">{recorded}{garmin}</p>'
                   + _narration(d.get("narration", {}).get("sleep")), wide=True)
             + _card("Sleep duration over 30 nights", _signal_summary("sleep_h", sleep_signal) + durations,
-                    f"Grey: {ref_name} {need:.1f} h" + (" · orange: 7-day average" if rolling else ""),
+                    f"Current {ref_name.lower()} {need:.1f} h · green: met · amber: below" + (" · orange: 7-day average" if rolling else ""),
                     wide=True)
             + _card("Bedtime", bedtimes, "When you fell asleep in your local time zone.", wide=True))
     if stages:
@@ -797,10 +821,10 @@ def _vital_chart(key: str, stat: dict[str, Any]) -> str:
     averages = {d["day"]: d["average"] for d in days if d["average"] is not None}
     chart = both(line_chart, [(d["day"], d["value"]) for d in days], " " + stat["unit"],
                  band_series=[d["range"] for d in days], averages=averages, break_gaps=True,
-                 y_label=f'{stat["label"]} ({stat["unit"]})', nd=1)
+                 y_label=f'{stat["label"]} ({stat["unit"]})', nd=1, rate_range=True)
     bands = any(d["range"] and d["value"] is not None for d in days)
     legend = "Daily reading" + (" · dashed: 7-day average" if averages else "")
-    legend += " · shaded: usual range" if bands else ""
+    legend += " · green: within usual · amber: below · blue: above" if bands else ""
     return _card(stat["label"], _signal_summary(key, stat) + chart,
                  legend if stat["latest"] is not None else "", wide=True)
 
@@ -831,7 +855,7 @@ def page_recovery(d: dict[str, Any]) -> str:
     bands = [tuple(x["hrv_band_ms"]) if x.get("hrv_band_ms") else None for x in d["hrv"]]
     hv_ok = [(p, b) for p, b in zip(hv, bands, strict=True) if p[1] is not None]
     hrv_chart = both(line_chart, [p for p, _ in hv_ok], " ms",
-                     band_series=[b for _, b in hv_ok], y_label="Average HRV (ms)")
+                     band_series=[b for _, b in hv_ok], y_label="Average HRV (ms)", rate_range=True)
     sh = d["shifts"]["shifts"]
     coverage = d["shifts"]["coverage"]
     names = {"resting_hr": ("Resting HR", "bpm"), "hrv": ("HRV", "ms"),
@@ -852,7 +876,7 @@ def page_recovery(d: dict[str, Any]) -> str:
         score += f'<details class="recovery-history"><summary>Last 14 days</summary>{chart}</details>'
     body = (_card("Recovery score", score, _e(status), wide=True)
             + _card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
-                  "7-day HRV · shaded: usual range", wide=True)
+                  "7-day HRV · green: within usual · amber: below · blue: above", wide=True)
             + "".join(_vital_chart(metric, d["signals"][metric])
                       for metric in ("resting_hr", "sleep_spo2", "sleep_resp"))
             + _card("Lasting changes", f'<ul class="rows">{shift_rows}</ul>' if shift_rows
@@ -932,6 +956,28 @@ def _outdoor_patterns_card(review: dict) -> str:
                  wide=True)
 
 
+def _workout_link(d: dict, aid: int, run_ids: set[int]) -> str | None:
+    if aid in run_ids:
+        return f"#run-{aid}"
+    if any(a["id"] == aid for a in d.get("workouts", [])):
+        return f"#workout-{aid}"
+    return None
+
+
+def _workout_name(workout: dict) -> str:
+    return workout["name"] or (workout["type"] or "Workout").replace("_", " ").capitalize()
+
+
+def _workout_page(workout: dict, summary: dict | None) -> str:
+    rows = (_row("Duration", _e(workout["duration"] or "—"))
+            + _row("Distance", _f(workout["distance_km"], 2, " km"))
+            + _row("Average heart rate", _f(workout["avg_hr"], unit=" bpm")))
+    return _page(f'workout-{workout["id"]}', _workout_name(workout),
+                 _date_label(workout["start"][:10]),
+                 _card("Recorded workout", _narration(summary) + f'<ul class="rows">{rows}</ul>',
+                       "Garmin activity summary", wide=True), back="#training")
+
+
 def page_training(d: dict[str, Any]) -> str:
     fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " points", nd=1,
                y_label="Smoothed training load (points)")
@@ -960,6 +1006,16 @@ def page_training(d: dict[str, Any]) -> str:
             + _card("Load per week", wl, "Weeks start on Monday. Latest week may be partial."
                     + (f" · Dashed: {_f(four_week_avg)} average of the previous four bars"
                        if four_week_avg is not None else ""), wide=True))
+    run_ids = {r["activity_id"] for r in d["runs"]}
+    calendar = d["calendar"]
+    entries = []
+    for day in sorted(calendar["detail_days"], reverse=True):
+        for workout in calendar["days"][day].get("activities", []):
+            if target := _workout_link(d, workout["id"], run_ids):
+                entries.append(_record_link(_workout_name(workout), _date_label(day), target))
+    if entries:
+        body = _card("Recent workouts", f'<ul class="record-list">{"".join(entries)}</ul>',
+                     wide=True) + body
     status = _status_label(d["brief"].get("garmin_training_status"))
     lede = (f"Garmin training status <b>{_e(status)}</b>" if status != "–" else
             "Your recorded workouts, load and recovery.")
@@ -1031,7 +1087,7 @@ def _tests(t: dict[str, Any]) -> str:
 
 
 def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
-             summary: dict | None = None) -> str:
+             summary: dict | None = None, *, run_ids: set[int] | None = None) -> str:
     rows = ""
     units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
              "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
@@ -1069,30 +1125,32 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
             + _card("What to try next", work + followup, wide=True)
             + _card("Running form", rows + '<p class="legend"><i class="mk"></i>This run <i class='
                     '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True)
-            + _card("Pacing and effort", "", "Kilometre splits, timing and pace versus heart rate",
-                    href=f'#run-{r["activity_id"]}-pacing')
-            + _card("Numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>'))
-    comparison = r["comparable_effort"]
-    if comparison["available"]:
-        check = run_evidence.next_check(comparison)
-        note = f'<p class="sub">{_e(check)}</p>' if check else ""
-        body += _card("Heart rate on similar runs", note, _e(run_evidence.headline(comparison)),
-                      wide=True, href=f'#run-{r["activity_id"]}-compare')
+            + _card("Numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>', wide=True))
+    aid = r["activity_id"]
+    sections = []
+    jumps = []
+
+    def add_section(key: str, title: str, content: str, *, opened: bool = False) -> None:
+        jumps.append(f'<a class="flow-link" href="#run-{aid}-{key}">{_e(title)}{icon("chev")}</a>')
+        sections.append(_run_section(aid, key, title, content, initially_open=opened))
+
     if r["trace"].get("stream"):
-        context = r["conditions"]
-        snapshot = context["garmin_snapshot"] or {}
-        temperature = snapshot.get("temperature_c")
-        description = ("Pace, form and elevation" if temperature is None else
-                       f'Garmin saved weather · {_f(temperature, 1, " °C")}')
-        if context["windows"]:
-            description = "Pace, form and time-stamped conditions"
-        body += _card("Run timeline", "", description,
-                      href=f'#run-{r["activity_id"]}-trace', wide=True)
-    return _page(f'run-{r["activity_id"]}', _run_label(r),
-                 _date_label(r["date"]), body, back="#running")
+        add_section("trace", "Run timeline", _run_trace(r), opened=True)
+    add_section("pacing", "Splits and timing", _run_pacing(r))
+    if r["comparable_effort"]["available"]:
+        add_section("compare", "Similar runs", _run_compare(r, run_ids or set()))
+    jump_links = f'<nav class="run-jumps wide" aria-label="On this run">{"".join(jumps)}</nav>'
+    return _page(f'run-{aid}', _run_label(r), _date_label(r["date"]),
+                 jump_links + body + "".join(sections), back="#running")
 
 
-def page_run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
+def _run_section(aid: int, key: str, title: str, body: str, *, initially_open: bool = False) -> str:
+    opened = " open" if initially_open else ""
+    return (f'<details class="card wide run-section" id="run-{aid}-{key}"{opened}>'
+            f'<summary>{_e(title)}</summary><div class="grid">{body}</div></details>')
+
+
+def _run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
     c = r["comparable_effort"]
     aid = r["activity_id"]
     current = {**c["this_run"], "start_local": r["start_local"], "days_before": 0}
@@ -1125,9 +1183,10 @@ def page_run_compare(r: dict[str, Any], run_ids: set[int]) -> str:
               f'{c["climb_window_m_per_km"]} m/km. Route and conditions can still differ.')
     body = (_card("Matched efforts", chart + f'<ul class="record-list">{"".join(rows)}</ul>',
                   _e(method), wide=True))
-    body += _run_conditions_comparison(r["conditions_comparison"])
-    return _page(f"run-{aid}-compare", "Heart rate on similar runs",
-                 _e(run_evidence.headline(c)), body, back=f"#run-{aid}")
+    check = run_evidence.next_check(c)
+    body = (f'<p class="wide sub">{_e(run_evidence.headline(c))} {_e(check)}</p>'
+            + body + _run_conditions_comparison(r["conditions_comparison"]))
+    return body
 
 
 def _run_conditions_comparison(records: list[dict]) -> str:
@@ -1151,7 +1210,7 @@ def _run_conditions_comparison(records: list[dict]) -> str:
                  wide=True)
 
 
-def page_run_pacing(r: dict[str, Any]) -> str:
+def _run_pacing(r: dict[str, Any]) -> str:
     p = r["pacing"]
     splits = [(f"km {i}", seconds) for i, seconds in enumerate(p["km_split_s"], 1)]
     chart = both(line_chart, splits, fmt=loads._hms, y_label="Elapsed time (min:sec)",
@@ -1181,8 +1240,7 @@ def page_run_pacing(r: dict[str, Any]) -> str:
             + _card("Timing", f'<ul class="rows">{timing}</ul>')
             + _card("Pace and heart rate", f'<ul class="rows">{effort}</ul>',
                     "Equal moving-time halves. Needs a steady run with enough heart-rate data."))
-    aid = r["activity_id"]
-    return _page(f"run-{aid}-pacing", "Pacing and effort", _e(_run_label(r)), body, back=f"#run-{aid}")
+    return body
 
 
 def _condition_readout(window: dict | None) -> str:
@@ -1223,107 +1281,164 @@ def _conditions_card(context: dict) -> str:
     return _card("Outdoor conditions", body, note, wide=True)
 
 
-def _paired_chart(stream: list[dict[str, Any]], primary: tuple, secondary: tuple,
+def _hr_zone_bounds(raw: str | None) -> list[float]:
+    try:
+        values = json.loads(raw or "null")
+    except ValueError:
+        return []
+    if (not isinstance(values, list) or not 2 <= len(values) <= 8
+            or not all(type(value) in (int, float) and 0 < value <= 255 for value in values)
+            or not all(left < right for left, right in pairwise(values))):
+        return []
+    return values
+
+
+def _trace_rating(key: str, value: float, hr_bounds: tuple | list) -> tuple[str, str] | None:
+    if rating := running.rate(key, value):
+        return rating["colour"], f'Garmin band: {rating["label"]}'
+    if key == "hr" and hr_bounds:
+        colours = ("blue", "green", "green", "orange", "red", "purple")
+        for index, upper in enumerate(hr_bounds):
+            if value < upper:
+                return colours[min(index, len(colours) - 1)], f"Recorded heart-rate band {index + 1}"
+    return None
+
+
+def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tuple,
                   interval: int, w: int = W, *, context_by_second: dict[int, dict] | None = None,
-                  faster_at_top: bool = False) -> str:
-    """Keep the primary measurement readable on its own, with a time-aligned second track."""
+                  faster_at_top: bool = False, hr_bounds: tuple | list = ()) -> str:
+    """Draw one optional series on the same elapsed-time axis, with its own right scale."""
     akey, alabel, axis_a, afmt = primary
-    bkey, blabel, axis_b, bfmt = secondary
 
-    def series(key: str) -> list[tuple[int, float]]:
-        return [(p["t_s"], value) for p in stream
-                if isinstance(value := p.get(key), (float, int)) and math.isfinite(value) and value > 0]
+    def series(key: str) -> dict[int, float]:
+        return {p["t_s"]: value for p in stream
+                if isinstance(value := p.get(key), (float, int)) and math.isfinite(value)
+                and (key == "altitude_m" or value > 0)}
 
-    a, b = series(akey), series(bkey)
+    a = series(akey)
     if len(a) < 2 or stream[0]["t_s"] == stream[-1]["t_s"]:
         return '<p class="empty">Too few recorded points for this chart.</p>'
-    paired = dict(b)
-    compare = sum(t in paired for t, _ in a) >= 3
-    h, left, right, top, bottom = 186, 52, w - 24, 28, 140
+    options = []
+    for key, label, axis, fmt in alternatives:
+        samples = series(key)
+        if len(a.keys() & samples.keys()) >= 3:
+            options.append((key, label, axis, fmt, samples))
+    h, left, right, top, bottom = 186, 52, w - (47 if options else 24), 28, 140
     start, end = stream[0]["t_s"], stream[-1]["t_s"]
 
     def x(seconds: float) -> float:
         return left + (right - left) * (seconds - start) / (end - start)
 
-    def track(values, caption, t, base, fmt, colour, reverse=False):
-        ticks = _ticks(*_scale([v for _, v in values]))
+    def track(values, caption, fmt, *, secondary=False, reverse=False):
+        ticks = _ticks(*_scale(list(values.values())))
         low, high = ticks[0], ticks[-1]
 
         def y(value: float) -> float:
             ratio = (value - low) / (high - low)
-            return t + (base - t) * ratio if reverse else base - (base - t) * ratio
+            return top + (bottom - top) * ratio if reverse else bottom - (bottom - top) * ratio
 
-        parts = _horizontal_scale(ticks, left, right, y, fmt)
-        parts += _axes(left, right, t, base, base + 35, "", caption)[:2]
+        if secondary:
+            parts = [f'<path class="overlay-axis" d="M{right},{top}V{bottom}"/>',
+                     (f'<text x="{right}" y="{top - 9}" class="axis-label overlay-label" '
+                      f'text-anchor="end">{_e(caption)}</text>')]
+            parts += [f'<text x="{right + 6}" y="{y(tick) + 4:.2f}" class="tick overlay-label">'
+                      f'{_e(fmt(tick))}</text>' for tick in ticks]
+        else:
+            parts = _horizontal_scale(ticks, left, right, y, fmt)
+            parts += _axes(left, right, top, bottom, h, "", caption)[:2]
         path = []
-        for i, (second, value) in enumerate(values):
-            split = i == 0 or second - values[i - 1][0] > 2 * interval
+        previous = None
+        for second, value in values.items():
+            split = previous is None or second - previous > 2 * interval
             path.append(f'{"M" if split else "L"}{x(second):.2f},{y(value):.2f}')
+            previous = second
+        colour = "s2" if secondary else "s1"
         parts.append(f'<path class="ln {colour}" d="{" ".join(path)}"/>')
         return parts, y
 
-    g, y_a = track(a, axis_a, top, bottom, afmt if faster_at_top else _tick_number,
-                   "s1", faster_at_top)
+    g, y_a = track(a, axis_a, afmt if faster_at_top else _tick_number, reverse=faster_at_top)
     context_labels: dict[str, int] = {}
-    for i, (t, v) in enumerate(a):
-        starts_segment = i == 0 or t - a[i - 1][0] > 2 * interval
+    previous = None
+    for t, v in a.items():
+        starts_segment = previous is None or t - previous > 2 * interval
         context = _condition_readout((context_by_second or {}).get(t))
         index = context_labels.setdefault(context, len(context_labels)) if context else None
         reading = f"{alabel} {afmt(v)}" + ("/km" if faster_at_top else "")
-        extra = f"{blabel} {bfmt(paired[t])}" if compare and t in paired else ""
-        g.append(_point(x(t), y_a(v), loads._hms(t), reading,
-                        cls="context-dot" if starts_segment else "hit", extra=extra,
-                        condition_index=index))
+        rating = _trace_rating(akey, v, hr_bounds)
+        marker = "context-dot" if starts_segment else "hit"
+        if rating:
+            marker = f"zone-dot zone-{rating[0]}"
+            reading += f" · {rating[1]}"
+        g.append(_point(x(t), y_a(v), loads._hms(t), reading, cls=marker, condition_index=index))
+        previous = t
     ticks_at = [start, (end + start) // 2, end]
     labels = [loads._hms(t) for t in ticks_at]
     g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W)
     g.append(f'<text x="{(left + right) / 2:.1f}" y="{h - 8}" text-anchor="middle" '
              'class="axis-label">Elapsed time</text>')
-    control = ""
-    if compare:
-        second_bottom = h + 126
-        parts, _ = track(b, axis_b, h + 23, second_bottom, _tick_number, "s2")
-        g.append(f'<g class="overlay-secondary">{"".join(parts)}</g>')
-        control = (f'<button type="button" class="overlay-control" data-overlay-control '
-                   f'data-open-height="{second_bottom + 20}" data-open-bottom="{second_bottom}" '
-                   f'data-track-name="{_e(blabel.lower())}" aria-pressed="false">'
-                   f'Show {_e(blabel.lower())}</button>')
+    buttons = []
+    for key, label, axis, fmt, samples in options:
+        parts, y_overlay = track(samples, axis, _tick_number, secondary=True)
+        readings = {}
+        for t, value in samples.items():
+            readings[t] = f"{label} {fmt(value)}"
+            if rating := _trace_rating(key, value, hr_bounds):
+                colour, description = rating
+                readings[t] += f" · {description}"
+                parts.append(f'<circle class="zone-dot zone-{colour}" cx="{x(t):.2f}" '
+                             f'cy="{y_overlay(value):.2f}" r="3"/>')
+        g.append(f'<g class="overlay-secondary" data-overlay-track="{key}">{"".join(parts)}</g>')
+        buttons.append(f'<button type="button" class="overlay-control" data-overlay-control="{key}" '
+                       f'data-readings="{_e(json.dumps([readings.get(t) for t in a], ensure_ascii=False))}" '
+                       f'aria-pressed="false">{_e(label)}</button>')
+    controls = (f'<div class="overlay-options" role="group" aria-label="Compare with">'
+                f'<span>Compare with</span>{"".join(buttons)}</div>') if buttons else ""
     return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
-                  "Tap or hover for readings", controls=control, readout_below=True,
+                  "Tap or hover for readings", controls=controls, readout_below=True,
                   condition_labels=list(context_labels))
 
 
-def page_run_trace(r: dict[str, Any]) -> str:
+def _run_trace(r: dict[str, Any]) -> str:
     trace = r["trace"]
     stream = trace.get("stream") or []
     for_chart = [{**p, "pace_s_km": 1000 / p["speed_m_s"] if p.get("pace") else None} for p in stream]
     interval = trace.get("every_s", 10)
     context = r["conditions"]
     near_sample = conditions.for_samples(trace.get("start_utc"), stream, context)
+    heart_rate = ("hr", "Heart rate", "Heart rate (bpm)", lambda v: _f(v, unit=" bpm"))
+    cadence = ("cadence_spm", "Cadence", "Cadence (steps/min)", lambda v: _f(v, unit=" steps/min"))
+    step = ("step_length_m", "Step length", "Step length (m)", lambda v: _f(v, 2, " m"))
+    power = ("power_w", "Power", "Power (W)", lambda v: _f(v, unit=" W"))
+    climb = ("altitude_m", "Elevation", "Elevation (m)", lambda v: _f(v, unit=" m"))
     pace_hr = both(_paired_chart, for_chart, ("pace_s_km", "Pace", "Pace (min/km)", loads._hms),
-                   ("hr", "Heart rate", "Heart rate (bpm)", lambda v: _f(v, unit=" bpm")), interval,
-                   context_by_second=near_sample, faster_at_top=True)
-    cadence_step = both(_paired_chart, stream,
-                        ("cadence_spm", "Cadence", "Cadence (steps/min)",
-                         lambda v: _f(v, unit=" steps/min")),
-                        ("step_length_m", "Step length", "Step length (m)",
-                         lambda v: _f(v, 2, " m")), interval)
+                   (heart_rate, cadence, climb, power), interval,
+                   context_by_second=near_sample, faster_at_top=True, hr_bounds=r.get("hr_zone_bounds", ()))
+    contact = ("ground_contact_ms", "Ground contact", "Ground contact (ms)",
+               lambda v: _f(v, unit=" ms"))
+    bounce = ("vertical_oscillation_cm", "Bounce", "Bounce (cm)", lambda v: _f(v, 1, " cm"))
+    ratio = ("vertical_ratio_pct", "Vertical ratio", "Vertical ratio (%)",
+             lambda v: _f(v, 1, "%"))
+    cadence_step = both(_paired_chart, stream, cadence,
+                        (step, heart_rate, power, contact, bounce, ratio), interval,
+                        hr_bounds=r.get("hr_zone_bounds", ()))
     elevation = both(line_chart, [(loads._hms(pt["t_s"]), pt["altitude_m"]) for pt in stream],
                      " m", x_label="Elapsed time", y_label="Elevation (m)",
                      elapsed={loads._hms(pt["t_s"]): pt["t_s"] for pt in stream})
     drift = r["pacing"].get("hr_drift_bpm")
-    cue = ("Show heart rate to compare it with pace at the same point in the run."
+    cue = ("Compare readings at the same point in the run."
            if drift is None else
            f'Heart rate averaged {_f(abs(drift), 1)} bpm {"higher" if drift > 0 else "lower"} '
            "in the second half of moving time." if drift else
            "Average heart rate was the same in both halves of moving time.")
+    if r.get("hr_zone_bounds"):
+        cue += " Heart-rate colors use the bands saved with this workout."
     body = (_card("Pace", pace_hr, cue, wide=True)
             + _card("Running form", cadence_step,
-                    "Show step length to see how it changed alongside cadence.", wide=True)
+                    "Garmin bands: red/orange below average, green average, blue/purple above. "
+                    "Running form depends on your pace.", wide=True)
             + _card("Elevation", elevation, wide=True)
             + _conditions_card(context))
-    aid = r["activity_id"]
-    return _page(f"run-{aid}-trace", "Run timeline", _e(_run_label(r)), body, back=f"#run-{aid}")
+    return body
 
 
 def page_body(d: dict[str, Any]) -> str:
@@ -1498,7 +1613,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
                         _f(a["distance_km"], 2, " km") if a["distance_km"] is not None else None,
                         _f(a["avg_hr"], unit=" bpm avg") if a["avg_hr"] is not None else None) if v)
         name = a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize()
-        workouts.append(_record_link(name, note, f'#run-{a["id"]}' if a["id"] in run_ids else None))
+        workouts.append(_record_link(name, note, _workout_link(d, a["id"], run_ids)))
     body = _history_nav(d, "Day", day=day, month=day[:7])
     if readings:
         body += _card("Readings", f'<ul class="rows">{readings}</ul>')
@@ -1553,14 +1668,24 @@ def vo2_reference(r: dict[str, Any]) -> str:
     if not r.get("available"):
         return (f'<ul class="rows">{facts}</ul><p class="empty">{_e(r.get("reason"))}</p>'
                 f'<p class="sub">{_e(caveat)}</p>')
+    svg = both(_vo2_plot, r)
+    return (f'{svg}<p class="sub">Grey dot: Garmin · blue outline: effective estimate. '
+            f'Line: 5th–95th · solid band: 25th–75th.</p>'
+            f'<ul class="rows">{facts}</ul><p class="sub">{_e(caveat)}</p>'
+            f'<p class="chart-note">{_e(r["sex"].title())}, age {_e(r["age_group"])} · '
+            f'<a class="source-link" href="{norms.SOURCE}" rel="noreferrer">FRIEND 2015, Table 3</a></p>')
+
+
+def _vo2_plot(r: dict[str, Any], w: int) -> str:
     v = r["values"]
     markers = [(name, value, cls) for name, value, cls in (
         ("Garmin", r.get("garmin"), "vo2-garmin"),
         ("Effective", r.get("effective"), "vo2-effective")) if isinstance(value, (int, float))]
     lo, hi = _scale(list(v.values()) + [x[1] for x in markers], 0.05)
+    left, right = 20, w - 20
 
     def x(value):
-        return 20 + 300 * (value - lo) / (hi - lo)
+        return left + (right - left) * (value - lo) / (hi - lo)
 
     parts = [
         (f'<line x1="{x(v[5]):.1f}" x2="{x(v[95]):.1f}" y1="34" y2="34" class="vo2-range"/>'),
@@ -1574,13 +1699,9 @@ def vo2_reference(r: dict[str, Any]) -> str:
                  for name, value, cls in markers)
     parts.extend(f'<text x="{x(v[p]):.1f}" y="72" class="tick" text-anchor="middle">'
                  f'{p}th · {v[p]:.1f}</text>' for p in (5, 50, 95))
-    svg = _chart("scatter", parts, W, 84, (20, 320, 10, 55),
-                 "VO₂max (mL/kg/min)", "Population reference", "Hover or tap the reference band")
-    return (f'{svg}<p class="sub">Grey dot: Garmin · blue outline: effective estimate. '
-            f'Line: 5th–95th · solid band: 25th–75th.</p>'
-            f'<ul class="rows">{facts}</ul><p class="sub">{_e(caveat)}</p>'
-            f'<p class="chart-note">{_e(r["sex"].title())}, age {_e(r["age_group"])} · '
-            f'<a class="source-link" href="{norms.SOURCE}" rel="noreferrer">FRIEND 2015, Table 3</a></p>')
+    return _chart("scatter", parts, w, 84, (left, right, 10, 55),
+                  "VO₂max (mL/kg/min)", "Population reference", "Hover or tap the reference band",
+                  compact=True)
 
 
 def page_patterns(d: dict[str, Any]) -> str:
@@ -1656,8 +1777,14 @@ color:var(--ink2)}
 .top a{justify-content:center;padding:4px;font-size:12px}
 }
 .sr-only{width:1px;height:1px;position:absolute;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.page{display:none}#today{display:block}body:has(.page:target) #today:not(:target){display:none}
-.page:target{display:block}
+.page{display:none}#today{display:block}
+body:has(.page:target,.run-section:target) #today:not(:target){display:none}
+.page:target,.page:has(.run-section:target){display:block}
+.card.run-section{padding:0;border:0;background:transparent}
+.run-section>summary{color:var(--ink);font-weight:650;min-height:44px;box-sizing:border-box;
+padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+.run-section .grid{margin-top:10px}
+.run-jumps{display:flex;gap:0 16px;flex-wrap:wrap}
 .ph{margin:0 0 19px}.ph h2{font-size:34px;line-height:1.1;letter-spacing:-.03em;margin:0 0 6px}
 .lede{margin:0;color:var(--ink2);font-size:17px;line-height:1.4}
 .back{display:inline-flex;align-items:center;gap:4px;min-height:44px;color:var(--active);font-weight:600;
@@ -1705,8 +1832,8 @@ color:var(--ink2);font-size:12px}
 #today .card:not(.today-focus){padding:12px}
 #today .week-cue{font-size:14px}
 }
-.recovery-history svg{max-height:168px}
-.recovery-history figure{max-width:700px}
+.recovery-history .sm figure{max-width:310px}
+.recovery-history .lg figure{max-width:635px}
 .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;
 stroke-linecap:round;stroke-linejoin:round}
 .ic.good{color:var(--goodtext)}.ic.warn{color:var(--serious)}.ic.chev{color:var(--muted)}
@@ -1727,7 +1854,9 @@ border-top:1px solid var(--grid)}
 .tile span{grid-column:1;font-size:13px;color:var(--ink2)}
 .tile .ic{grid-row:1/3;grid-column:2;color:var(--muted)}
 .chart,.gauge{display:block;width:100%;height:auto;overflow:visible}
-.chart-interaction{margin:10px 0 0}
+.chart-interaction{margin:10px 0 0;max-width:720px}
+.sm .chart-interaction{max-width:420px}
+.sm .chart-compact{max-width:390px}
 [data-ready] .chart{touch-action:pan-y pinch-zoom;cursor:crosshair;user-select:none}
 .chart-readout{display:none;color:var(--ink2);border-radius:10px;padding:8px 12px;min-height:72px;
 font-size:13px;line-height:1.35}
@@ -1735,6 +1864,7 @@ font-size:13px;line-height:1.35}
 .chart-readout.selected{background:var(--accent);color:var(--ink)}
 .chart-readout strong{color:var(--active);font-size:13px;font-weight:650}
 .chart-readout span{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.chart-compact .chart-readout{min-height:48px}
 .chart-cursor{visibility:hidden;pointer-events:none}
 .chart-cursor.visible{visibility:visible}
 .chart-cursor line{stroke:var(--cursor);stroke-width:.9;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
@@ -1751,14 +1881,23 @@ font-size:13px;line-height:1.35}
 .ln.s1{stroke:var(--s1)}.ln.s2{stroke:var(--s2)}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
 .context-dot{fill:var(--s1);r:1.7}
+.zone-dot{stroke:var(--surface);stroke-width:.7;r:3px}
+.zone-red{fill:var(--bad)}.zone-orange{fill:var(--serious)}.zone-green{fill:var(--good)}
+.zone-blue{fill:var(--s1)}.zone-purple{fill:var(--purple)}
 .hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.8;r:4px}
 .fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
 .moving-average{fill:none;stroke:var(--s2);stroke-width:1.8;stroke-dasharray:5 3}
 .overlay-secondary{display:none}
-.has-overlay .overlay-secondary{display:initial}
+.overlay-secondary.active{display:initial}
+.overlay-axis{stroke:var(--s2);stroke-width:1}
+.overlay-label{fill:#9d3814}
+[data-theme="dark"] .overlay-label{fill:#ff9c78}
+.overlay-options{display:none;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 6px}
+[data-ready] .overlay-options{display:flex}
+.overlay-options span{color:var(--ink2);font-size:13px;margin-right:4px}
 .overlay-control{display:none;align-items:center;min-height:44px;border:1px solid var(--border);
 border-radius:10px;background:var(--surface);color:var(--ink);font:600 13px system-ui;
-padding:0 12px;margin:0 0 5px;cursor:pointer}
+padding:0 10px;cursor:pointer}
 [data-ready] .overlay-control{display:inline-flex}
 .overlay-control[aria-pressed=true]{background:var(--accent);color:var(--active)}
 .vo2-range{stroke:var(--axis);stroke-width:4}.vo2-middle{stroke:var(--s1);stroke-width:8}
@@ -1775,7 +1914,15 @@ padding:0 12px;margin:0 0 5px;cursor:pointer}
 box-sizing:border-box}
 .gauge .mk{background:var(--ink);border:2px solid var(--surface)}
 .gauge .mk2{background:var(--surface);border:2px solid var(--ink)}
-.lg{display:none}@media (min-width:768px){.wide .sm{display:none}.wide .lg{display:block}}
+.chart-layout>.lg{display:none}
+@supports (container-type:inline-size){
+.chart-layout{container-type:inline-size}
+@container (min-width:600px){
+.chart-layout>.sm{display:none}.chart-layout>.lg{display:block}
+}}
+@supports not (container-type:inline-size){
+@media (min-width:768px){.wide .chart-layout>.sm{display:none}.wide .chart-layout>.lg{display:block}}
+}
 .form-row{padding:12px 0;border-top:1px solid var(--grid)}.form-row:first-of-type{border-top:0}
 .fr-head{display:flex;justify-content:space-between;font-size:15px}
 .fr-head b{font-variant-numeric:tabular-nums}
@@ -1854,11 +2001,9 @@ def render(d: dict[str, Any]) -> str:
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
             summary = d.get("narration", {}).get(f'run-{r["activity_id"]}')
-            pages.extend((page_run(r, d.get("trial"), summary), page_run_pacing(r)))
-            if r["trace"].get("stream"):
-                pages.append(page_run_trace(r))
-            if r["comparable_effort"]["available"]:
-                pages.append(page_run_compare(r, run_ids))
+            pages.append(page_run(r, d.get("trial"), summary, run_ids=run_ids))
+        pages.extend(_workout_page(workout, d.get("narration", {}).get(f'workout-{workout["id"]}'))
+                     for workout in d.get("workouts", []))
         calendar = d["calendar"]
         pages.extend(page_history_month(d, month) for month in
                      sorted({calendar["current_month"], *calendar["by_month"]}))

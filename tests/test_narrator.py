@@ -227,3 +227,25 @@ def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tm
     monkeypatch.setattr(dashboard, "_snapshot_paths", lambda _dir: (path, None))
     narrator.update_settings(conn, enable=False, model=None)
     assert "AI summary" not in path.read_text() and "Next seven days" in path.read_text()
+
+def test_workout_packet_and_page_use_only_recorded_facts(collected):
+    workout = {"id": 567, "name": "Private cycling route", "type": "cycling",
+               "start": "2026-11-23 08:00:00", "duration": "1:10:29",
+               "distance_km": 19.8, "avg_hr": 128}
+    collected["workouts"] = [workout]
+    day = workout["start"][:10]
+    collected["calendar"]["days"].setdefault(day, {}).setdefault("activities", []).append(workout)
+    if day not in collected["calendar"]["detail_days"]:
+        collected["calendar"]["detail_days"].append(day)
+    item = narrator.items(collected)["workout-567"]
+    assert item.facts == {"workout duration": "1:10:29", "workout distance km": 19.8,
+                          "average heart rate bpm": 128}
+    assert "Private cycling route" not in item.prompt and "567" not in item.prompt
+    text = "The workout lasted 1:10:29. You covered 19.8 km in this workout."
+    assert narrator._response_text(json.dumps({"sentences": ["The workout lasted 1:10:29.",
+                                                    "You covered 19.8 km in this workout."]}), item.facts) == text
+    html = dashboard.render({**collected, "narration": {"workout-567": {"text": text,
+                                                                       "facts": item.facts}}})
+    assert 'href="#workout-567"' in html and 'id="workout-567"' in html
+    assert "AI summary · facts checked" in html and 'id="run-818283-pacing"' in html
+    assert 'class="page" id="run-818283-pacing"' not in html

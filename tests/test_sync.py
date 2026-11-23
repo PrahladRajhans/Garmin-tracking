@@ -198,11 +198,15 @@ def test_current_garmin_download_gate_can_refresh_old_html(monkeypatch, tmp_path
     monkeypatch.setenv("GARMIN_DASHBOARD_PUBLISH", "")
     monkeypatch.setattr(sys, "argv", ["garmin-mcp-sync", "--no-update"])
     monkeypatch.setattr(sync, "gate", lambda: {"sync": False})
+    drive = tmp_path / "Library/Mobile Documents/com~apple~CloudDocs"
+    drive.mkdir(parents=True)
+    monkeypatch.setattr(dashboard.Path, "home", classmethod(lambda cls: tmp_path))
     target = tmp_path / "dashboard" / "index.html"
     target.parent.mkdir()
     target.write_text("previous release")
     sync.main()
     assert "Dashboard built" in target.read_text() and not dashboard.needs_rebuild()
+    assert (drive / "Garmin" / "dashboard.html").read_text() == target.read_text()
     assert "dashboard" in capsys.readouterr().out
     before = target.read_text()
     sync.main()
