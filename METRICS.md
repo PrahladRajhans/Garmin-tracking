@@ -170,6 +170,14 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Running effectiveness | speed (m/s) ÷ (power W ÷ weight kg) | Coggan/WKO (Palladino). Garmin wrist power reads higher than Stryd, so compare only with yourself |
 | Cadence advice | If < 170 spm: suggest +5 % at the same pace, in short metronome blocks | Heiderscheit 2011 (knee energy absorption falls at +5 %), Lenhart 2014 (+10 % → −14 % patellofemoral force), Willy 2016 (+7.5 % retained at 1 month) |
 
+## Implemented in v0.13.0 (Phase 13): exact rules
+| Metric | Rule | Result on your data |
+|---|---|---|
+| Explorer points | `engine.pair_points`: baseline-adjusted x on day d, y on d + lag; same pairs as v0.9.0 relationships | 14 pairs tested; 4 notable |
+| "How sure" | Not notable (FDR) → "not sure: could be chance"; CI excludes 0 and its smaller end ≥ 0.3 → "very sure"; ≥ 0.1 → "fairly sure"; else "early sign" | Sleep → Garmin readiness: very sure |
+| Test runs | Steady runs (≥ 20 min, 1-min speed CV < 15 %) within ±10 % of the median steady-run distance, or named test/calibration; Theil-Sen slope of efficiency factor, × 90 days ÷ mean | 3 runs at ~5.2 km, +1.8 % / 90 d (too few to trust) |
+| Recovery weighting study | Signals: the clipped components of `recovery.readiness`. Outcomes: next-night ln HRV z (vs prior 60 nights, ≥ 21) and Garmin readiness. Variants: equal, without breathing, HRV + RHR. Change only if better on both by > 0.05 r | Equal weights kept (0.36 / 0.36) |
+
 ## Thresholds we need (stored with dates so history can be recomputed)
 HRmax, RHR baseline, LTHR, threshold pace / CS, HR zones, body weight. Initial values come from Garmin (zones, LT, user profile); later from our own estimates when confidence is higher.
 

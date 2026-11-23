@@ -131,17 +131,36 @@ def _block_bootstrap(pairs: list[tuple[float, float]], stat, rng: random.Random)
     return sorted(vals)
 
 
+def pair_points(feat: dict[str, dict[str, float]], x: str, y: str,
+                lag: int = 0) -> list[tuple[str, float, float]]:
+    """(day, adjusted x on day, adjusted y on day+lag): the points behind a relationship."""
+    xs = _adjust({d: v[x] for d, v in feat.items() if x in v})
+    ys = _adjust({d: v[y] for d, v in feat.items() if y in v})
+    out = []
+    for d, xv in sorted(xs.items()):
+        d2 = (date.fromisoformat(d) + timedelta(days=lag)).isoformat()
+        if d2 in ys:
+            out.append((d, xv, ys[d2]))
+    return out
+
+
+def explore(conn: sqlite3.Connection, end: str, days: int = 365, top: int = 8) -> dict[str, Any]:
+    """Every tested pair ranked by strength, with its points, for the explorer page."""
+    rel = relationships(conn, end, days)
+    start = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
+    feat = features(conn, start, end)
+    ok = sorted((r for r in rel["all"] if r.get("status") == "ok"), key=lambda r: -abs(r["r"]))
+    for r in ok[:top]:
+        r["points"] = [(d, round(a, 3), round(b, 3))
+                       for d, a, b in pair_points(feat, r["x"], r["y"], r["lag_days"])]
+    return {"pairs": ok[:top], "tested": rel["pairs_tested"], "method": rel["method"]}
+
+
 def relationship(feat: dict[str, dict[str, float]], x: str, y: str, lag: int = 0,
                  rng: random.Random | None = None) -> dict[str, Any]:
     """Association between baseline-adjusted x on day d and y on day d+lag."""
     rng = rng or random.Random(SEED)
-    xs = _adjust({d: v[x] for d, v in feat.items() if x in v})
-    ys = _adjust({d: v[y] for d, v in feat.items() if y in v})
-    pairs = []
-    for d, xv in sorted(xs.items()):
-        d2 = (date.fromisoformat(d) + timedelta(days=lag)).isoformat()
-        if d2 in ys:
-            pairs.append((xv, ys[d2]))
+    pairs = [(a, b) for _, a, b in pair_points(feat, x, y, lag)]
     out: dict[str, Any] = {"x": x, "y": y, "lag_days": lag, "n": len(pairs)}
     if len(pairs) < MIN_PAIRS:
         out["status"] = f"insufficient data (< {MIN_PAIRS} paired days)"

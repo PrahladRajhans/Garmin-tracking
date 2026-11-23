@@ -59,3 +59,31 @@ def test_status_tag_pauses_advice_and_leaves_baseline(conn):
     r = {"garmin": None, "ours": {"state": "normal"}, "illness_flag": {"raised": False},
          "activity_status": "sick"}
     assert recovery.suggestion(r)["suggest"] == "training advice paused"
+
+
+def test_test_runs_empty_db(conn):
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    assert running.test_runs(conn)["available"] is False
+    assert running._is_test("FR955 Calibration run") and not running._is_test("Easy run")
+
+
+def test_pair_points_lag():
+    from garmin_mcp import engine
+
+    feat = {f"2026-01-{i:02d}": {"a": float(i % 5), "b": float((i - 1) % 5)}
+            for i in range(1, 29)}
+    pts = engine.pair_points(feat, "a", "b", lag=1)
+    assert pts and all(len(p) == 3 for p in pts)
+    assert engine._pearson([p[1] for p in pts], [p[2] for p in pts]) > 0.9
+
+
+def test_scatter_and_sure():
+    from garmin_mcp import dashboard
+
+    svg = dashboard.scatter([("d1", -1.0, -2.0), ("d2", 0.0, 0.0), ("d3", 1.0, 2.0)],
+                            "x", "y", 2.0)
+    assert svg.count('class="pt"') == 3 and 'class="fit"' in svg
+    assert dashboard._sure({"notable": False})[1].startswith("not sure")
+    assert dashboard._sure({"notable": True, "r_ci95": [0.4, 0.6]})[1] == "very sure"

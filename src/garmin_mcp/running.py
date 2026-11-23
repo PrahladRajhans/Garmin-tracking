@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 import statistics
+from datetime import date
 from typing import Any
 
 # (metric, higher_is_better, [(upper bound exclusive or None, colour, label)]) low -> high
@@ -158,3 +159,54 @@ def form_trends(conn: sqlite3.Connection, days_runs: int = 60) -> dict[str, Any]
     return {"runs": len(series), "series": series, "personal_lines": lines,
             "note": "Cadence and stride rise with speed; compare each run with the personal line "
                     "at the same pace, not with other runs."}
+
+
+# --------------------------------------------------------------------------- test tracking
+def test_runs(conn: sqlite3.Connection, tolerance: float = 0.10) -> dict[str, Any]:
+    """Standardised test tracking (roadmap 8.11) without asking you to run special tests.
+
+    Repeat runs = steady runs (coaching.run_metrics `steady`) whose distance is within
+    +/-10 % of your most common steady-run distance, or whose name contains "test" or
+    "calibration". On these comparable runs, aerobic fitness shows as efficiency factor
+    (graded speed per heartbeat) rising over time; the Theil-Sen slope says which way.
+    """
+    from garmin_mcp.coaching import _pace
+    from garmin_mcp.engine import theil_sen
+
+    rows = []
+    for aid, ts, name, dist in conn.execute(
+            "SELECT activity_id, start_time_local, name, distance_m FROM activities WHERE type "
+            "LIKE '%run%' AND fit_parsed=1 ORDER BY start_time_local"):
+        from garmin_mcp.coaching import run_metrics
+
+        m = run_metrics(conn, aid)
+        if m and m.get("efficiency_factor") and (m.get("steady") or _is_test(name)):
+            rows.append({"activity_id": aid, "date": ts[:10], "km": round((dist or 0) / 1000, 2),
+                         "name": name, "ef": m["efficiency_factor"], "avg_hr": m["avg_hr"],
+                         "pace": _pace(m["avg_speed"]), "decoupling_pct": m["decoupling_pct"]})
+    if not rows:
+        return {"available": False, "reason": "no steady runs with second-by-second data yet"}
+    kms = sorted(r["km"] for r in rows)
+    ref = statistics.median(kms)
+    same = [r for r in rows if abs(r["km"] - ref) <= tolerance * ref or _is_test(r["name"])]
+    out: dict[str, Any] = {"available": len(same) >= 3, "reference_km": round(ref, 1),
+                           "runs": same,
+                           "method": "steady runs within +/-10 % of your usual distance; "
+                                     "efficiency factor = graded m/min per bpm"}
+    if len(same) >= 3:
+        d0 = date.fromisoformat(same[0]["date"])
+        slope = theil_sen([((date.fromisoformat(r["date"]) - d0).days, r["ef"]) for r in same])
+        first, last = same[0]["ef"], same[-1]["ef"]
+        out.update(ef_change_per_90d_pct=round((slope or 0) * 90 / statistics.fmean(
+            r["ef"] for r in same) * 100, 1), first_ef=first, latest_ef=last,
+            meaning="Positive = you run faster at the same heart rate (aerobic fitness "
+                    "improving). Heat, hills and tiredness add noise; trust the trend over "
+                    "several runs, not one.")
+    else:
+        out["reason"] = "needs >= 3 comparable runs"
+    return out
+
+
+def _is_test(name: str | None) -> bool:
+    n = (name or "").lower()
+    return "test" in n or "calibration" in n

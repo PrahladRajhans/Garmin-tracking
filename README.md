@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.12.0: Phases 1–12 done. 40 tools, a multi-page dashboard, and running/sleep/long-term analytics. Updates install themselves on every sync.
+> **Status:** v0.13.0: Phases 1–13 done. 43 tools, a multi-page dashboard, and running/sleep/long-term analytics. Updates install themselves on every sync.
 
 ## What this is, in one minute
 
@@ -85,6 +85,9 @@ All tools read the local database; only `refresh_data` contacts Garmin.
 | `monthly_report(month?)` | Month vs previous month: sessions, hours, run km, sleep, resting HR, steps, HRV |
 | `running_breakdown(activity_id?)` | One run: form vs Garmin's colour bands and vs your usual at that pace, pacing, HR drift, running effectiveness, what to work on |
 | `running_form_history(runs=60)` | Per-run form series with your cadence/stride-vs-speed lines |
+| `explore_relationships(days=365, top=8)` | Every tested pair ranked, with r, CI, notable flag and per-day points |
+| `test_runs()` | Comparable steady runs and the efficiency (speed per heartbeat) trend |
+| `recovery_weight_study(days=180)` | Whether each Recovery % signal predicts next-night HRV / tracks Garmin; keeps or changes weights by a fixed rule |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
