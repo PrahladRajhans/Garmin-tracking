@@ -350,7 +350,7 @@ def trend(conn: sqlite3.Connection, metric: str, days: int = 30,
 def daily_brief(conn: sqlite3.Connection, day: str | None = None, *,
                 signals: dict | None = None, patterns: list[dict] | None = None) -> dict[str, Any]:
     """Morning-report style brief: the facts Claude narrates (Athlete-Intelligence style)."""
-    from garmin_mcp import daily_focus, engine, recovery, signal_context, training_plan
+    from garmin_mcp import coach_loop, daily_focus, engine, recovery, signal_context, training_plan
 
     day = day or _latest_day(conn) or date.today().isoformat()
     r = recovery.readiness(conn, day)
@@ -365,12 +365,21 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None, *,
     focus = daily_focus.daily_focus(
         r, signals, recommendation, training_status=snap["training"]["garmin_status"],
         running_km=running_km, patterns=patterns)
+    week_ahead = training_plan.week(conn, day, r)
+    knee_pause = coach_loop.knee_pause(conn, day)
+    if knee_pause and focus["title"] not in {
+            "Pause training today.", "Rest today or choose very easy movement."}:
+        detail = "Your previous evening check-in flagged knee soreness."
+        focus.update(title="Skip running today.", detail=detail, target="training", findings=[])
+        recommendation = {**recommendation, "suggest": "skip running today", "reason": detail}
+        week_ahead = {"plan": "Leave running out today and reassess tomorrow.", "basis": detail}
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     return {
         "day": day,
         "suggestion": recommendation,
         "focus": focus,
-        "week_ahead": training_plan.week(conn, day, r),
+        "week_ahead": week_ahead,
+        "knee_pause": knee_pause,
         "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state",
                                                           "holding_back", "helping")},
                       "garmin": r["garmin"]},

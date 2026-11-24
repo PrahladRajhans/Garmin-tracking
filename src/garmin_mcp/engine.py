@@ -359,12 +359,14 @@ def tag_impact(conn: sqlite3.Connection, end: str, days: int = 365) -> dict[str,
     athlete.ensure(conn)
     start = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
     tags: dict[str, set[str]] = {}
-    for ts, text in conn.execute("SELECT ts, text FROM athlete_notes WHERE kind='tag'"):
+    for (text,) in conn.execute("SELECT text FROM athlete_notes WHERE kind='tag'"):
         try:
-            day, tag = text.split("|", 1)
+            raw_day, tag = text.split("|", 1)
+            day = date.fromisoformat(raw_day.strip()).isoformat()
         except ValueError:
             continue
-        tags.setdefault(tag.strip().lower(), set()).add(day.strip())
+        if start <= day < end:
+            tags.setdefault(tag.strip().lower(), set()).add(day)
     feat = features(conn, start, end)
     adj = {m: _adjust({d: v[m] for d, v in feat.items() if m in v})
            for m in ("hrv", "sleep_score", "rhr")}

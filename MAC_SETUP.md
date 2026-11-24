@@ -109,6 +109,16 @@ Turn it off with `.venv/bin/garmin-mcp-narrator --disable` or `ai_narrator(enabl
 The Mac and iCloud copies rebuild without summaries. The CLI without arguments shows the
 current status. Cached prose stays in the local database.
 
+Before changing model tags, run a fictional benchmark on the Mac:
+
+```bash
+.venv/bin/garmin-mcp-narrator --eval --models qwen2.5:3b-instruct,qwen3.5:4b
+.venv/bin/garmin-mcp-narrator --check
+```
+
+The benchmark uses fictional inputs. The diagnostics report the active model, thinking support
+and its last benchmark. Evaluate the model before making it active.
+
 ## Private phone access (optional)
 
 This part is new in v0.13.1. It is implemented and tested with stand-ins, but **not yet deployed

@@ -26,6 +26,7 @@ from typing import Any
 
 from garmin_mcp import (
     __version__,
+    coach_loop,
     coach_review,
     coaching,
     conditions,
@@ -39,6 +40,7 @@ from garmin_mcp import (
     norms,
     readiness_benchmark,
     recovery,
+    route_review,
     run_evidence,
     running,
     scores,
@@ -121,10 +123,18 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     workouts = [workout for day in sorted(calendar["detail_days"], reverse=True)
                 for workout in calendar["days"][day].get("activities", [])
                 if workout["id"] not in run_ids][:8]
+    sleep_data = sleep_review.collect(conn, end, zone, ds["sleep"]["need_h"]
+                                     or recovery.DEFAULT_SLEEP_NEED_H)
+    if runs:
+        runs[0]["route_review"] = route_review.compare(conn, runs[0])
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
-        "sleep_review": sleep_review.collect(conn, end, zone, ds["sleep"]["need_h"]
-                                             or recovery.DEFAULT_SLEEP_NEED_H),
+        "sleep_review": sleep_data,
+        "wake_followup": coach_loop.wake_followup(sleep_data["nights"], end),
+        "rested_review": coach_loop.rested_review(conn, end),
+        "tag_review": engine.tag_impact(conn, end)["tags"],
+        "planned_week": coach_loop.week(conn, end),
+        "movement": coach_loop.movement(conn, end),
         "older_snapshot": e != datetime.now(zone).date(),
         "history": scores.history(conn, end, 14),
         "brief": insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"]),
@@ -645,6 +655,35 @@ def _sleep_time(hours: float) -> str:
     return f"{h}h {m:02d}m" if m else f"{h}h"
 
 
+def _sunday_story(d: dict) -> str:
+    if date.fromisoformat(d["end"]).weekday() != 6:
+        return ""
+    review = d.get("weekly_review")
+    sleep = d.get("sleep_review", {}).get("windows", {}).get(7, {})
+    if not review or sleep.get("nights", 0) < 4:
+        return ""
+    change = d["sleep_review"].get("week_change_min")
+    sessions = review["week"]["sessions"]
+    facts = [
+        "The training review counted one workout with load data." if sessions == 1
+        else f"The training review counted {sessions} workouts with load data.",
+        f'You averaged {_sleep_time(sleep["hours"])} of sleep across {sleep["nights"]} recorded nights.',
+    ]
+    if change is not None:
+        if change:
+            facts.append(f'You slept {abs(change)} min {"more" if change > 0 else "less"} per night '
+                         'than the prior week.')
+        else:
+            facts.append("Your average sleep held steady from the prior week.")
+    elif "anchor" in d["sleep_review"] and d["sleep_review"]["anchor"]:
+        facts.append(f'Your wake times had {d["sleep_review"]["anchor"]["spread"]} min of variation.')
+    if len(facts) < 3:
+        return ""
+    facts.append(d["brief"]["week_ahead"]["plan"])
+    return _card("Sunday review", f'<p>{_e(" ".join(facts))}</p>'
+                 f'<a class="flow-link" href="#training">Review the week{icon("chev")}</a>', wide=True)
+
+
 def page_today(d: dict[str, Any]) -> str:
     rec, sleep = d["scores"]["recovery"], d["scores"]["sleep"]
     day = d["end"]
@@ -710,6 +749,17 @@ def page_today(d: dict[str, Any]) -> str:
         body += _card("Next seven days", f'<p class="sub week-cue">{_e(week["plan"])}</p>'
                       f'<details><summary>How this was chosen</summary>'
                       f'<p class="sub">{_e(week["basis"])}</p></details>', wide=True)
+    if current:
+        body += _sunday_story(d)
+    if current and (followup := d.get("wake_followup")):
+        body += _card("Wake-time follow-up", _wake_followup(followup, d["calendar"]) +
+                      f'<a class="flow-link" href="#sleep">Sleep history{icon("chev")}</a>', wide=True)
+    if current and (movement := d.get("movement")):
+        steps = (f'{_f(movement["steps"])} steps recorded' if movement["steps"] is not None
+                 else "No steps recorded today")
+        body += (f'<p class="sleep-brief wide">{steps} · Usual floor {_f(movement["floor"])} steps'
+                 f' · {movement["streak"]} consecutive days through '
+                 f'{_e(_short(movement["through"]))}</p>')
     findings = list(focus["findings"]) if current else []
     narration = d.get("narration", {})
     choice = narration.get("focus", {}).get("choice")
@@ -794,6 +844,39 @@ def _night_record(night: dict) -> str:
     return f'<dl class="sleep-measures">{metrics}</dl>{timeline}{composition}'
 
 
+def _wake_followup(review: dict, calendar: dict) -> str:
+    change = review["sleep_change"]
+    duration = ("Average sleep stayed the same to the nearest minute." if not change else
+                f'Average sleep was {abs(change)} min {"longer" if change > 0 else "shorter"}.')
+    days = set(calendar["detail_days"])
+    records = "".join(f'<li><a class="source-link" href="#day-{day}">{_e(_short(day))}</a></li>'
+                      for day in review["dates"] if day in days)
+    evidence = f'<details><summary>Reviewed nights</summary><ul>{records}</ul></details>' if records else ""
+    return (f'<p>Within 30 min of {review["anchor"]} on {review["hits"]} of {review["nights"]} nights, '
+            f'compared with {review["prior_hits"]} of {review["prior_nights"]} the week before.</p>'
+            f'<p>{duration}</p>{evidence}')
+
+
+def _sleep_journal(d: dict) -> str:
+    rows = []
+    names = {"sleep_score": ("Garmin sleep score", " pts"), "hrv": ("HRV", " ms"),
+             "rhr": ("Resting heart rate", " bpm")}
+    for tag, record in sorted(d.get("tag_review", {}).items()):
+        if tag not in {"late_caffeine", "late caffeine", "caffeine late", "late_meal", "late meal",
+                       "screens_late", "late_workout", "late workout", "alcohol"}:
+            continue
+        values = [f'{label} {record[key]["next_day_diff"]:+g}{unit}'
+                  for key, (label, unit) in names.items() if key in record]
+        rows.append(_record_link(tag.replace("_", " ").capitalize(),
+                                 " · ".join(values) or "Collecting comparable nights"))
+    if rated := d.get("rested_review"):
+        rows.append(_record_link("How rested you felt",
+                                 f'Garmin score averaged {rated["low"]} across {rated["low_n"]} low ratings '
+                                 f'and {rated["high"]} across {rated["high_n"]} high ratings.'))
+    return (_card("Sleep journal", f'<ul class="record-list">{"".join(rows)}</ul>',
+                  "Following-night readings vs your baseline.", wide=True) if rows else "")
+
+
 def page_sleep(d: dict[str, Any]) -> str:
     review = d.get("sleep_review", {})
     nights = review.get("nights", {})
@@ -858,6 +941,7 @@ def page_sleep(d: dict[str, Any]) -> str:
         body += _card("Day and sleep heart rate",
                       f'<p>{_f(dip["awake_mean_hr"])} bpm during the day · '
                       f'{_f(dip["sleep_mean_hr"])} bpm asleep.</p>', wide=True)
+    body += _sleep_journal(d)
     body += _bedroom_card(d["bedroom_conditions"])
     return _page("sleep", "Sleep", "", body)
 
@@ -1077,7 +1161,22 @@ def page_training(d: dict[str, Any]) -> str:
         summary = _narration(d.get("narration", {}).get("training"))
         week_card = _card("Training and recovery this week", f'<ul class="rows">{rows}</ul>{summary}',
                           f'{_short(week["from"])}–{_short(week["to"])} · recorded data', wide=True)
-    body = week_card
+    saved = d.get("planned_week", {})
+    sessions = saved.get("sessions", [])
+    plan = ""
+    if sessions or (saved.get("adaptive") and not d["brief"].get("knee_pause")):
+        runs = {run["activity_id"] for run in d["runs"]}
+        rows = "".join(_record_link(f'{_date_label(row["day"])} · {row["kind"].title()}',
+                                    f'{row["minutes"]} min planned · ' +
+                                    (f'{row["done_minutes"]} min done' if row["status"] == "done"
+                                     else row["status"].capitalize()),
+                                    _workout_link(d, row["activity_id"], runs) if row["activity_id"] else None)
+                       for row in sessions)
+        guidance = (f'<p>{_e(saved["adaptive"])}</p>' if saved.get("adaptive")
+                    and not d["brief"].get("knee_pause") else "")
+        plan = _card("Planned and done", guidance + (f'<ul class="record-list">{rows}</ul>' if rows else ""),
+                     wide=True)
+    body = plan + week_card
     run_ids = {r["activity_id"] for r in d["runs"]}
     calendar = d["calendar"]
     entries = []
@@ -1226,6 +1325,20 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
                 f'See matched runs{icon("chev")}</a>'
                 f'<a class="flow-link" href="#today">Today’s guidance{icon("chev")}</a>'
                 '</nav></section>') + body
+    if replay := r.get("route_review"):
+        rows = "".join(_row(f'{row["from_m"] / 1000:g}–{row["to_m"] / 1000:g} km',
+                            f'{row["difference"]:+d} seconds',
+                            f'{loads._hms(row["elapsed"])} this run · {loads._hms(row["prior_elapsed"])} earlier')
+                       for row in replay["rows"])
+        chart = both(line_chart, [(f'{row["to_m"] / 1000:g} km', row["difference"])
+                                  for row in replay["rows"]], " s", reference=0,
+                     x_label="Kilometre endpoint", y_label="Elapsed time difference (s)")
+        previous = (f'<a class="flow-link" href="#run-{replay["activity_id"]}">'
+                    f'Open earlier run{icon("chev")}</a>'
+                    if replay["activity_id"] in (run_ids or set()) else "")
+        body += _card("Same-route replay", chart + f'<ul class="rows">{rows}</ul>' + previous,
+                      f'Elapsed time against {_e(_date_label(replay["date"]))}, including stops. '
+                      'Above zero is slower.', wide=True)
     aid = r["activity_id"]
     sections = []
     jumps = []

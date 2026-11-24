@@ -560,3 +560,24 @@ time zone for the latest seven days.
   Connect intervals within the recorded sleep window. Missing intervals stay blank. Reject
   overlapping intervals. [Garmin stage overview](https://www.garmin.com/en-IE/garmin-technology/health-science/sleep-tracking/)
   · [Connect sleep interval field mapping](https://pkg.go.dev/github.com/abrander/garmin-connect).
+
+## Coaching follow-up and local journal (v0.25)
+
+- Wake follow-up compares the last two complete calendar weeks, each with at least four timed
+  nights. Both weeks use the same median wake anchor from the 14 dates preceding the reviewed week,
+  with at least five timed readings. Within 30 minutes is counted using circular clock distance.
+- The movement floor is the median of the previous 28 dates' recorded steps with at least 14 days.
+  A missing day breaks the streak. If today's total is below the floor, the reported streak is
+  through yesterday.
+- Planned sessions match unique observed workouts of the same date and type, preferring the
+  closest duration. If fewer than half the prior planned runs were recorded, suggest repeating
+  the week. Otherwise the next suggestion is capped at the lower of planned minutes and 110% of
+  completed minutes. Skip adaptation until the previous week has recorded coverage.
+- At least 14 paired rested ratings and Garmin scores are required. Compare means for ratings
+  1–2 and 4–5 only with at least three in each group. Tags reuse baseline-adjusted next-day
+  comparisons with five tagged and 20 comparison days. These are observed associations.
+- A knee rating of 4 or more suppresses the following day's running guidance. More restrictive
+  rest or pause guidance takes precedence.
+- Route replay uses FIT cumulative distance and GPS (55 m maximum separation at sampled points
+  250 m apart). Totals agree within 3%, and interpolation spans at most 100 m. Display complete
+  one-kilometre elapsed-time sections including stops. GPS coordinates stay out of the HTML.

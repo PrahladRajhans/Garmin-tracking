@@ -406,14 +406,62 @@ def records_and_calendar(days: int = 365, end: str | None = None) -> dict[str, A
 
 
 @mcp.tool()
+def coach_checkin(day: str | None = None, rested: int | None = None,
+                  energy: int | None = None, soreness: int | None = None,
+                  knee: int | None = None) -> dict[str, Any]:
+    """Save local ratings for a day. Rested is 1–5. Energy, soreness, and knee are 0–10.
+    A knee rating of at least 4 suppresses the following day's running recommendation."""
+    from garmin_mcp import coach_loop
+
+    def run(c):
+        result = coach_loop.save_checkin(c, parse_date(day), rested, energy, soreness, knee)
+        _mark_dashboard_stale(c)
+        return result
+
+    try:
+        return _with_db(run)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def plan_session(day: str, kind: str, minutes: int, status: str = "planned",
+                 session_id: int | None = None) -> dict[str, Any]:
+    """Schedule a run, walk, or strength session. Use its ID to move it, swap it, or skip it."""
+    from garmin_mcp import coach_loop
+
+    def run(c):
+        result = coach_loop.save_session(c, parse_date(day), kind, minutes, status, session_id)
+        _mark_dashboard_stale(c)
+        return result
+
+    try:
+        return _with_db(run)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def planned_week(end: str | None = None) -> dict[str, Any]:
+    """Show scheduled sessions and matched workouts, plus the prior week's completion."""
+    from garmin_mcp import coach_loop
+
+    return _with_db(lambda c: coach_loop.week(c, parse_date(end)))
+
+
+@mcp.tool()
 def add_tag(day: str, tag: str) -> dict[str, Any]:
     """Tag a day with a behaviour or context (alcohol, late meal, travel, illness, late
     caffeine, sick, injured). Used for Whoop-style impact estimates on next-day HRV/sleep."""
     from garmin_mcp import athlete
 
     d = parse_date(day)
-    return _with_db(lambda c: (athlete.add_note(c, "tag", f"{d}|{tag.strip().lower()}"),
-                               {"tagged": d, "tag": tag})[1])
+    def run(c):
+        athlete.add_note(c, "tag", f"{d}|{tag.strip().lower()}")
+        _mark_dashboard_stale(c)
+        return {"tagged": d, "tag": tag}
+
+    return _with_db(run)
 
 
 @mcp.tool()

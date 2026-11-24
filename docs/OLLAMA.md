@@ -28,7 +28,7 @@ A number-only filter would still accept fabricated causes or advice with valid n
 - The snapshot includes up to eight newest FIT run pages and eight other workouts from the
   30-day History detail window. Running links to the narrated run detail pages. Body, Patterns,
   Trends and History provide calculations, source rows and links to the detail pages.
-- The detached worker has a 20-second per-item and 120-second batch budget. Enabling, manual
+- The worker has a 20-second standard item limit, 35 seconds for thinking-capable tags, and a 120-second batch limit. Enabling, manual
   builds, and scheduled runs can start or retry it, including when Garmin downloads are
   skipped. The dashboard renders immediately, and the worker applies checked results only
   to the snapshot it started from. The next eligible worker can apply previously cached results.
@@ -37,6 +37,25 @@ A number-only filter would still accept fabricated causes or advice with valid n
   `cache_matches_dashboard` indicates whether the accepted cache is reflected in the local HTML.
   Invalid selections are cached as rejected for that prompt and model. New evidence, prompt
   rules or a different model get a fresh attempt. Service failures and timeouts remain pending.
+
+## Runtime compatibility and wording
+
+The worker confirms cloud-off status, reads model metadata with `/api/show`, and preloads the
+model with an empty generation before sending facts. It uses the local suffix, bounds context,
+requests `think: false` on thinking-capable models, and parses only `response`.
+[Thinking controls](https://docs.ollama.com/capabilities/thinking) ·
+[Generate API](https://docs.ollama.com/api/generate).
+
+A response may cite one or two checked clauses per sentence. It can combine supported clauses
+with “and” or “while” and normalize numerical formatting. Complete clause checks reject new
+causes, advice or uncited quantities. Invalid optional wording falls back to the selection;
+invalid selections fall back to the deterministic dashboard. Sunday review and plan actions come
+from Python. The prompt excludes check-in notes, routes, names, raw GPS, and dates.
+
+`--eval --models qwen2.5:3b-instruct,qwen3.5:4b` ran five fictional cases per model on Linux.
+Both accepted 5/5 under budget. Median generation was 6.56 s for Qwen2.5 and 17.35 s for
+Qwen3.5. The recommendation favors speed among models that meet the acceptance threshold.
+The small benchmark is a compatibility check, with Mac and other model tags still to verify.
 
 ## Verification
 
@@ -50,7 +69,7 @@ job and iCloud and iPhone path remain in the [roadmap](../ROADMAP.md).
 ## Changes to review
 
 1. For each new fact, check the deterministic source, units, missing readings and allowed sentence
-   variants. The model returns IDs and the renderer resolves checked text from the candidate list.
+   variants. The model returns IDs and may return cited wording. Each clause has to match the cited meaning; invalid wording falls back to checked selection.
    Findings offered for prioritization must come from the deterministic daily brief.
    Keep dates, routes, names, notes and activity IDs out of model prompts.
 2. Keep inference at loopback, require cloud-disabled status and use the local model suffix.
