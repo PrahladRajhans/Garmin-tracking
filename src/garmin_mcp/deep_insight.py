@@ -261,7 +261,7 @@ SYSTEM = (
     "Keep counts, duration, load and intensity distinct. Treat a single workout as one example. "
     "For the question, ask whether the measured pattern repeats in the next comparable record. "
     "Earlier rows are context only and can overlap current windows. Stay with what was measured. "
-    "Use measured verbs such as was, rose, fell or stayed. Avoid causes, diagnoses, ratios, advice and forecasts. "
+    "Avoid causes, diagnoses, how the athlete felt, calculated ratios, advice and forecasts. "
     "Use at least two current domains. If nothing useful stands out, return empty strings and an empty list."
 )
 REVIEW_REASONS = ("supported", "wrong_comparison", "unsupported_claim", "advice_or_prediction")

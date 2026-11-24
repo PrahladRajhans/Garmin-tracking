@@ -176,6 +176,8 @@ budget completed with an accepted direct fallback after 341 seconds end to end. 
 thinking draft hit its time budget. These checks used fictional readings on Linux CPU.
 The running-block trace also showed that Qwen used "felt steady" when it had a recorded
 moving pulse comparison. The Running prompt now asks for measured directions and time windows.
+Changing the shared observation instructions caused a Sunday regression in the Linux fixture.
+Running-specific wording is kept in its own prompt so the tested Sunday wording is preserved.
 
 ## Changes to review
 
