@@ -145,6 +145,8 @@ switching to that tag. When memory is limited, compare using the existing `qwen3
 Run `.venv/bin/garmin-mcp-verify --replay-dashboard` on the Mac to check up to 36
 monthly snapshots from the local archive. This uses a temporary SQLite copy and prints
 aggregate checks. See [archive replay details](docs/REPOSITORY_REVIEW.md#how-to-validate-on-the-mac).
+For backups, retain both the SQLite database and the FIT files. See the
+[backup procedure](docs/OPERATIONS.md#backups-and-rollback).
 
 ## Private phone access (optional)
 

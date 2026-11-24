@@ -209,6 +209,10 @@ workouts** opens the recorded summary for other activities. The **Training**
 page can show whether Garmin readiness lined up with lower or higher heart rate on comparable
 runs in your records. See [the method and limits](METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
 
+The local archive preserves received FIT files and changed source payloads. Chart sampling
+only affects the dashboard. Include both the database and the FIT directory in backups.
+[Storage and restore](docs/OPERATIONS.md#backups-and-rollback)
+
 ### Local workout weather and AQI
 
 Saved Garmin activity weather appears as a snapshot when available. You can add dated source

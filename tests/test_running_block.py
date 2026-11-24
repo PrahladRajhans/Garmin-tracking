@@ -66,6 +66,6 @@ def test_running_chart_uses_elapsed_crossings_instead_of_nearest_sample():
     metric = ("cadence_spm", "Cadence", "Cadence", str)
     svg = dashboard._paired_chart(data, metric, (), 30, crossings=(20, 65), elapsed_end=66)
     assert 'class="split-guides"' in svg
-    assert 'x1="132.00" x2="132.00"' in svg
+    assert 'x1="125.03" x2="125.03"' in svg
     assert "Km 1 · 0:20 elapsed" in svg and "Km 2 · 1:05 elapsed" in svg
     assert 'class="split-guides"' not in dashboard._paired_chart(data, metric, (), 30)

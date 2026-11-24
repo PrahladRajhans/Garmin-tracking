@@ -51,6 +51,12 @@ WAL, copying only `garmin.db` while writers are active can omit committed change
 SQLite's online backup API (`sqlite3.Connection.backup`) or stop writers and perform a consistent
 backup. Keep backups private; the generated dashboard is health data too.
 
+Back up the `fit/` directory with the SQLite database. The database includes superseded
+JSON payloads in `raw_payload_history`; `data_coverage()` reports counts by kind. Sync and
+import keep distinct received FIT binaries on disk. To restore into a different directory,
+check the stored FIT paths before reparsing. Earlier revisions replaced before v0.26.0
+can only be recovered from an earlier backup or another export, if available.
+
 For a code regression already merged, revert the specific change through a tested PR. Avoid
 rewriting main: the Mac follows main automatically. Repository rollback does not require
 discarding raw Garmin payloads, which permit analytics to be rebuilt. Live restore and Mac

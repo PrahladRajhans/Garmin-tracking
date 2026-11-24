@@ -284,3 +284,7 @@ links. Race estimates and extra form trends stay in disclosures. Individual runs
 moving-time halves and prior form evidence. The timeline's native Kilometre splits control
 reveals the same elapsed-time guides on pace, cadence and elevation without changing
 metric overlays. The existence of a guide depends on usable full-resolution distance.
+For the three recent timelines, target about 200 display points and use a minimum five-second
+interval. The complete received FIT data stays in the local archive and drives metrics and split
+times. In the trace-heavy synthetic fixture, the uncompressed HTML went from about 1.24 MB to
+1.93 MB with the denser charts.

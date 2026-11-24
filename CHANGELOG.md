@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   check. Use the Kilometre splits toggle to align guides across the run timeline.
 - Give Running its own editable local Ollama prompt and evidence review. Add plain-language
   explanations of training load and HRV, and improve the selected-chart readout across pages.
+- Double the target point count on recent run timelines. Preserve changed raw Garmin responses
+  and FIT file revisions, and roll back failed FIT table replacements.
 
 - Expose the thinking draft budget, an editable local coaching voice and per-topic prompts.
 - Carry reviewed factual context across days and show the interpretation lens and evidence in Today.

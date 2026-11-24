@@ -1,9 +1,7 @@
 """SQLite storage.
 
-Raw-first design: every Garmin response is stored verbatim (``raw_daily`` / ``raw_range`` /
-``activity_details``) so nothing is lost and later phases can re-derive normalised tables
-without re-downloading. Activities and FIT streams get typed tables because they are queried
-heavily.
+Raw-first storage retains fetched payloads and superseded revisions. Derived tables can be
+rebuilt without downloading the same readings again.
 """
 
 from __future__ import annotations
@@ -59,6 +57,38 @@ CREATE TABLE IF NOT EXISTS activity_details (
     activity_id INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, fetched_at TEXT NOT NULL,
     PRIMARY KEY (activity_id, kind)
 );
+
+CREATE TABLE IF NOT EXISTS raw_payload_history (
+    id INTEGER PRIMARY KEY, kind TEXT NOT NULL, dataset TEXT NOT NULL,
+    record_key TEXT NOT NULL, source TEXT, fetched_at TEXT NOT NULL, payload TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_raw_payload_history_key ON raw_payload_history(kind, dataset, record_key);
+
+CREATE TRIGGER IF NOT EXISTS retain_daily_payload BEFORE UPDATE ON raw_daily
+WHEN OLD.payload IS NOT NEW.payload OR OLD.source IS NOT NEW.source
+BEGIN
+    INSERT INTO raw_payload_history(kind, dataset, record_key, source, fetched_at, payload)
+    VALUES ('daily', OLD.dataset, OLD.day, OLD.source, OLD.fetched_at, OLD.payload);
+END;
+CREATE TRIGGER IF NOT EXISTS retain_range_payload BEFORE UPDATE ON raw_range
+WHEN OLD.payload IS NOT NEW.payload OR OLD.source IS NOT NEW.source
+BEGIN
+    INSERT INTO raw_payload_history(kind, dataset, record_key, source, fetched_at, payload)
+    VALUES ('range', OLD.dataset, OLD.start_day || '..' || OLD.end_day,
+            OLD.source, OLD.fetched_at, OLD.payload);
+END;
+CREATE TRIGGER IF NOT EXISTS retain_activity_detail BEFORE UPDATE ON activity_details
+WHEN OLD.payload IS NOT NEW.payload
+BEGIN
+    INSERT INTO raw_payload_history(kind, dataset, record_key, fetched_at, payload)
+    VALUES ('detail', OLD.kind, OLD.activity_id, OLD.fetched_at, OLD.payload);
+END;
+CREATE TRIGGER IF NOT EXISTS retain_activity_summary BEFORE UPDATE OF summary ON activities
+WHEN OLD.summary IS NOT NULL AND OLD.summary IS NOT NEW.summary
+BEGIN
+    INSERT INTO raw_payload_history(kind, dataset, record_key, fetched_at, payload)
+    VALUES ('summary', 'activities', OLD.activity_id, OLD.updated_at, OLD.summary);
+END;
 
 CREATE TABLE IF NOT EXISTS fit_sessions (
     activity_id INTEGER PRIMARY KEY, sport TEXT, sub_sport TEXT, payload TEXT
@@ -148,8 +178,9 @@ def has_daily(conn: sqlite3.Connection, dataset: str, day: str) -> bool:
 
 def put_daily(conn: sqlite3.Connection, dataset: str, day: str, source: str, payload: Any) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO raw_daily(dataset, day, source, payload, fetched_at) "
-        "VALUES (?,?,?,?,?)",
+        "INSERT INTO raw_daily(dataset, day, source, payload, fetched_at) VALUES (?,?,?,?,?) "
+        "ON CONFLICT(dataset,day) DO UPDATE SET source=excluded.source, payload=excluded.payload, "
+        "fetched_at=excluded.fetched_at",
         (dataset, day, source, dumps(payload), now_iso()),
     )
 
@@ -158,8 +189,9 @@ def put_range(
     conn: sqlite3.Connection, dataset: str, start: str, end: str, source: str, payload: Any
 ) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO raw_range(dataset, start_day, end_day, source, payload, fetched_at)"
-        " VALUES (?,?,?,?,?,?)",
+        "INSERT INTO raw_range(dataset, start_day, end_day, source, payload, fetched_at) "
+        "VALUES (?,?,?,?,?,?) ON CONFLICT(dataset,start_day,end_day) "
+        "DO UPDATE SET source=excluded.source, payload=excluded.payload, fetched_at=excluded.fetched_at",
         (dataset, start, end, source, dumps(payload), now_iso()),
     )
 
@@ -206,8 +238,8 @@ def put_activity_detail(
     conn: sqlite3.Connection, activity_id: int, kind: str, payload: Any
 ) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO activity_details(activity_id, kind, payload, fetched_at) "
-        "VALUES (?,?,?,?)",
+        "INSERT INTO activity_details(activity_id, kind, payload, fetched_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(activity_id,kind) DO UPDATE SET payload=excluded.payload, fetched_at=excluded.fetched_at",
         (activity_id, kind, dumps(payload), now_iso()),
     )
 
@@ -266,6 +298,7 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
             pass  # not built yet
     completed = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
     retry = conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
-    return {"tidy": tidy, "daily": daily, "ranges": ranges, "activities": acts,
+    revisions = dict(conn.execute("SELECT kind, COUNT(*) FROM raw_payload_history GROUP BY kind"))
+    return {"tidy": tidy, "daily": daily, "ranges": ranges, "activities": acts, "raw_revisions": revisions,
             "last_sync": dict(last) if last else None,
             "last_full_sync": completed[0] if completed else None, "retry_required": retry is not None}

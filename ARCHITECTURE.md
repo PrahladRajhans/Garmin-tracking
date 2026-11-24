@@ -33,7 +33,9 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 1. **launchd** runs `garmin-mcp-sync --days 3` every 3 hours on the Mac.
 2. **Gate** (`sync.gate`): full sync only if ≥ 11 h since the last good sync, or today's activity list (1 cheap call) has a new activity. The user syncs the phone about twice a day, so this catches both.
 3. **Self-update** (`autoupdate.py`) fast-forwards the repo to `origin/main` before syncing, and reinstalls if `pyproject.toml` changed. **Settings** are seeded from `config/athlete.json`.
-4. **Store raw first**: every API response is saved verbatim (`raw_daily`, `raw_range`); FIT files are parsed into `fit_*` tables. Raw data is never overwritten by a lower-priority source.
+4. **Store raw first**: saved JSON keys keep the latest payload in the raw tables and retain changed
+   predecessors in `raw_payload_history`. FIT bytes are kept on disk, with distinct revisions by hash.
+   Decoding loads the full available records into `fit_*` tables. Timeline sampling happens in the renderer.
 5. **Normalize**: tidy tables are rebuilt from raw. Source priority is Personal API, then unofficial, then export, merged field by field.
 6. **Rebuild derived**: `loads.rebuild` (thresholds, per-activity load, fitness), then `dashboard.build`.
    Sync, the dashboard CLI, and the MCP `build_dashboard` tool then call

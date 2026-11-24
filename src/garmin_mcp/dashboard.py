@@ -74,7 +74,7 @@ def _last_full_night(conn: sqlite3.Connection, end: str) -> str | None:
 
 
 TRACE_RUNS = 3        # second-by-second timelines are kept for the latest runs only
-TRACE_POINTS = 100    # points per timeline (about one every 18 s on a 30-min run)
+TRACE_POINTS = 200    # about one every 9 s on a 30-minute run
 SCATTER_POINTS = 120  # most recent days drawn per pattern; statistics use every day
 
 
@@ -108,7 +108,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
             "ORDER BY julianday(start_time_local) DESC LIMIT 8", (end,)):
         b = running.running_breakdown(conn, aid, weight, read_metrics=read_run)
         if b.get("available"):
-            interval = max(10, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0)
+            interval = max(5, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0)
                                          / TRACE_POINTS))
             trace = (coaching.activity_stream(conn, aid, interval)
                      if len(runs) < TRACE_RUNS else {})  # older runs: summary page only
@@ -1665,7 +1665,7 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
         samples = series(key)
         if len(a.keys() & samples.keys()) >= 3:
             options.append((key, label, axis, fmt, samples))
-    h, left, right, top, bottom = 186, 52, w - (47 if options else 24), 28, 140
+    h, left, right, top, bottom = 186, 52, w - (47 if options or crossings else 24), 28, 140
     start, end = stream[0]["t_s"], max(stream[-1]["t_s"], elapsed_end)
 
     def x(seconds: float) -> float:

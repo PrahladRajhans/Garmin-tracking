@@ -194,8 +194,7 @@ class Syncer:
             return
         path = None
         if self.store_fit_files:
-            path = fit_dir() / f"{activity_id}.fit"
-            path.write_bytes(data)
+            path = fit.retain_file(fit_dir(), activity_id, data)
             self.conn.execute(
                 "UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), activity_id)
             )
