@@ -203,7 +203,7 @@ def test_current_garmin_download_gate_can_refresh_old_html(monkeypatch, tmp_path
     monkeypatch.setattr(dashboard.Path, "home", classmethod(lambda cls: tmp_path))
     target = tmp_path / "dashboard" / "index.html"
     target.parent.mkdir()
-    target.write_text("previous release")
+    target.write_text(f'<meta name="garmin-dashboard" content="{dashboard.__version__}/old">')
     sync.main()
     assert "Dashboard built" in target.read_text() and not dashboard.needs_rebuild()
     assert (drive / "Garmin" / "dashboard.html").read_text() == target.read_text()
@@ -231,4 +231,23 @@ def test_failed_dashboard_build_retries_even_if_the_next_fetch_is_skipped(monkey
     monkeypatch.setattr(dashboard, "build", build)
     assert "dashboard" in sync._refresh_dashboard_if_needed()
     assert not conn.execute("SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
+    conn.close()
+
+
+def test_skipped_fetch_retries_narration_without_replacing_the_snapshot(monkeypatch, tmp_path):
+    from garmin_mcp import dashboard, narrator
+
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))
+    queued = []
+    monkeypatch.setattr(narrator, "start_worker",
+                        lambda _, path, stamp: queued.append((path, stamp)))
+    conn = db.connect(tmp_path / "garmin.db")
+    narrator.configure(conn, enable=True)
+    path = dashboard.build(conn)
+    with conn:
+        conn.execute("DELETE FROM meta WHERE key='dashboard_rebuild_pending'")
+    previous = dashboard._snapshot_id(path)
+    assert sync._refresh_dashboard_if_needed() == {}
+    assert queued == [(path, previous)]
+    assert dashboard._snapshot_id(path) == previous
     conn.close()

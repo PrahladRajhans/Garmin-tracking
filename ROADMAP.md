@@ -69,6 +69,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.21.0 | Experiment follow-up, slimmer HTML and opt-in run weather and AQI | Merged in PR #25 |
 | 0.22.0 | Optional on-Mac Ollama narrator with inspectable, deterministic facts | Local and mocked verification; owner Mac and iPhone acceptance pending |
 | 0.23.0 | Responsive charts, single-page runs with selectable overlays, workout narration and paired conditions evidence | Synthetic viewport and data checks; owner coverage and physical-device check pending |
+| 0.24.0 | Local AI diagnostics and evidence checks, guidance changes, post-run reviews, sleep summaries and timing plan, mobile navigation | Mac Ollama, launchd, iCloud and iPhone acceptance pending. See [handover](HANDOVER.md#latest-changes-for-reviewers) |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -113,7 +114,37 @@ The Mac holds the original Garmin history and account access. Synthetic checks c
 individual formulas, mappings and edge cases. The recorded agreement figures are historical
 until the owner dataset is checked again.
 
+### Coaching and Sleep follow-up
+
+1. Preserve the current working tree and the Mac's local-only inference boundary. Record changes
+   in published guidance, and turn a qualifying matched run into an evidence-linked next check.
+2. Replace chart prompts with readings. Make Sleep a night-first view with week, month and
+   year context. Add a stable wake anchor, an inspectable bedtime step and a shortfall scenario.
+3. Give the local model eligible cross-signal findings to prioritize while Python owns claims
+   and actions. Verify repeated builds, insufficient data, stale syncs, links and narrow layouts.
+4. Messaging concept: a private, opt-in digest containing one reviewed change and a link to
+   the local dashboard. Start with a local inbox and deduplicate by snapshot and finding;
+   evaluate generic push alerts with quiet hours and private links only after checking delivery
+   time and notification fatigue. Keep health details inside the dashboard.
+5. Separate follow-up work: persist user-approved dated sessions before scoring planned vs done.
+   Validate sleep tags, check-ins and bedtime experiments against the archive before using them
+   to adjust guidance.
+
 ### Athlete intelligence follow-up
+
+The current local-AI and dashboard work follows this sequence through device acceptance:
+
+1. Verify the narrator on synthetic records across Today, Recovery, Sleep, Training, experiment,
+   FIT-run and workout detail. Cover opt-in, unavailable service, invalid model selections, sync
+   retry, and concurrent snapshot replacement. Keep the source rows visible.
+2. Verify the dashboard's links, reading order, charts, keyboard controls, and scrolling in both
+   themes at phone, tablet and desktop widths. Audit missing-data states and the saved HTML stamp.
+3. Validate the Mac checkout used by launchd after rollout. Check `garmin-mcp-narrator --check`
+   against the archive, let a scheduled run exercise the skipped-fetch path, and reload Safari.
+   Compare local and iCloud snapshots and open key charts and activity links on the physical iPhone.
+4. Measure cold and warm inference on the Mac and test priority choices against dated records.
+   Before widening the model's scope, review where it picked weaker evidence or lacked coverage.
+   Profile the saved dashboard on the phone before changing the chart or history retention limits.
 
 | Order | Deliverable | Evidence needed |
 |---|---|---|

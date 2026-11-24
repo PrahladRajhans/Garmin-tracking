@@ -1,4 +1,4 @@
-"""Optional prose for dashboard facts. The sync and renderer never call Ollama."""
+"""Optional local insights from checked facts and findings."""
 
 from __future__ import annotations
 
@@ -14,10 +14,13 @@ import subprocess
 import sys
 import time
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from garmin_mcp import coach_review
 
 DEFAULT_MODEL = "qwen2.5:3b-instruct"
 ITEM_SECONDS = 20
@@ -36,16 +39,13 @@ _NUMBER_WORD = re.compile(
 _BANNED = re.compile(r"\b(?:diagnos\w*|diseases?|injur(?:y|ies)[\s-]+risks?|guarantee\w*|"
                      r"you\s+(?:should|must|need to)|recommend\w*|prescri\w*)\b", re.IGNORECASE)
 _SYSTEM = (
-    "Rewrite the provided dashboard facts into one to three plain, friendly, factual sentences, "
-    "at most 60 words. Use only the given facts. Never add or infer advice, interpretation, "
-    "predictions, medical claims, explanations, comparisons, or numbers. Keep the meaning, "
-    "units, and source of each fact you use. Copy numbers as digits. Keep a pace such as m:ss "
-    "as written. Choose and order the permitted sentences that best summarize the facts. "
-    "Return them in the sentences array, with at most one statement about each fact."
+    "Choose the one to three numbered sentences that best summarize the readings. "
+    "Lead with the most useful reading and choose at most one sentence about each metric. "
+    "Return only their IDs in order in the selection array. Do not write sentences."
 )
 
-# A model may select, order and phrase these statements. Python verifies the actual claim
-# by checking the metric, value and unit together as well as the overall text limits.
+# A model selects and orders these statements. Python supplies their wording and verifies
+# each claim's metric, value and unit as well as the overall text limits.
 _CLAUSES = {
     "recovery percent": ("Your recovery score is {}%.", "Recovery is {}%."),
     "recovery band": ("Your recovery falls in the {} range.", "Your recovery band is {}."),
@@ -69,6 +69,9 @@ _CLAUSES = {
     "average heart rate bpm": ("Your heart rate averaged {} bpm.", "Average heart rate was {} bpm."),
     "cadence steps per minute": ("Your cadence averaged {} steps per minute.",
                                  "Average cadence was {} steps/min."),
+    "weekly workouts with load data": ("The weekly count of workouts with load data was {}.",),
+    "weekly training load points": ("Your weekly training load was {} points.",),
+    "weekly average sleep hours": ("Recorded nights averaged {} hours of sleep this week.",),
 }
 
 Facts = dict[str, int | float | str]
@@ -78,14 +81,55 @@ Facts = dict[str, int | float | str]
 class Item:
     kind: str
     facts: Facts
+    choices: tuple[dict, ...] = ()
 
     @property
     def prompt(self) -> str:
+        if self.choices:
+            return _json({"task": self.kind, "evidence": self.facts, "findings": [
+                {"id": index, **choice} for index, choice in enumerate(self.choices, 1)
+            ]})
         return _json({"item": self.kind, "facts": self.facts})
 
     @property
     def system(self) -> str:
-        return f"{_SYSTEM}\n\nPermitted sentences: {_json(list(_sentences(self.facts)))}"
+        if self.choices:
+            return ("Choose the most useful follow-up for the supplied task and evidence. "
+                    "Weigh the strength and relevance of the evidence and prioritize an actionable "
+                    "follow-up consistent with recovery. Treat an association as weaker than direct "
+                    "measurements over several days. Return the chosen finding ID only in the JSON field choice.")
+        return f"{_SYSTEM}\n\nPermitted sentences: {_json(dict(enumerate(_sentences(self.facts), 1)))}"
+
+    @property
+    def schema(self) -> dict:
+        if self.choices:
+            fields = {"choice": {"type": "integer", "enum": list(range(1, len(self.choices) + 1))}}
+        else:
+            fields = {"selection": {
+                "type": "array", "minItems": 1, "maxItems": min(3, len(self.facts)),
+                "items": {"type": "integer", "enum": list(range(1, len(_sentences(self.facts)) + 1))},
+            }}
+        return {"type": "object", "additionalProperties": False,
+                "required": list(fields), "properties": fields}
+
+    def response(self, raw: Any) -> str | int | None:
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(value, dict):
+            return None
+        if self.choices:
+            choice = value.get("choice") if value.keys() == {"choice"} else None
+            return choice if type(choice) is int and 1 <= choice <= len(self.choices) else None
+        selected = value.get("selection") if value.keys() == {"selection"} else None
+        sentences = list(_sentences(self.facts))
+        if not isinstance(selected, list) or not 1 <= len(selected) <= min(3, len(self.facts)):
+            return None
+        if not all(type(index) is int and 1 <= index <= len(sentences) for index in selected):
+            return None
+        text = validate(" ".join(sentences[index - 1] for index in selected), self.facts)
+        return _grounded(text, self.facts) if text else None
 
     def key(self, model: str) -> str:
         return hashlib.sha256(_json([1, model, self.system, self.prompt]).encode()).hexdigest()
@@ -123,8 +167,8 @@ def update_settings(conn: sqlite3.Connection, enable: bool | None,
                     model: str | None) -> dict[str, Any]:
     before = settings(conn)
     state = configure(conn, enable, model)
-    if before["enabled"] and state != before:
-        # Remove summaries for the old setting from the local and iCloud copies immediately.
+    if state != before:
+        # Enabling starts work against the existing archive. Disabling removes saved prose.
         from garmin_mcp import dashboard
 
         try:
@@ -156,6 +200,14 @@ def items(data: dict) -> dict[str, Item]:
         candidates["today"] = Item("today", _facts(
             recovery_percent=rec["pct"], recovery_band=rec["label"],
             Garmin_readiness_score=rec["garmin_readiness"]))
+    focus = data.get("brief", {}).get("focus", {})
+    findings = focus.get("findings", [])
+    if today and focus.get("target") and len(findings) > 1:
+        # These findings come only from daily_focus, with program-authored text and aggregates.
+        choices = tuple({field: item.get(field, "") for field in ("title", "detail", "basis", "action")}
+                        for item in findings)
+        candidates["focus"] = Item("prioritize a daily follow-up",
+                                   _facts(recovery_band=rec["label"]), choices)
     night = data.get("night") or {}
     recorded = data.get("night_summary")
     if today and recorded and night.get("day") == data["end"]:
@@ -165,6 +217,14 @@ def items(data: dict) -> dict[str, Item]:
             Garmin_sleep_score=night["overall"] if night.get("overall") is not None else saved_score,
             Garmin_sleep_need_hours=sleep["need_h"] if sleep.get("need_source") == "Garmin sleep need"
             else None))
+    review = data.get("weekly_review")
+    if today and review:
+        week, rest = review["week"], review["recovery"]
+        candidates["training"] = Item("seven-day training review", _facts(
+            weekly_workouts_with_load_data=week["sessions"] or None,
+            weekly_training_load_points=week["trimp"] if week["sessions"] else None,
+            weekly_average_sleep_hours=round(rest["avg_sleep_h"], 1)
+            if rest["avg_sleep_h"] is not None else None))
     trial = data.get("trial") or {}
     if trial.get("active"):
         target = trial["trial"]["target"].get("cadence_spm")
@@ -174,6 +234,15 @@ def items(data: dict) -> dict[str, Item]:
             reviewed_attempts=len(attempts), target_cadence_steps_per_minute=target,
             minutes_near_target_on_last_attempt=last.get("minutes_at_target"),
             recorded_moving_minutes_on_last_attempt=last.get("moving_minutes")))
+    if today and data["runs"]:
+        newest = data["runs"][0]
+        if questions := coach_review.run_questions(newest):
+            match = newest["comparable_effort"]
+            candidates[f'run-check-{newest["activity_id"]}'] = Item(
+                "choose which uncertainty to check before drawing a conclusion from this run",
+                _facts(matched_runs=len(match["matches"]), difference_bpm=match["difference_hr_bpm"],
+                       earlier_low_bpm=match["observed_hr_range_bpm"][0],
+                       earlier_high_bpm=match["observed_hr_range_bpm"][1]), questions)
     for run in data["runs"]:
         cadence = run["form"].get("cadence_spm") or {}
         hr = run.get("avg_hr")
@@ -189,7 +258,7 @@ def items(data: dict) -> dict[str, Item]:
             workout_distance_km=workout.get("distance_km"),
             average_heart_rate_bpm=round(hr) if isinstance(hr, (float, int))
             and math.isfinite(hr) else None))
-    return {name: item for name, item in candidates.items() if item.facts}
+    return {name: item for name, item in candidates.items() if item.facts or item.choices}
 
 
 def _number_key(token: str) -> str:
@@ -243,26 +312,7 @@ def _grounded(text: str, facts: Facts) -> str | None:
     return " ".join(verified.values())
 
 
-def _response_text(response: Any, facts: Facts) -> str | None:
-    if not isinstance(response, str):
-        return None
-    try:
-        decoded = json.loads(response)
-    except ValueError:
-        return None
-    if not isinstance(decoded, dict) or decoded.keys() != {"sentences"}:
-        return None
-    sentences = decoded["sentences"]
-    if not isinstance(sentences, list) or not 1 <= len(sentences) <= 3 or not all(
-        isinstance(sentence, str) and sentence.endswith(".") and "\n" not in sentence
-        for sentence in sentences
-    ):
-        return None
-    text = validate(" ".join(sentences), facts)
-    return _grounded(text, facts) if text else None
-
-
-def _read(db: sqlite3.Connection, item: Item, model: str) -> tuple[str | None] | None:
+def _read(db: sqlite3.Connection, item: Item, model: str) -> tuple[str | int | None] | None:
     row = db.execute("SELECT value FROM meta WHERE key=?", ("narrator:" + item.key(model),)).fetchone()
     return (json.loads(row[0]),) if row else None
 
@@ -277,8 +327,13 @@ def cached(conn: sqlite3.Connection, data: dict) -> tuple[dict, bool]:
         if found is None:
             missing = True
         elif found[0]:
-            labels[name] = {"text": found[0], "facts": item.facts}
+            labels[name] = ({"choice": found[0]} if item.choices else
+                            {"text": found[0], "facts": item.facts})
     return labels, missing
+
+
+def summary_id(summaries: dict) -> bytes:
+    return hashlib.sha256(_json(summaries).encode()).hexdigest().encode("ascii")
 
 
 class OllamaUnavailable(Exception):
@@ -319,7 +374,8 @@ def _request(method: str, path: str, deadline: float, body: dict | None = None) 
         client.close()
 
 
-def generate(conn: sqlite3.Connection, data: dict, deadline: float) -> bool:
+def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
+             still_current: Callable[[], bool] | None = None) -> bool:
     """Called only in the detached worker. Returns whether new text was accepted."""
     state = settings(conn)
     if not state["enabled"]:
@@ -337,24 +393,21 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float) -> bool:
         return False
     accepted = False
     for item in pending:
-        if time.monotonic() >= deadline or settings(conn) != state:
+        if (time.monotonic() >= deadline or settings(conn) != state
+                or (still_current is not None and not still_current())):
             break
         item_deadline = min(deadline, time.monotonic() + ITEM_SECONDS)
         try:
             response = _request("POST", "/api/generate", item_deadline, {
                 "model": model + ":local", "system": item.system, "prompt": item.prompt,
-                "format": {"type": "object", "additionalProperties": False,
-                           "required": ["sentences"], "properties": {"sentences": {
-                               "type": "array", "minItems": 1, "maxItems": min(3, len(item.facts)),
-                               "items": {"type": "string", "enum": list(_sentences(item.facts))},
-                           }}},
-                "stream": False, "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 128},
+                "format": item.schema, "stream": False,
+                "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 48},
             })
         except (OllamaUnavailable, TimeoutError):
             continue  # a failed request can be tried again on the next sync
         if response.get("done") is not True or response.get("done_reason") == "length":
             continue
-        text = _response_text(response.get("response"), item.facts)
+        text = item.response(response.get("response"))
         with conn:
             conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)",
                          ("narrator:" + item.key(model), _json(text)))
@@ -364,6 +417,40 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float) -> bool:
 
 def _sync_in_progress(conn: sqlite3.Connection) -> bool:
     return conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone() is not None
+
+
+def check(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Inspect Ollama and coverage without sending health facts to the model."""
+    from garmin_mcp import dashboard
+
+    state = settings(conn)
+    try:
+        deadline = time.monotonic() + 5
+        cloud = _request("GET", "/api/status", deadline).get("cloud")
+        if not isinstance(cloud, dict) or cloud.get("disabled") is not True:
+            service = "cloud_disabled_not_verified"
+        else:
+            models = _request("GET", "/api/tags", deadline).get("models", [])
+            tag = state["model"] if ":" in state["model"] else state["model"] + ":latest"
+            installed = isinstance(models, list) and any(
+                isinstance(row, dict) and row.get("name") == tag for row in models)
+            service = "ready" if installed else "model_not_installed"
+    except (OllamaUnavailable, TimeoutError):
+        service = "local_api_unavailable"
+    coverage = {}
+    applied = None
+    if state["enabled"]:
+        data = dashboard.collect(conn)
+        for name, item in items(data).items():
+            found = _read(conn, item, state["model"])
+            group = name.partition("-")[0]
+            counts = coverage.setdefault(group, {"ready": 0, "pending": 0, "rejected": 0})
+            counts["pending" if found is None else "ready" if found[0] else "rejected"] += 1
+        path, _ = dashboard._snapshot_paths()
+        summaries, _ = cached(conn, data)
+        applied = dashboard._narration_id(path) == summary_id(summaries)
+    return {**state, "ollama": service, "coverage": coverage,
+            "cache_matches_dashboard": applied, "sync_incomplete": _sync_in_progress(conn)}
 
 
 def start_worker(conn: sqlite3.Connection, path: Path, snapshot: bytes) -> None:
@@ -386,21 +473,31 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
 
     from garmin_mcp import dashboard, db
 
-    deadline = time.monotonic() + SYNC_SECONDS
+    path = out_dir / "index.html"
+    wait_until = time.monotonic() + SYNC_SECONDS
     lock_path = database.with_name(database.name + ".narrator.lock")
     with lock_path.open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        # A newer build should get a turn once the older worker releases the database lock.
+        while dashboard._snapshot_id(path) == snapshot and time.monotonic() < wait_until:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                time.sleep(0.25)
+        else:
             return
-        if dashboard._snapshot_id(out_dir / "index.html") != snapshot:
+        if dashboard._snapshot_id(path) != snapshot:
             return
         conn = db.connect(database)
         try:
-            if (settings(conn)["enabled"] and not _sync_in_progress(conn)
-                    and generate(conn, dashboard.collect(conn), deadline)
-                    and not _sync_in_progress(conn)):
-                dashboard.build(conn, only_if_snapshot=snapshot, out_dir=out_dir)
+            if settings(conn)["enabled"] and not _sync_in_progress(conn):
+                data = dashboard.collect(conn)
+                generate(conn, data, time.monotonic() + SYNC_SECONDS,
+                         still_current=lambda: dashboard._snapshot_id(path) == snapshot
+                         and not _sync_in_progress(conn))
+                summaries, _ = cached(conn, data)
+                if dashboard._narration_id(path) != summary_id(summaries):
+                    dashboard.build(conn, only_if_snapshot=snapshot, out_dir=out_dir)
         finally:
             conn.close()
 
@@ -415,6 +512,8 @@ def main() -> None:
     group.add_argument("--disable", dest="enable", action="store_false")
     parser.set_defaults(enable=None)
     parser.add_argument("--model", help=f"Downloaded Ollama model tag (default {DEFAULT_MODEL})")
+    parser.add_argument("--check", action="store_true",
+                        help="Check local Ollama and count ready, pending and rejected summaries")
     parser.add_argument("--worker", nargs=3, metavar="ARG", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
@@ -427,7 +526,7 @@ def main() -> None:
             state = update_settings(conn, args.enable, args.model)
         except ValueError as exc:
             parser.error(str(exc))
-        print(json.dumps(state))
+        print(json.dumps(check(conn) if args.check else state))
     finally:
         conn.close()
 

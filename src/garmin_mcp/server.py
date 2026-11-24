@@ -650,8 +650,8 @@ def _mark_dashboard_stale(conn: sqlite3.Connection) -> None:
 def ai_narrator(enable: bool | None = None, model: str | None = None) -> dict[str, Any]:
     """Show or change optional local-only Ollama narration. Off by default.
 
-    Pull the local model before enabling. The next sync tries to write summaries in
-    the background. During setup and any failures the dashboard uses its Python text.
+    Pull the local model before enabling. Background work starts against the existing
+    archive and retries on later scheduled runs. The dashboard renders immediately.
     """
     from garmin_mcp import narrator
 

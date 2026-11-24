@@ -51,8 +51,14 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
 
 ## Local AI narrator (optional)
 
-Garmin uses Python for scores, workout guidance, and the weekly plan. The narrator adds a brief
-summary from those existing readings and runs in the background after a completed sync.
+Set a sleep schedule separately in Garmin Connect when you want a watch reminder. The local
+dashboard's sleep schedule is a suggestion. Reminder behavior depends on device settings.
+See [Garmin sleep tracking and settings](https://support.garmin.com/en-IN/?faq=mBRMf4ks7XAQ03qtsbI8J6).
+
+
+Garmin uses Python for scores, workout guidance, and the weekly plan. Ollama adds checked
+summaries and can prioritize one of several evidence-backed daily follow-ups. It runs in the
+background against the existing archive after enabling, dashboard builds, and scheduled syncs.
 
 1. Install the current [Ollama for macOS](https://docs.ollama.com/macos) and open it. The
    [official installer](https://ollama.com/download) also offers a Terminal installer,
@@ -82,10 +88,22 @@ summary from those existing readings and runs in the background after a complete
    Allow memory for macOS and the model's working context. The
    [3B tag](https://ollama.com/library/qwen2.5:3b-instruct) uses the Qwen license and the
    [7B tag](https://ollama.com/library/qwen2.5:7b-instruct) uses Apache 2.0.
-4. Wait for the next full sync, then reload the local or iCloud dashboard. Today and run
-   and recent workout detail pages show **AI summary · facts checked** and **Show the facts** when prose is available.
-   Slow or unavailable Ollama leaves the normal dashboard available. An existing private
-   hosted copy receives cached summaries on its next successful publish.
+4. Reload the local or iCloud dashboard after the worker has had time to run. Eligible
+   pages show **AI summary · facts checked** and **Show the facts**. Today can also show
+   an **AI-prioritized follow-up**. If results are missing, check the service and the local cache:
+
+   ```bash
+   .venv/bin/garmin-mcp-narrator --check
+   .venv/bin/garmin-mcp-dashboard
+   ```
+
+   `ready` for Ollama means cloud is disabled and the configured local tag is installed.
+   The coverage counts distinguish checked results, pending work, and rejected output for the
+   current archive. `cache_matches_dashboard` shows whether accepted results are in the local
+   file. The dashboard command starts a background attempt for pending requests. If the check reports
+   an incomplete sync, finish syncing before retrying. An existing private hosted copy receives
+   cached summaries on its next successful publish. Check the dashboard build time at the bottom
+   if an open tab or a copy appears unchanged.
 
 Turn it off with `.venv/bin/garmin-mcp-narrator --disable` or `ai_narrator(enable=False)`.
 The Mac and iCloud copies rebuild without summaries. The CLI without arguments shows the

@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.23.0. The 52 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama summaries and private phone hosting are off by default.
+> **Status:** v0.24.0. The 52 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama insights and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -44,9 +44,10 @@ Garmin Connect --(scheduled sync)--> local SQLite (~/.garmin-mcp) <--reads-- MCP
 The sync job stores every Garmin response verbatim plus parsed FIT streams, so the assistant reads
 fast local data and Garmin is called only by the scheduled sync (or the `refresh_data` tool).
 
-The optional local narrator summarizes Today, sleep, experiments, recent runs and other recent
-workouts on the Mac. Python supplies every number, recommendation, and training decision.
-[Setup and checks](docs/OLLAMA.md)
+The optional local narrator summarizes recovery, sleep, the seven-day training review, experiments,
+and recent workouts on the Mac. When Today has multiple supported findings, Ollama can select which
+follow-up to show first. Python supplies the scores, training guidance, and evidence. Use
+`garmin-mcp-narrator --check` to see local service and coverage. [Setup and checks](docs/OLLAMA.md)
 
 It uses the unofficial [`garminconnect`](https://github.com/cyberjunky/python-garminconnect)
 Python library, which talks to the same endpoints as the Garmin Connect website.
@@ -101,7 +102,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `experiment_status()` / `end_experiment(note?)` | Each attempt versus your comparable runs before the experiment, the verdict so far and the next step; close it |
 | `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
 | `outdoor_conditions_patterns(end?)` | Local paired comparisons of weather and AQI against moving heart rate and following sleep, HRV, and resting heart rate. Includes the runs and sample sizes behind eligible results |
-| `ai_narrator(enable?, model?)` | Show or change optional local Ollama summaries. Off by default. Python checks the prose against the supplied facts |
+| `ai_narrator(enable?, model?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
@@ -155,10 +156,17 @@ After this, the server reuses the saved tokens; your password is not stored.
 
 ### Dashboard
 
+Today shows when published guidance changes. Qualifying runs show how moving heart rate compares
+with similar earlier efforts and what to check next. Sleep shows detailed recent nights and separate
+7-, 30-, and 365-day summaries. With sufficient history, it suggests a steady wake time and a
+weekly bedtime target.
+
+
 `garmin-mcp-dashboard` writes `dashboard/index.html` in your data folder (rebuilt after every
 sync). It is one self-contained file with linked pages: Today → Sleep, Recovery, Training,
 Running (→ each run), Body, Patterns and History. Hover, tap or slide over a chart for values. Keyboard
-users can focus a chart and use arrow keys. Choose **Light** or **Dark** at the top. A bundled
+users can focus a chart and use arrow keys. On phones the page tabs stay at the bottom. Choose
+**Light** or **Dark** at the top. A bundled
 script handles these controls offline. The file has no remote scripts or requests.
 
 - **Mac:** open `~/.garmin-mcp/dashboard/index.html` in Safari (or your `GARMIN_DATA_DIR` override).

@@ -68,6 +68,13 @@ Status: **built in v0.12 (Phase 11 + 12).** Sections 6-8 are the as-built UI map
 
 ## 6. UI map (as built: multi-page, one file)
 
+Sleep leads with a dated night, a prominent duration, timing and Garmin's score. Stage intervals
+are drawn in chronological lanes only when present. Recent night links open the full day view;
+history disclosures show nights recorded, duration and Garmin score coverage. Chart readings
+appear during inspection and the shared default state has no interaction prompt.
+[Garmin sleep glance reference](https://support.garmin.com/en-MY/?faq=HkovCl61Zm7sbUKB8wG2d9)
+
+
 One self-contained `index.html`. Each "page" is a section addressed by a link (`#sleep`, `#run-123`); the browser shows one at a time with plain CSS (`:target`), so page navigation also works with scripts disabled. The bundled offline script adds chart inspection and an appearance switch. The browser Back button works between pages.
 
 ```
@@ -84,12 +91,18 @@ Today (home) ─┬─ Sleep ───────── last night breakdown, H
 
 Each page answers one question, top to bottom: **headline number → one sentence → one chart per idea → detail table**. Every hero row links to the page that explains it (tap Recovery dial → Recovery page).
 
+Today uses a large daily guidance card and puts recorded activity alongside it on desktop.
+On narrow screens these cards stack, and persistent labeled tabs sit at the bottom. The health
+and activity tiles link to the relevant detail pages. The hierarchy draws on Garmin Connect's
+Home design, including its activity section, large focus cards and compact glance cards.
+[Garmin Connect Home](https://support.garmin.com/en-GB/?faq=35qboQSvKC2WpKkTaDaRP7)
+
 ## 7. Design system (as built)
 
 | Element | Rule |
 |---|---|
 | Type | System sans (SF Pro on Apple). Scale 12 / 13 / 15 / 17 / 22 / 34 / 48 px. Body 15 px, line-height 1.5. Headings 1.25. Big numbers 1.05, letter-spacing −0.02 em, proportional figures. Small caps labels 12 px, +0.06 em, uppercase, muted ink. Tables use tabular figures. |
-| Spacing | 4 px base grid: 4 / 8 / 12 / 16 / 24 / 32 / 48. Card padding 20 (16 on phone). Gap between cards 16. Section gap 32. Side gutter 16 on phone, max width 1080. |
+| Spacing | 4 px base grid: 4 / 8 / 12 / 16 / 24 / 32 / 48. Card padding 20 (16 on phone). Gap between cards 16. Section gap 32. Side gutter 14 on phone, max width 1160. |
 | Shapes | Cards radius 16, hairline border, no shadows. Pills radius 999. Bars 4 px rounded data end, 2 px gap between bars. Dials 10 px stroke with round caps on a 270° track. |
 | Icons | Inline 16 px line icons, 1.75 px stroke, 8 px gap to the label, always paired with a word. |
 | Lines | Data lines 2 px; reference lines 1 px dashed; grid hairline 1 px at 3 ticks max; markers 8 px only on the latest point. |

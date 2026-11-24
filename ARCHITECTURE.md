@@ -111,17 +111,21 @@ without advancing the completed Garmin sync time.
 
 ## Local narrator (v0.22.0)
 
-With opt-in enabled, a complete sync writes its HTML before starting a detached worker.
+With opt-in enabled, enabling or rebuilding the dashboard writes its HTML before starting a
+detached worker. Scheduled runs retry pending work even when they skip Garmin downloads.
 The worker uses the same collected dashboard shape to select small fact packets and keeps its
 20-second item and 120-second batch deadlines outside the sync and browser. It checks
 `/api/status` on loopback for disabled cloud access and requests the `:local` model variant.
 There is no proxy, redirect, bearer token or configurable server URL.
-Ollama selects one to three sentences within a schema of approved phrasings. The worker
-independently checks the result before caching it. [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs.md)
+Ollama returns short IDs for one to three approved sentences or one eligible daily follow-up.
+The worker checks the IDs, resolves the text from the original evidence and caches it.
+[Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs.md)
 
 Settings and content-addressed results are in local SQLite `meta`. The renderer only reads
 accepted cache entries for the current facts and model. The worker checks the snapshot ID
 before replacing the Mac and iCloud files and serializes the replacement with other builds.
+The narration stamp lets the next worker detect accepted results missing from the saved HTML
+if the previous worker lost the snapshot race.
 The regular publishing path is responsible for any separately enabled private hosted copy.
 
 `environment_review.outdoor_patterns` builds outdoor pair evidence from saved condition

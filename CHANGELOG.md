@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-24
+
+- Compare today's guidance with the last published guidance and show the prior decision only when it changes.
+- Lead qualifying run pages with matched heart rate, next-step context and an optional Ollama-selected evidence check.
+- Rework Sleep around an individual night, recorded stage intervals, linked daily records, and weekly,
+  monthly and yearly summaries. Show wake consistency and a conservative sleep timing proposal.
+- Remove repeated graph interaction instructions at the shared renderer and retain keyboard inspection.
+
+- Start optional Ollama work after enabling the narrator or manually rebuilding the dashboard.
+  Retry on scheduled runs that skip Garmin downloads, and recover checked summaries cached while
+  the dashboard was being replaced. Add `garmin-mcp-narrator --check` for service and coverage checks.
+- Reuse the daily recovery recap on Recovery, add a seven-day recap on Training, and let Ollama
+  prioritize one of Today's eligible evidence-backed follow-ups. Keep the original training
+  guidance and show what supports the selected follow-up. Return compact selection IDs and
+  render the checked sentences from the same facts.
+- Put today's recorded activity beside daily guidance on desktop, strengthen the health tiles,
+  and keep page navigation within reach on phones in light and dark mode.
+- Put current measurements ahead of longer trends, open adjacent recorded days directly,
+  and keep links to retained workout detail. Initialize chart controls when their page opens.
+
 ## [0.23.0] - 2026-11-24
 
 - Keep the VO₂max reference band compact and size all charts to the space in their cards.

@@ -12,8 +12,8 @@ from garmin_mcp.normalize import rebuild
 FACTS = {"Sleep hours": 5.7, "Cadence": 172, "Pace": "5:20", "Heart rate change": -2}
 
 
-def _answer(*sentences):
-    return 200, {"done": True, "response": json.dumps({"sentences": sentences})}
+def _answer(*selection):
+    return 200, {"done": True, "response": json.dumps({"selection": selection})}
 
 
 @pytest.mark.parametrize("text", [
@@ -77,6 +77,8 @@ def collected(conn):
     conn.commit()
     rebuild(conn)
     trials.start(conn, "cadence", title="Private experiment title", target_spm=175)
+    conn.execute("INSERT INTO sleep(day,sleep_s,score) VALUES (?,?,?)", (day, 20520, 77))
+    conn.commit()
     data = dashboard.collect(conn)
     data.update(older_snapshot=False, night={"day": day, "overall": 77}, night_summary=(5.7, 77))
     data["scores"]["recovery"].update(pct=46, label="moderate", garmin_readiness=52)
@@ -126,18 +128,21 @@ def test_opt_in_cache_and_input_boundaries(conn, collected, http_fake, monkeypat
     assert not narrator.generate(conn, collected, time.monotonic() + 10)
     assert calls == []
     narrator.configure(conn, enable=True)
-    texts = ["Recovery is 46%.", "You slept 5.7 h.", "The cadence target is 175 steps per minute.",
+    texts = ["Recovery is 46%.", "You slept 5.7 h.",
+             "The weekly count of workouts with load data was 1.",
+             "The cadence target is 175 steps per minute.",
              "The run was 5.7 km."]
-    answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(t) for t in texts)])
+    answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(i) for i in (2, 3, 1, 3, 2))])
     assert narrator.generate(conn, collected, time.monotonic() + 10)
     assert [call[:2] for call in calls] == [
-        ("GET", "/api/status"), *[("POST", "/api/generate")] * 4]
+        ("GET", "/api/status"), *[("POST", "/api/generate")] * 5]
     inputs = [json.loads(body["prompt"]) for _, _, body in calls[1:]]
-    assert [item["item"] for item in inputs] == ["today", "last night's sleep", "active experiment",
-                                                 "run"]
+    assert [item["item"] for item in inputs] == ["today", "last night's sleep", "seven-day training review",
+                                                 "active experiment", "run"]
     assert all(body["model"] == "qwen2.5:3b-instruct:local" and body["stream"] is False
                for _, _, body in calls[1:])
-    assert "The run was 5.7 km." in calls[-1][2]["format"]["properties"]["sentences"]["items"]["enum"]
+    assert "The run was 5.7 km." in calls[-1][2]["system"]
+    assert 2 in calls[-1][2]["format"]["properties"]["selection"]["items"]["enum"]
     assert all(value not in str(calls) for value in ("818283", "Private name", "Private experiment"))
     summaries, pending = narrator.cached(conn, collected)
     assert not pending and [s["text"] for s in summaries.values()] == texts
@@ -145,7 +150,7 @@ def test_opt_in_cache_and_input_boundaries(conn, collected, http_fake, monkeypat
     assert not narrator.generate(conn, collected, time.monotonic() + 10)
     assert calls == []
     collected["runs"][0]["km"] = 5.8
-    answers.extend([(200, {"cloud": {"disabled": True}}), _answer("The run was 99 km.")])
+    answers.extend([(200, {"cloud": {"disabled": True}}), _answer(99)])
     assert not narrator.generate(conn, collected, time.monotonic() + 10)
     assert len(calls) == 2
     summaries, pending = narrator.cached(conn, collected)
@@ -181,7 +186,7 @@ def test_settings_reject_cloud_or_external_model(conn, model):
 def test_total_budget_cuts_off_slow_response(conn, collected, http_fake):
     def slow():
         time.sleep(2)
-        return _answer("Recovery is 46%.")[1]
+        return _answer(2)[1]
 
     calls, answers = http_fake
     narrator.configure(conn, enable=True)
@@ -205,15 +210,12 @@ def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tm
 
     monkeypatch.setattr(narrator, "start_worker", queue)
     narrator.configure(conn, enable=True)
-    path = dashboard.build(conn, tmp_path, queue_narration=True)
+    path = dashboard.build(conn, tmp_path)
     assert len(queued) == 1
-    answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(t) for t in [
-                            "Recovery is 46%.", "You slept 5.7 h.",
-                            "The cadence target is 175 steps per minute.",
-                        "The run was 5.7 km."])])
+    answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(i) for i in (2, 3, 1, 3, 2))])
     narrator._worker(*queued[0])
     html = path.read_text()
-    assert html.count("AI summary · facts checked") == html.count("Show the facts") == 4
+    assert html.count("AI summary · facts checked") == html.count("Show the facts") == 6
     assert html.index("Next seven days") < html.index("Recovery is 46%.")
     assert "Recovery percent: 46" in html
     assert "The run was 5.7 km." in html and "Distance km: 5.7" in html
@@ -242,10 +244,56 @@ def test_workout_packet_and_page_use_only_recorded_facts(collected):
                           "average heart rate bpm": 128}
     assert "Private cycling route" not in item.prompt and "567" not in item.prompt
     text = "The workout lasted 1:10:29. You covered 19.8 km in this workout."
-    assert narrator._response_text(json.dumps({"sentences": ["The workout lasted 1:10:29.",
-                                                    "You covered 19.8 km in this workout."]}), item.facts) == text
+    assert item.response('{"selection":[1,4]}') == text
+    assert item.response('{"selection":[0,4]}') is None
     html = dashboard.render({**collected, "narration": {"workout-567": {"text": text,
                                                                        "facts": item.facts}}})
     assert 'href="#workout-567"' in html and 'id="workout-567"' in html
     assert "AI summary · facts checked" in html and 'id="run-818283-pacing"' in html
     assert 'class="page" id="run-818283-pacing"' not in html
+
+
+def test_model_prioritizes_only_eligible_followups(conn, collected, monkeypatch):
+    focus = collected["brief"]["focus"]
+    focus.update(target="recovery", findings=[
+        {"title": "Check resting heart rate", "detail": "Resting pulse averaged higher.",
+         "target": "recovery"},
+        {"title": "Make room for more sleep", "detail": "Sleep averaged below your goal.", "target": "sleep",
+         "basis": "Six recorded nights compared with your usual sleep."},
+        {"title": "Check watch fit", "detail": "An overnight reading was below your range.",
+         "target": "recovery"},
+    ])
+    item = narrator.items(collected)["focus"]
+    assert item.response('{"choice":2}') == 2
+    for raw in ('{"choice":4}', '{"choice":true}', '{"choice":2,"text":"extra"}', '<?untrusted>'):
+        assert item.response(raw) is None
+    narrator.configure(conn, enable=True)
+    monkeypatch.setattr(narrator, "items", lambda _: {"focus": item})
+    monkeypatch.setattr(narrator, "_request", lambda method, *_: {"cloud": {"disabled": True}}
+                        if method == "GET" else {"done": True, "response": '{"choice":2}'})
+    assert narrator.generate(conn, collected, time.monotonic() + 10)
+    summaries, pending = narrator.cached(conn, collected)
+    original_title = focus["title"]
+    collected["trial"] = None
+    collected["runs"][0]["cadence_experiment"] = {"suggestion": "Try shorter steps.", "check": "Check pace."}
+    today = dashboard.page_today({**collected, "narration": summaries})
+    assert not pending and original_title in today
+    assert today.index("AI-prioritized follow-up") < today.index("Make room for more sleep")
+    assert today.index("Make room for more sleep") < today.index("Check resting heart rate")
+    assert "Check watch fit" in today and "Try shorter steps." in today
+    assert 'href="#sleep"' in today
+
+
+def test_diagnostics_distinguish_cache_from_file(conn, collected, http_fake, tmp_path, monkeypatch):
+    calls, answers = http_fake
+    monkeypatch.setattr(dashboard, "collect", lambda _: collected.copy())
+    monkeypatch.setattr(dashboard, "_snapshot_paths", lambda *_: (tmp_path / "index.html", None))
+    narrator.configure(conn, enable=True)
+    answers.extend([(200, {"cloud": {"disabled": True}}),
+                    (200, {"models": [{"name": narrator.DEFAULT_MODEL}]})] * 2)
+    status = narrator.check(conn)
+    assert status["ollama"] == "ready" and not status["cache_matches_dashboard"]
+    assert status["coverage"]["today"] == {"pending": 1, "ready": 0, "rejected": 0}
+    dashboard.build(conn, queue_narration=False)
+    assert narrator.check(conn)["cache_matches_dashboard"]
+    assert all(method == "GET" and body is None for method, _, body in calls)
