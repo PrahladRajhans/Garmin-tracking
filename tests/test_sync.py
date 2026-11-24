@@ -87,6 +87,29 @@ def test_activities_details_and_fit_fetched_once(conn):
     assert n_fit_calls == 1
 
 
+def test_each_source_fetches_only_missing_activity_details(conn):
+    day = date.today()
+    source = FakeSource(activities=[{"activityId": 42}])
+    source.activity_details = {"pa_activity": lambda _: {"summary": True}}
+    _syncer(conn, source).run(day, day)
+    calls = []
+
+    def weather(_):
+        calls.append("weather")
+        if calls.count("weather") == 1:
+            raise RuntimeError("temporary failure")
+        return {}
+
+    source.activity_details = {"splits": lambda _: calls.append("splits") or {}, "weather": weather}
+    assert _syncer(conn, source).run(day, day).errors == 1
+    assert _syncer(conn, source).run(day, day).errors == 0
+    assert _syncer(conn, source).run(day, day).errors == 0
+    assert calls == ["splits", "weather", "weather"]
+    assert {row[0] for row in conn.execute("SELECT kind FROM activity_details")} == {
+        "pa_activity", "splits", "weather",
+    }
+
+
 def test_coverage_reports_stored_data(conn):
     today = date.today()
     _syncer(conn, FakeSource()).run(today - timedelta(days=2), today)

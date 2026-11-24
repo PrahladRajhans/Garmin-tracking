@@ -101,18 +101,15 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
 def bedtime_suggestion(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     """Suggested bedtime = usual wake time - (need + share of 7-day debt), debt repaid over a
     week (max +1 h/night). Usual wake time = median of the last 14 valid nights (local)."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
-    from garmin_mcp import engine
+    from garmin_mcp import engine, sleep_review
 
     tz = engine._tz(conn)
-    lo = (date.fromisoformat(day) - timedelta(days=14)).isoformat()
+    lo = (date.fromisoformat(day) - timedelta(days=13)).isoformat()
     wakes = []
     for (ts,) in conn.execute("SELECT sleep_end FROM sleep WHERE day BETWEEN ? AND ? AND "
                               "sleep_end IS NOT NULL AND sleep_s >= 3*3600", (lo, day)):
-        t = datetime.fromisoformat(ts).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
-        wakes.append(t.hour * 60 + t.minute)
+        if (wake := sleep_review._clock_minutes(ts, tz)) is not None:
+            wakes.append(wake)
     if len(wakes) < 5:
         return {"available": False, "reason": "needs 5 valid nights in 14 days"}
     wakes.sort()

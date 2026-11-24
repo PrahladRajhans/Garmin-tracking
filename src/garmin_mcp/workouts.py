@@ -47,6 +47,8 @@ def _secs(text: str | float) -> float:
 
 def _pace_range(text: str) -> tuple[float, float]:
     """'5:00-5:10' -> (slow m/s, fast m/s)."""
+    if not isinstance(text, str):
+        raise TypeError("pace must be a range such as 5:00-5:10")
     a, b = (p.strip() for p in text.split("-"))
     sa, sb = 1000 / _secs(a), 1000 / _secs(b)
     return min(sa, sb), max(sa, sb)
@@ -135,6 +137,8 @@ def validate(spec: dict[str, Any], hr_max: float | None) -> list[str]:
 
 def _build_steps(steps: list[dict[str, Any]], order: list[int]) -> tuple[list[Any], float]:
     out, est = [], 0.0
+    makers = {"warmup": gw.create_warmup_step, "recovery": gw.create_recovery_step,
+              "cooldown": gw.create_cooldown_step}
     for s in steps:
         order[0] += 1
         n = order[0]
@@ -146,18 +150,19 @@ def _build_steps(steps: list[dict[str, Any]], order: list[int]) -> tuple[list[An
             continue
         target = _target(s)
         if "distance_m" in s:
-            step = gw.create_targeted_distance_interval_step(float(s["distance_m"]), n, target)
-            est += float(s["distance_m"]) / 2.8  # rough estimate at ~6:00/km
+            distance = float(s["distance_m"])
+            step = gw.create_targeted_distance_interval_step(distance, n, target)
+            if t in makers:
+                step.stepType = makers[t](0, n).stepType
+            est += distance / 2.8  # rough estimate at ~6:00/km
         else:
             dur = _secs(s["duration"])
             est += dur
             if t == "interval":
                 step = gw.create_targeted_interval_step(dur, n, target)
             else:
-                maker = {"warmup": gw.create_warmup_step, "recovery": gw.create_recovery_step,
-                         "cooldown": gw.create_cooldown_step}[t]
                 tt = gw._target_kwargs(target, None).get("target_type") if target else None
-                step = maker(dur, n, tt)
+                step = makers[t](dur, n, tt)
                 if target is not None:
                     kw = gw._target_kwargs(target, None)
                     step.targetValueOne = kw.get("target_value_one")

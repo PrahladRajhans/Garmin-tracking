@@ -42,6 +42,13 @@ def test_hrv_band_is_baseline_plus_minus_half_sd(conn):
     assert abs(lo - (m - 0.5 * sd)) < 1e-3 and abs(hi - (m + 0.5 * sd)) < 1e-3
 
 
+def test_hrv_variability_is_missing_with_zero_log_mean(conn):
+    _make(conn)
+    conn.execute("UPDATE hrv SET last_night_avg=1")
+    h = recovery.readiness(conn, END.isoformat())["hrv"]
+    assert h["cv_7d_pct"] is None
+
+
 def test_illness_flag_and_low_readiness(conn):
     _make(conn, sick_last=3)
     r = recovery.readiness(conn, END.isoformat())

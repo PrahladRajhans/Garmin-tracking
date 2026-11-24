@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -41,7 +42,9 @@ class PersonalAPISource(DataSource):
                 resolve_api_key,
             )
 
-            self._key = resolve_api_key(api_key or None)
+            supplied = os.getenv("GARMIN_PERSONAL_API_KEY")
+            env = {} if supplied is not None and not supplied.strip() else None
+            self._key = resolve_api_key(api_key or None, env=env)
             self._auth = authenticator or PersonalApiAuthenticator()
             client = GarminPersonalApiClient(self._auth.obtain_token(self._key).access_token)
         else:
@@ -119,7 +122,9 @@ class PersonalAPISource(DataSource):
             )
 
         result = self._retrying(call)()
-        return result if isinstance(result, list) else []
+        if not isinstance(result, list):
+            raise TypeError("Garmin activity search returned an unexpected response.")
+        return result
 
     def download_fit(self, activity_id: int) -> bytes | None:
         return extract_fit(self._retrying(self.client.download_activity)(activity_id))

@@ -30,7 +30,7 @@ import itertools
 import math
 import sqlite3
 import statistics
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 BANISTER = {"male": (0.64, 1.92), "female": (0.86, 1.67)}
@@ -98,7 +98,8 @@ def polarization_index(z1: float, z2: float, z3: float) -> float | None:
 
 # --------------------------------------------------------------------------- data access
 def _ts(value: str) -> float:
-    return datetime.fromisoformat(value).timestamp()
+    stamp = datetime.fromisoformat(value)
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)).timestamp()
 
 
 def _records(conn: sqlite3.Connection, activity_id: int) -> list[tuple]:
@@ -107,18 +108,19 @@ def _records(conn: sqlite3.Connection, activity_id: int) -> list[tuple]:
         "ORDER BY ts", (activity_id,)).fetchall()
 
 
-def _age(conn: sqlite3.Connection) -> float | None:
+def _age(conn: sqlite3.Connection, end: str) -> float | None:
     try:
         row = conn.execute("SELECT chronological_age FROM fitness_age WHERE chronological_age IS "
-                           "NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
+                           "NOT NULL AND day<=? ORDER BY day DESC LIMIT 1", (end,)).fetchone()
     except sqlite3.OperationalError:
         return None
     return row[0] if row else None
 
 
-def _sex(conn: sqlite3.Connection) -> tuple[str, str]:
-    row = conn.execute("SELECT gender FROM fit_profile WHERE gender IN ('male','female') "
-                       "ORDER BY activity_id DESC LIMIT 1").fetchone()
+def _sex(conn: sqlite3.Connection, end: str) -> tuple[str, str]:
+    row = conn.execute("SELECT gender FROM fit_profile JOIN activities USING(activity_id) "
+                       "WHERE gender IN ('male','female') AND substr(start_time_local,1,10)<=? "
+                       "ORDER BY start_time_local DESC, activity_id DESC LIMIT 1", (end,)).fetchone()
     return (row[0], "watch profile") if row else ("male", "ASSUMED (no profile found)")
 
 
@@ -148,7 +150,7 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
     """Effective thresholds as of a date, with Garmin's values beside our estimates."""
     asof = asof or date.today().isoformat()
     lo = (date.fromisoformat(asof) - timedelta(days=365)).isoformat()
-    sex, sex_src = _sex(conn)
+    sex, sex_src = _sex(conn, asof)
 
     observed_max = conn.execute(
         "SELECT MAX(max_hr) FROM activities WHERE substr(start_time_local,1,10) BETWEEN ? AND ?",
@@ -186,7 +188,7 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         "substr(start_time_local,1,10) <= ?", (asof,))), reverse=True)
     robust = next((p for i, p in enumerate(peaks) if any(abs(p - q) <= 3 for q in peaks[i + 1:])),
                   None)
-    age = _age(conn)
+    age = _age(conn, asof)
     tanaka = round(208 - 0.7 * age) if age else None
     candidates = [v for v in (robust, tanaka) if v]
     hrmax = max(candidates) if candidates else observed_max

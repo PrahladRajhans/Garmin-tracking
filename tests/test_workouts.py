@@ -42,6 +42,14 @@ def test_build_converts_units_and_structure():
     assert [s["stepOrder"] for s in steps] == [1, 2, 5]
 
 
+def test_distance_based_warmup_keeps_its_step_type():
+    spec = {"steps": [{"type": "warmup", "distance_m": 800}]}
+    assert not workouts.validate(spec, 188)
+    step = workouts.build(spec)["workoutSegments"][0]["workoutSteps"][0]
+    assert step["stepType"]["stepTypeKey"] == "warmup"
+    assert step["endCondition"]["conditionTypeKey"] == "distance"
+
+
 def test_validation_catches_unsafe_targets():
     bad = {"steps": [{"type": "interval", "duration": "5:00", "hr": "150-230"},
                      {"type": "interval", "distance_m": 400, "pace": "1:30-2:00"},
@@ -70,6 +78,7 @@ def test_malformed_workouts_return_problems_instead_of_crashing():
         {"type": "interval", "duration": "5:99"},
         {"type": "interval", "distance_m": -100},
         {"type": "interval", "duration": 60, "pace": "bad"},
+        {"type": "interval", "duration": 60, "pace": 310},
         {"type": "interval", "duration": 60, "hr": "140-120"},
         {"type": "interval", "duration": 60, "hr_zone": 2.5},
         {"type": "repeat", "times": "not a number", "steps": []},

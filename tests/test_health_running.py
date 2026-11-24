@@ -69,6 +69,13 @@ def test_test_runs_empty_db(conn):
     assert running.test_runs(conn)["available"] is False
 
 
+def test_historical_garmin_vo2_excludes_future_activities(conn):
+    conn.executemany("INSERT INTO activities(activity_id,start_time_local,vo2max,updated_at) VALUES (?,?,?,'')",
+                     [(1, "2026-11-01", 44), (2, "2026-11-24", 52)])
+    assert health.garmin_vo2(conn, "2026-11-22") == 44
+    assert health.garmin_vo2(conn) == 52
+
+
 def test_pair_points_lag():
     from garmin_mcp import engine
 
