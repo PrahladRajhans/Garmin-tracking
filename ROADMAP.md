@@ -32,6 +32,14 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+**Ollama repair after v0.27.0 (20–24).** First reproduce the rejected Sunday output on
+fictional data and distinguish a draft failure from review rejection. Next supply each
+comparison and its baseline together, and give the model a bounded correction when the
+draft or review fails. Keep exact metrics, dated links, local-only transport, deterministic
+guidance and snapshot guards. Then verify direct and thinking mode on the fictional Sunday,
+recovery and Running cases, including invalid output and outage behavior. Record separately
+what needs the owner's Mac. Release only after both Python checks pass.
+
 The [request audit](docs/PROGRESS_AUDIT.md#claude-suggestion-checklist) records the outstanding
 Claude suggestions. The [repository review](docs/REPOSITORY_REVIEW.md#dependency-and-failure-paths)
 records what changes affect downstream. The [file register](docs/repository-review-queue.tsv)

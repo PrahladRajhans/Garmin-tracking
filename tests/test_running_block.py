@@ -43,7 +43,7 @@ def test_running_review_has_separate_prompt_and_only_local_link_metadata(conn):
     items = narrator._deep_items(conn, {"thinking": False}, data)
     assert set(items) == {"running-insight"}
     packet = items["running-insight"]
-    assert "distance-running coach" in packet.system
+    assert packet.lens == "running_review" and "measured response on the latest run" in packet.system
     assert all(row.keys() == {"id", "domain", "reading"} for row in json.loads(packet.prompt))
     assert not deep_insight.running_review({**data, "older_snapshot": True})
 

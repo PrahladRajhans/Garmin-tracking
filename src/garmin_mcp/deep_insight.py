@@ -56,8 +56,9 @@ LENSES = {
     "daily": "Look for readings that disagree, and distinguish an exception from a trend.",
     "sleep": "Pay attention to the relationship between sleep and recovery readings.",
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
-    "running_review": "Think like a distance-running coach reviewing a training log. Look for a contrast "
-                      "between repeatability and a single workout, then propose a measurement that would settle it.",
+    "running_review": "Look for a contrast between running frequency and a measured response on the latest run. "
+                      "Pulse, pace and cadence describe the recording. Avoid conclusions about fitness or effort felt. "
+                      "Ask what pattern is worth checking on the next comparable run.",
     "sunday_review": "Connect the week's training frequency and sleep in plain language. Training frequency "
                      "is a count of workouts. It does not measure training volume, load, or intensity. "
                      "The dashboard displays the next plan separately.",
@@ -74,23 +75,25 @@ def sunday_review(data):
     sleep = sleep_review.get("windows", {}).get(7, {})
     if not review or sleep.get("nights", 0) < 4:
         return ()
-    rows = [
-        Evidence("training", f'{review["week"]["sessions"]} workouts with load data were recorded.', "training"),
-        Evidence("sleep", f'Average sleep was {sleep["hours"]:.1f} hours across {sleep["nights"]} nights.', "sleep"),
-    ]
+    count = review["week"]["sessions"]
+    average = (review.get("previous_4wk_weekly_avg") or {}).get("sessions")
+    training = f"Recorded workout count with load data was {count} this week"
+    if _number(average):
+        training += f" versus {average:g} per week on average over the previous four weeks"
+    sleep_text = f'Sleep averaged {sleep["hours"]:.1f} hours across {sleep["nights"]} nights'
     change = sleep_review.get("week_change_min")
     if change:
         direction = "more" if change > 0 else "less"
-        rows.append(Evidence("sleep", f"Sleep averaged {abs(change)} min {direction} per night than last week.",
-                             "sleep"))
+        sleep_text += f", {abs(change)} min {direction} per night than last week"
     elif change == 0:
-        rows.append(Evidence("sleep", "Average sleep held steady from the prior week.", "sleep"))
-    elif anchor := sleep_review.get("anchor"):
-        rows.append(Evidence("sleep timing", f'Wake times varied by {anchor["spread"]} min.', "sleep"))
-    if average := review.get("previous_4wk_weekly_avg", {}).get("sessions"):
-        rows.append(Evidence("training", f"The previous four weeks averaged {average:g} recorded workouts with "
-                             "load data per week.", "training"))
-    return tuple(rows) if len(rows) >= 3 else ()
+        sleep_text += ", unchanged from last week"
+    anchor = sleep_review.get("anchor") or {}
+    if not (_number(average) or _number(change) or anchor):
+        return ()
+    rows = [Evidence("training", training + ".", "training"), Evidence("sleep", sleep_text + ".", "sleep")]
+    if anchor:
+        rows.append(Evidence("sleep", f'Wake times varied by {anchor["spread"]} min.', "sleep"))
+    return tuple(rows)
 
 
 def running_review(data):
@@ -111,15 +114,24 @@ def running_review(data):
     match = run.get("comparable_effort", {})
     if match.get("available"):
         low, high = match["observed_hr_range_bpm"]
-        rows.append(Evidence("matched effort", f'Latest detailed run had moving heart rate '
-                             f'{match["this_run"]["avg_hr_bpm"]:g} bpm versus an earlier span of '
-                             f'{low:g} to {high:g} bpm.', f'run-{run["activity_id"]}-compare'))
+        pulse = match["this_run"]["avg_hr_bpm"]
+        relation = "below" if pulse < low else "above" if pulse > high else "within"
+        rows.append(Evidence("matched effort", f'Latest run moving heart rate was {pulse:g} bpm, {relation} '
+                             f'the {low:g} to {high:g} bpm span of earlier comparable runs.',
+                             f'run-{run["activity_id"]}-compare'))
     if halves := run.get("pacing", {}).get("effort_halves"):
         a, b = halves
-        rows.append(Evidence("pacing", f'Latest detailed run averaged {a["pace_s_per_km"]} and '
-                             f'{b["pace_s_per_km"]} seconds per kilometre, with pulse {a["hr"]:g} and '
-                             f'{b["hr"]:g} bpm, in the first and second moving halves.',
+        pace_a, pace_b = a["pace_s_per_km"], b["pace_s_per_km"]
+        change = "slower" if pace_b > pace_a else "faster" if pace_b < pace_a else "the same"
+        rows.append(Evidence("pacing", f'The latest single run was {change} in the second moving half '
+                             f'({pace_a:g} to {pace_b:g} seconds per kilometre). Pulse went from '
+                             f'{a["hr"]:g} to {b["hr"]:g} bpm.',
                              f'run-{run["activity_id"]}-pacing'))
+    if measured := run.get("late_form", {}).get("cadence_spm"):
+        rows.append(Evidence("matched mechanics", f'At similar pace and grade within the latest run, cadence '
+                             f'was {measured["early"]:g} steps per minute early versus {measured["late"]:g} late, '
+                             f'with {measured["matched_s"]} matched seconds in each half.',
+                             f'run-{run["activity_id"]}-form'))
     cadence = run.get("form", {}).get("cadence_spm", {})
     if span := cadence.get("matched_range"):
         measured = cadence["value"]
@@ -193,20 +205,23 @@ def remember(conn, day, rows):
 FICTIONAL_CASES = {
     "sunday-review": (
         "sunday_review", (
-            Evidence("training", "3 workouts with load data were recorded.", "training"),
-            Evidence("sleep", "Average sleep was 7.2 hours across 5 nights.", "sleep"),
-            Evidence("sleep", "Sleep averaged 21 min less per night than last week.", "sleep"),
-            Evidence("training", "The previous four weeks averaged 2 recorded workouts per week.", "training"),
+            Evidence("training", "Recorded workout count with load data was 3 this week versus 2 per week "
+                     "on average over the previous four weeks.", "training"),
+            Evidence("sleep", "Sleep averaged 7.2 hours across 5 nights, 21 min less per night than last week.",
+                     "sleep"),
         ),
     ),
     "running-block": (
-        "running_review", (
-            Evidence("consistency", "Running days increased from 5 to 8 across completed four-week blocks.",
-                     "running-block"),
-            Evidence("matched effort", "The latest run's moving heart rate was inside its earlier matched span.",
-                     "running-efforts"),
-            Evidence("pacing", "Pace slowed and pulse rose in the second half of the latest run.", "running-efforts"),
-        ),
+        "running_review", running_review({
+            "running_block": {"recent": {"runs": 8, "days": 8}, "previous": {"runs": 5, "days": 5},
+                              "latest_detail_id": 1},
+            "runs": [{"activity_id": 1,
+                      "comparable_effort": {"available": True, "observed_hr_range_bpm": (138, 145),
+                                            "this_run": {"avg_hr_bpm": 142}},
+                      "pacing": {"effort_halves": ({"pace_s_per_km": 320, "hr": 140},
+                                                   {"pace_s_per_km": 331, "hr": 144})},
+                      "late_form": {"cadence_spm": {"early": 170, "late": 167, "matched_s": 410}}}],
+        }),
     ),
     "mixed-recovery": (
         "sleep", (
@@ -237,29 +252,32 @@ def _number(value):
 
 
 SYSTEM = (
-    "Write one original coaching observation about the readings. Look for an exception or a "
-    "contrast across signals. Separate single efforts from multi-day averages. Describe what the "
-    "measurements show without inferring how the athlete felt, what caused the difference, "
-    "or what will happen next. Cite the IDs you used across at least two domains. Use numbers "
-    "only when they help, copied exactly from cited readings. Keep each measurement paired with "
-    "its unit and time window. Avoid computed ratios, even in words. Ask one neutral question about "
-    "whether the same signals repeat when measured again. Keep the question free of targets, "
-    "new quantities, and advice. "
-    "Output JSON with observation and question strings and an evidence array of IDs. "
-    "Earlier reviewed snapshots are context only and may overlap current windows. Treat them "
-    "as earlier context, not new independent observations. Cite at least two current domains. "
-    "If nothing useful stands out, return empty strings and an empty list."
+    "Review the athlete's log. Briefly choose the strongest comparison between two current signals. "
+    "Return a short observation about what stands out, a neutral question that could check whether it "
+    "repeats, and an evidence array of 2 or 3 IDs that cover every claim. Prefer ordinary language "
+    "without numbers. When a number matters, copy its value, metric and time window together. "
+    "Keep counts, duration, load and intensity distinct. Treat a single workout as one example. "
+    "For the question, ask whether the measured pattern repeats in the next comparable record. "
+    "Earlier rows are context only and can overlap current windows. Stay with what was measured. "
+    "Avoid causes, diagnoses, how the athlete felt, calculated ratios, advice and forecasts. "
+    "Use at least two current domains. If nothing useful stands out, return empty strings and an empty list."
 )
+REVIEW_REASONS = ("supported", "wrong_comparison", "unsupported_claim", "advice_or_prediction")
 REVIEW = (
-    "Check the observation and question against the cited readings. Accept a supported contrast "
-    "and an observational question, even if you would phrase them differently. Reject a concrete "
-    "unsupported measurement or comparison, contradiction, causal claim, diagnosis, prescription "
-    "or prediction. A question about whether a pattern repeats is not a claim that it will. "
-    "Return only JSON with a boolean publish field."
+    "Compare each factual statement in the proposed observation and any premise in its question "
+    "with the cited readings. Choose one verdict. Use supported for an accurate observation and "
+    "a neutral question about checking or repeating measured signals. Allow everyday paraphrases. "
+    "Use wrong_comparison if a direction, metric, value or time window changed. Use unsupported_claim "
+    "for a new fact, feeling, cause or ratio. Use advice_or_prediction for a target, prescription, "
+    "diagnosis or forecast. Check questions too. 'Did shorter sleep make you feel tired?' invents "
+    "a cause and a feeling. 'Does sleep stay shorter in another week with more recorded workouts?' checks a repeat."
 )
 _EXCLUDED = re.compile(
     r"[<>#`*\[\]{}]|\b(?:because|caused?|due to|leads? to|will|guarantee\w*|must|should|"
     r"correlat\w*|prescri\w*|diagnos\w*|diseases?|medicat\w*|symptoms?|treat\w*|injur\w*)\b", re.IGNORECASE)
+_UNMEASURED = re.compile(r"\b(?:feel(?:s|ing)?|felt|tired(?:ness)?|fatigu\w*|"
+                         r"reason\s+(?:for|why|you)|explain(?:s|ed)?\s+why|"
+                         r"twice|doubl(?:e[ds]?|ing)|tripl(?:e[ds]?|ing)|halv(?:e[ds]?|ing))\b", re.IGNORECASE)
 
 
 def _plain(value, min_words, max_words):
@@ -285,8 +303,9 @@ class Insight:
 
     @property
     def prompt(self):
-        return json.dumps([{"id": i, "domain": r.domain, "reading": r.text}
-                           for i, r in enumerate(self.rows, 1)], ensure_ascii=False)
+        return json.dumps([{"id": i, "domain": r.domain, "reading": r.text,
+                            **({"earlier_context": True} if r.previous else {})}
+                           for i, r in enumerate(self.rows, 1)], ensure_ascii=False, separators=(",", ":"))
 
     @property
     def schema(self):
@@ -297,6 +316,9 @@ class Insight:
                         "type": "integer", "enum": list(range(1, len(self.rows) + 1))}}}}
 
     def response(self, raw):
+        return self.assess(raw)[0]
+
+    def assess(self, raw):
         if isinstance(raw, str):
             fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", raw.strip(), re.DOTALL)
             if fenced:
@@ -304,21 +326,25 @@ class Insight:
         try:
             data = json.loads(raw)
         except (TypeError, ValueError):
-            return None
+            return None, "invalid_response"
         if not isinstance(data, dict) or data.keys() != {"observation", "question", "evidence"}:
-            return None
+            return None, "invalid_response"
+        if data == {"observation": "", "question": "", "evidence": []}:
+            return None, "abstained"
         ids = data["evidence"]
         if (not isinstance(ids, list) or not 2 <= len(ids) <= 3
                 or not all(type(i) is int and 1 <= i <= len(self.rows) for i in ids)
                 or len(set(ids)) != len(ids)
                 or len({self.rows[i - 1].domain for i in ids if not self.rows[i - 1].previous}) < 2):
-            return None
+            return None, "missing_citations"
         observation = _plain(data["observation"], 9, 55)
         question = _plain(data["question"], 5, 24)
         if not observation or not question or question.count("?") != 1 or not question.endswith("?"):
-            return None
+            return None, "unsupported_wording"
+        if _UNMEASURED.search(f"{observation} {question}"):
+            return None, "unsupported_claim"
         pattern = r"[+−-]?\d+(?:[.:/]\d+)*"
         allowed = {n for i in ids for n in re.findall(pattern, self.rows[i - 1].text)}
-        if not set(re.findall(pattern, f"{observation} {question}")) <= allowed:
-            return None
-        return {"observation": observation, "question": question, "evidence": ids}
+        if re.search(pattern, question) or not set(re.findall(pattern, observation)) <= allowed:
+            return None, "uncited_number"
+        return {"observation": observation, "question": question, "evidence": ids}, "valid"

@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-24
+
+- Keep Ollama's measurements and baselines together so a valid comparison can cite one
+  evidence row. Check unmeasured feelings and causal premises in questions, give a rejected
+  draft one bounded correction, and review the corrected wording again.
+- Use structured final output in both thinking and direct mode. Report draft and review
+  outcomes in `--eval-insight` and the last worker attempts per surface in `--check`.
+- Reduce plotted marker size across scatter charts and make marker dots especially small
+  on Running timelines and the pace-versus-pulse plot. Keep the selected-point indicator,
+  nearest-point touch and keyboard interaction, split guides, and existing measurements.
+
 ## [0.27.0] - 2026-11-24
 
 - Fetch Garmin activity details by field so the official sync can be followed by Connect

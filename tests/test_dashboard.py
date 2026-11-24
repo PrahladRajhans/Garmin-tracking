@@ -218,6 +218,7 @@ def test_workout_pace_stays_visible_when_secondary_readings_are_missing():
          ("altitude_m", "Elevation", "Elevation (m)", str)), 10,
         faster_at_top=True)
     assert chart.count("data-point ") == 4
+    assert 'class="chart-interaction chart-dense"' in chart
     assert 'data-overlay-track="hr"' in chart and 'data-overlay-track="altitude_m"' not in chart
     assert "null" in chart and "data-open-height" not in chart
     assert "Pace (min/km)" in chart and "Heart rate (bpm)" in chart

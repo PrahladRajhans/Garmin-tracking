@@ -1,10 +1,15 @@
-# Handover: Garmin-tracking (state at v0.27.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.27.1, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.27.1:** grouping the observation and baseline in one evidence item fixes missing
+  comparison citations. The worker can make one verified correction, diagnostics show why
+  a draft failed, and dense running dots are smaller with full-size point selection.
+  See [Ollama verification](docs/OLLAMA.md#verification).
 
 - **v0.27.0:** source-specific activity-detail recovery, dated load and VO₂max fixes, a saved
   bedtime target, pace- and grade-matched running form, and clearer AI status. Sunday can
