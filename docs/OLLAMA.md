@@ -168,6 +168,11 @@ weeks. During the v0.27.1 repair, an intermediate model review also accepted a q
 unrecorded tiredness. The wording gate now checks for that premise before the model reviewer.
 The weekly display retains its rule-written summary and dated links when no draft passes.
 
+On the v0.27.1 candidate with Ollama 0.40.17 and local Qwen3.5 4B, the mixed-recovery and
+matched-run exception direct drafts passed. The Sunday launch with a five-minute thinking
+budget completed with an accepted direct fallback after 341 seconds end to end. The initial
+thinking draft hit its time budget. These checks used fictional readings on Linux CPU.
+
 ## Changes to review
 
 1. For each new fact, check the deterministic source, units, missing readings and allowed sentence

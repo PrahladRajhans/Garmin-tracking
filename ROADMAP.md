@@ -192,6 +192,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.26.0 | Running dashboard, matched dynamics, split guides, local running review, archive replay and revision retention | Merged and published. Browser, synthetic archive and local checks recorded in [PR #31](https://github.com/PrahladRajhans/Garmin-tracking/pull/31). |
 | 0.26.1 | Qwen3.5 4B default and one-time upgrade of the former default | Merged and published. 234 tests, CI, and five fictional routine summaries accepted on local Ollama. Mac acceptance open. [PR #32](https://github.com/PrahladRajhans/Garmin-tracking/pull/32). |
 | 0.27.0 | Running form by comparable halves, weekly bedtime trial, Sunday AI and status, source/archive repairs and file audit | See the [execution log](docs/REPOSITORY_REVIEW.md#execution-log) and [PR #33](https://github.com/PrahladRajhans/Garmin-tracking/pull/33). Mac and private archive acceptance remain open. |
+| 0.27.1 | Citation repair, reviewed draft correction, Ollama attempt diagnostics and smaller dense chart markers | See [model evaluation](docs/OLLAMA.md#verification) and [PR #34](https://github.com/PrahladRajhans/Garmin-tracking/pull/34). Mac reasoning latency and real-data acceptance remain open. |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
