@@ -220,8 +220,9 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   citation and require evidence from at least two current categories. Running pace evidence states
   the direction of the seconds-per-kilometre change explicitly. Matched late-run cadence retains
   the measured comparison time and pace/grade qualification. A Python check filters unsupported
-  premises in the model's follow-up question. A separate review checks the observation and question,
-  including after a single correction. Training decisions and source values stay in Python.
+  premises in the model's follow-up question and can replace that question with a repeat check
+  from its cited signals. A separate review checks the observation and final question, including
+  after a single correction. Training decisions and source values stay in Python.
 
 ## Outdoor conditions and following recovery
 

@@ -545,7 +545,8 @@ def _deep_items(conn, state, data):
 
 def _deep_key(item, state):
     content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
-                     item.system, item.prompt, item.schema, deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS])
+                     deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
+                     deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -570,7 +571,8 @@ _CORRECTIONS = {
     "unsupported_wording": "Describe an observed contrast and ask a short neutral question.",
     "uncited_number": "Use no figures in the observation or question.",
     "wrong_comparison": "Keep the direction, metric and time period exactly as recorded.",
-    "unsupported_claim": "Use only the measurements in the cited readings. Describe what stands out.",
+    "unsupported_claim": "Start with 'The recording showed'. State two cited directions and their time windows. "
+                         "Use measured verbs: was, rose, fell, or stayed similar.",
     "advice_or_prediction": "Ask what to measure again. Avoid targets, recommendations and forecasts.",
 }
 
@@ -600,12 +602,14 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         thinking = mode == "thinking"
         system = item.system
         stage = "draft"
+        question_reframed = False
         if correction:
             system += " Revise the approach. " + _CORRECTIONS[correction]
         try:
             raw = complete(system, item.prompt, item.schema, thinking,
                            thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS, 2450 if thinking else 180)
-            draft, reason = item.assess(raw)
+            draft, reason = item.assess(raw, repair_question=True)
+            question_reframed = reason == "question_reframed"
             if draft:
                 stage = "review"
                 readings = [{"id": i, "domain": item.rows[i - 1].domain, "reading": item.rows[i - 1].text,
@@ -627,7 +631,8 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
                 attempts.append({"mode": mode, "stage": stage, "outcome": "incomplete"})
             raise
         if attempts is not None:
-            attempts.append({"mode": mode, "stage": stage, "outcome": reason})
+            attempts.append({"mode": mode, "stage": stage, "outcome": reason,
+                             **({"question_reframed": True} if question_reframed else {})})
         return ({**draft, "mode": mode} if reason == "supported" else None), reason
 
     mode = "thinking" if think_first else "direct"

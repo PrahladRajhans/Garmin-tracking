@@ -175,6 +175,31 @@ def test_invalid_draft_gets_one_correction_and_full_review(packet, monkeypatch):
     assert json.loads(calls[2]["prompt"])["draft"] == answer
 
 
+def test_review_can_keep_a_supported_observation_with_a_grounded_question(monkeypatch):
+    lens, readings = deep_insight.FICTIONAL_CASES["running-block"]
+    packet = deep_insight.Insight(readings, lens)
+    observation = "You ran on more days, and your latest moving pulse was within its earlier range."
+    draft = {"observation": observation, "question": "Did you feel tired because you ran more?",
+             "evidence": [1, 2]}
+    responses = iter([draft, {"verdict": "supported"}])
+    reviewed = []
+
+    def request(method, path, deadline, body):
+        reviewed.append(body)
+        return {"done": True, "response": json.dumps(next(responses))}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    attempts = []
+    result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 240,
+                                    think_first=False, attempts=attempts)
+    assert result["observation"] == observation
+    assert result["question"] == "Does moving pulse stay in the same range on another run at a similar pace?"
+    assert json.loads(reviewed[1]["prompt"])["draft"]["question"] == result["question"]
+    assert attempts[0]["question_reframed"] and attempts[0]["outcome"] == "supported"
+    unsafe = {**draft, "observation": "You ran on more days, so you felt tired in your latest run."}
+    assert packet.assess(json.dumps(unsafe), repair_question=True) == (None, "unsupported_claim")
+
+
 def test_specific_numbers_can_be_used_with_their_cited_readings():
     packet = deep_insight.Insight((
         deep_insight.Evidence("sleep", "Sleep averaged 6.2 h versus 7.1 h.", "sleep"),

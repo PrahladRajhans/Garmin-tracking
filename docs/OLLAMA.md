@@ -38,8 +38,9 @@ seven-day HRV, and the current day's qualifying matched run when available. It r
 least two domains. Python supplies exact readings, comparable baselines and links. The model
 chooses the comparison and writes an interpretation and a question about the next comparable
 measurement. Python checks the citation coverage, number references and question wording.
-A separate completion checks claims and the question's premises. The renderer labels accepted
-output separately from deterministic guidance.
+If only the question is unusable, Python substitutes a neutral repeat check from the cited
+evidence. A separate completion checks the observation and the final question. The renderer
+labels accepted output separately from deterministic guidance.
 Reasoning traces do not appear in the snapshot or local response cache.
 
 Thinking work runs first in a bounded background batch. The thinking draft defaults to ten
@@ -88,7 +89,8 @@ A number-only filter would still accept fabricated causes or advice with valid n
 - Use `garmin-mcp-narrator --check` for loopback availability, cloud-off confirmation,
   installed model, sync state and cache coverage by surface. The check sends no health facts.
   `cache_matches_dashboard` indicates whether the accepted cache is reflected in the local HTML.
-  `last_insight_attempts` records mode and outcome labels by surface, without draft text or reasoning.
+  `last_insight_attempts` records mode, stage, outcome and whether a question needed replacement,
+  without draft text or reasoning.
   Invalid selections are cached as rejected for that prompt and model. New evidence, prompt
   rules or a different model get a fresh attempt. Service failures and timeouts remain pending.
 
@@ -172,6 +174,8 @@ On the v0.27.1 candidate with Ollama 0.40.17 and local Qwen3.5 4B, the mixed-rec
 matched-run exception direct drafts passed. The Sunday launch with a five-minute thinking
 budget completed with an accepted direct fallback after 341 seconds end to end. The initial
 thinking draft hit its time budget. These checks used fictional readings on Linux CPU.
+The running-block trace also showed that Qwen used "felt steady" when it had a recorded
+moving pulse comparison. The Running prompt now asks for measured directions and time windows.
 
 ## Changes to review
 

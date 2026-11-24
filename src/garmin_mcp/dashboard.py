@@ -53,7 +53,7 @@ from garmin_mcp import (
 )
 from garmin_mcp.dashboard_interaction import CONTENT_POLICY, SCRIPT
 
-SNAPSHOT_PREFIX = f"{__version__}/coach-sleep-1/"
+SNAPSHOT_PREFIX = f"{__version__}/coach-sleep-2/"
 
 W = 340  # SVG viewBox width: phone-first, text stays ~11-16 px from phone to desktop
 
