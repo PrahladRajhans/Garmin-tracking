@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from hashlib import file_digest, sha256
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -160,32 +161,57 @@ def publish_if_enabled(path: Path | None, *, check_only: bool = False) -> dict[s
                 or not re.fullmatch(r"[^\s@*]+@[^\s@*]+\.[^\s@*]+", email)
                 or not wrangler.is_absolute() or not wrangler.is_file()):
             raise PublishError("Publishing configuration is incomplete; see MAC_SETUP.md.")
-        if path is not None and path.stat().st_size > 25 * 1024 * 1024:
-            raise PublishError("Dashboard exceeds the Pages 25 MiB file limit.")
-        host, branch = check_access(Cloudflare(account, token), project, email)
-        _check_login(host)
-        _check_login("privacy-check." + host)
+        def authorize() -> tuple[str, str]:
+            host, branch = check_access(Cloudflare(account, token), project, email)
+            _check_login(host)
+            _check_login("privacy-check." + host)
+            return host, branch
+
         if check_only:
+            host, _ = authorize()
             return {"status": "checked", "url": f"https://{host}"}
         if path is None:
             raise PublishError("No dashboard file supplied; nothing uploaded.")
-        with tempfile.TemporaryDirectory(prefix="garmin-dashboard-") as staging:
-            root = Path(staging)
-            assets = root / "assets"
-            assets.mkdir()
-            shutil.copyfile(path, assets / "index.html")
-            (assets / "_headers").write_text(HEADERS, encoding="utf-8")
-            # Run outside the checkout so Wrangler cannot discover a functions directory or
-            # unrelated project config. Credentials travel in the environment, never argv.
-            result = subprocess.run(
-                [str(wrangler), "pages", "deploy", str(assets), "--project-name", project,
-                 "--branch", branch], cwd=root, env={**os.environ, "CLOUDFLARE_API_TOKEN": token,
-                                                    "CLOUDFLARE_ACCOUNT_ID": account, "CI": "true",
-                                                    "WRANGLER_SEND_METRICS": "false"},
-                capture_output=True, timeout=180, check=False)
-            if result.returncode:
-                raise PublishError("Wrangler upload failed; the local dashboard is available.")
-        return {"status": "published", "url": f"https://{host}"}
+        import fcntl
+
+        path = path.resolve()
+        stamp = path.with_name(".published-dashboard")
+        with path.with_name(".publish.lock").open("a") as lock:
+            # Sync, manual builds, and Ollama all publish through this lock. Read
+            # the live file after acquiring it, even when the caller built an
+            # earlier generation. The local renderer replaces the file atomically.
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with tempfile.TemporaryDirectory(prefix="garmin-dashboard-") as staging:
+                root = Path(staging)
+                assets = root / "assets"
+                assets.mkdir()
+                snapshot = assets / "index.html"
+                with path.open("rb") as current:
+                    if os.fstat(current.fileno()).st_size > 25 * 1024 * 1024:
+                        raise PublishError("Dashboard exceeds the Pages 25 MiB file limit.")
+                    with snapshot.open("wb") as staged:
+                        shutil.copyfileobj(current, staged)
+                with snapshot.open("rb") as payload:
+                    identity = sha256(f"{account}:{project}:{email}:{HEADERS}".encode())
+                    digest = file_digest(payload, lambda: identity).hexdigest()
+                if stamp.exists() and stamp.read_bytes() == digest.encode("ascii"):
+                    return {"status": "unchanged"}
+                host, branch = authorize()
+                (assets / "_headers").write_text(HEADERS, encoding="utf-8")
+                # An interrupted provider request can leave deployment state uncertain.
+                stamp.unlink(missing_ok=True)
+                # Run outside the checkout so Wrangler cannot discover other config.
+                # Credentials travel in the environment, never argv.
+                result = subprocess.run(
+                    [str(wrangler), "pages", "deploy", str(assets), "--project-name", project,
+                     "--branch", branch], cwd=root, env={**os.environ, "CLOUDFLARE_API_TOKEN": token,
+                                                         "CLOUDFLARE_ACCOUNT_ID": account, "CI": "true",
+                                                         "WRANGLER_SEND_METRICS": "false"},
+                    capture_output=True, timeout=180, check=False)
+                if result.returncode:
+                    raise PublishError("Wrangler upload failed; the local dashboard is available.")
+                stamp.write_text(digest, encoding="ascii")
+                return {"status": "published", "url": f"https://{host}"}
     except PublishError as exc:
         return {"status": "error", "reason": str(exc)}
     except Exception:  # noqa: BLE001 - optional publishing must not break a local build

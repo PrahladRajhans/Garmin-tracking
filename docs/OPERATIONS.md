@@ -20,7 +20,10 @@
 Sync marks `sync_retry_required` before source work. Only after all requested sources finish
 without endpoint errors, skipped authentication or aborts, and normalization finishes, does it
 record `last_full_sync` and clear the retry flag. Dashboard/publishing failures remain separate
-from data-fetch completion. A retry does not bypass the existing rate-limit backoff.
+from successful Garmin downloads. The opt-in publisher serializes uploads per local dashboard
+and stages the current HTML once it holds the lock. A skipped download run can retry the latest
+file. A receipt in the dashboard directory avoids uploading the same file twice.
+Garmin retries still respect the existing rate-limit backoff.
 
 Old endpoint logs are retained for diagnosis but are not completion evidence. The first run
 after this migration fetches normally once; there is no destructive migration of raw data.

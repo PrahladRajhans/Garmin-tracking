@@ -32,6 +32,12 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+**Hosted dashboard freshness.** Reuse the opt-in Pages publisher after a guarded Ollama
+rebuild. Serialize uploads, stage the latest complete local file, and record successful
+publication so skipped Garmin syncs can retry failures without repeat deployments. Verify
+worker ordering, failure recovery and publishing-disabled behavior with a fake provider.
+Live hosting and iPhone sign-in remain separate rollout checks.
+
 **Chart readability.** First separate series identity from Garmin bands and goal status.
 Then make sparse comparisons readable without selecting individual points, and add overlays
 only where readings share a date or elapsed time. Review timelines, trends, bars and scatter

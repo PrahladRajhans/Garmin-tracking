@@ -136,7 +136,10 @@ accepted cache entries for the current facts and model. The worker checks the sn
 before replacing the Mac and iCloud files and serializes the replacement with other builds.
 The narration stamp lets the next worker detect accepted results missing from the saved HTML
 if the previous worker lost the snapshot race.
-The regular publishing path is responsible for any separately enabled private hosted copy.
+On the configured archive, a guarded Ollama rebuild also requests opt-in Pages publication.
+All dashboard entry points serialize uploads separately from local rendering, stage the current
+complete HTML after acquiring the upload lock, and keep a receipt of the last confirmed upload.
+A scheduled run that skips Garmin downloads can retry the latest snapshot without rebuilding it.
 
 `environment_review.outdoor_patterns` builds outdoor pair evidence from saved condition
 windows, the shared `run_evidence` matching rules and normalized recovery tables. It

@@ -802,6 +802,8 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
     import fcntl
 
     from garmin_mcp import dashboard, db
+    from garmin_mcp.config import db_path
+    from garmin_mcp.publish import publish_if_enabled
 
     path = out_dir / "index.html"
     wait_until = time.monotonic() + 3 * (30 * 60 + INSIGHT_OVERHEAD_SECONDS) + SYNC_SECONDS
@@ -830,10 +832,15 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
                 generate(conn, data, time.monotonic() + budget,
                          still_current=lambda: dashboard._snapshot_id(path) == snapshot
                          and not _sync_in_progress(conn))
+                if dashboard._snapshot_id(path) != snapshot or _sync_in_progress(conn):
+                    return
                 summaries, _ = cached(conn, data)
                 if (dashboard._narration_id(path) != summary_id(summaries)
                         or _worker_status(conn, state["model"]) != before_status):
                     dashboard.build(conn, only_if_snapshot=snapshot, out_dir=out_dir)
+                    canonical, _ = dashboard._snapshot_paths()
+                    if path.resolve() == canonical.resolve() and database.resolve() == db_path().resolve():
+                        publish_if_enabled(path)
         finally:
             conn.close()
 

@@ -208,3 +208,68 @@ def test_sync_keeps_local_dashboard_when_upload_is_refused(conn, tmp_path, monke
     assert result["dashboard"] == str(path)
     assert result["dashboard_publish"]["status"] == "error"
     assert "dashboard_error" not in result and path.read_text() == "local dashboard"
+
+
+def test_overlapping_uploads_stage_latest_snapshot_in_order(configured, monkeypatch):
+    import fcntl
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    _, path, _ = configured
+    uploading, waiting, finish = Event(), Event(), Event()
+    deployed = []
+    flock = fcntl.flock
+
+    def lock(fd, operation):
+        if uploading.is_set():
+            waiting.set()
+        return flock(fd, operation)
+
+    def run(argv, **kwargs):
+        staged = Path(argv[3]) / "index.html"
+        if not uploading.is_set():
+            uploading.set()
+            assert finish.wait(5)
+        deployed.append(staged.read_text())
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(fcntl, "flock", lock)
+    monkeypatch.setattr(publish.subprocess, "run", run)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        older = workers.submit(publish.publish_if_enabled, path)
+        try:
+            assert uploading.wait(5)
+            queued = workers.submit(publish.publish_if_enabled, path)
+            assert waiting.wait(5)
+            replacement = path.with_suffix(".new")
+            replacement.write_text("newer dashboard with Ollama results")
+            replacement.replace(path)
+            assert deployed == []
+        finally:
+            finish.set()
+        assert older.result()["status"] == queued.result()["status"] == "published"
+    assert deployed == ["synthetic dashboard", "newer dashboard with Ollama results"]
+    assert publish.publish_if_enabled(path) == {"status": "unchanged"}
+    assert len(deployed) == 2
+
+
+def test_skipped_sync_retries_failed_latest_upload_and_deduplicates(configured, conn, monkeypatch, tmp_path):
+    from garmin_mcp import dashboard, sync
+
+    _, path, _ = configured
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(dashboard, "needs_rebuild", lambda: False)
+    monkeypatch.setattr(dashboard, "_snapshot_paths", lambda: (path, None))
+    returncodes = iter([1, 0])
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((Path(argv[3]) / "index.html").read_text())
+        return subprocess.CompletedProcess(argv, next(returncodes))
+
+    monkeypatch.setattr(publish.subprocess, "run", run)
+    assert sync._refresh_dashboard_if_needed()["dashboard_publish"]["status"] == "error"
+    path.write_text("latest checked Ollama result")
+    assert sync._refresh_dashboard_if_needed()["dashboard_publish"]["status"] == "published"
+    assert sync._refresh_dashboard_if_needed() == {}
+    assert calls == ["synthetic dashboard", "latest checked Ollama result"]
