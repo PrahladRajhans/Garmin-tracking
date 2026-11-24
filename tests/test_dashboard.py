@@ -255,3 +255,25 @@ def test_archive_replay_validates_months_without_saving_or_editing_source(conn):
     assert report["ok"] and report["months_sampled"] == 2
     assert path.read_bytes() == before
     assert not (path.parent / "dashboard").exists()
+
+
+def test_overlay_separates_series_style_from_reference_bands():
+    chart = dashboard._paired_chart(
+        [{"t_s": i * 5, "pace": 330 + i, "cadence_spm": value, "power_w": 0}
+         for i, value in enumerate((150, 160, 170, 170))],
+        ("pace", "Pace", "Pace (min/km)", str),
+        (("cadence_spm", "Cadence", "Cadence (steps/min)", str),
+         ("power_w", "Power", "Power (W)", str)), 5,
+    )
+    for colour in ("green", "orange", "red"):
+        assert f"zone-line zone-{colour} overlay-line" in chart
+    assert 'data-overlay-track="power_w"' in chart
+    assert 'class="ln s2 overlay-line"' in chart
+    assert "Dashed · right axis" in chart and "Garmin reference bands" in chart
+
+
+def test_sparse_absolute_scatter_keeps_single_run_and_clear_units():
+    chart = dashboard.scatter([("2026-11-24", 340, 149)], "Pace", "Pulse", None,
+                              absolute_x=True, absolute_y=True, x_unit="min/km",
+                              y_unit="bpm", x_format=dashboard._run_pace, dense=True)
+    assert "pt-sparse" in chart and "Pace: 5:40 min/km" in chart

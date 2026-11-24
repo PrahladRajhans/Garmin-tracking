@@ -469,7 +469,7 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
             *, absolute_x: bool = False, absolute_y: bool = False, x_format=None, dense: bool = False) -> str:
     """Signed axes show how each measurement differs from its own recent average."""
     points = [(d, a, b) for d, a, b in points if math.isfinite(a) and math.isfinite(b)]
-    if len(points) < 3:
+    if not points or (len(points) < 3 and not (absolute_x and absolute_y and slope is None)):
         return '<p class="empty">Not enough paired observations yet.</p>'
     xs, ys = [p[1] for p in points], [p[2] for p in points]
     x_ticks = _ticks(*_scale(xs if absolute_x else xs + [0], 0.05))
@@ -510,10 +510,10 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
         when = f"{d} → {second}" if lag else d
         x_value = f"{a:g}/{x_unit.split('–')[-1]}" if absolute_x else f"{a:+.2f} {x_unit}"
         if x_format:
-            x_value = f"{x_format(a)} {x_unit}"
+            x_value = f"{x_format(a)} {x_unit}".strip()
         y_value = f"{b:g}" if absolute_y else f"{b:+.2f}"
         value = f"{xl}: {x_value} · {yl}: {y_value} {y_unit}"
-        g.append(_point(x(a), y(b), when, value, "pt"))
+        g.append(_point(x(a), y(b), when, value, "pt pt-sparse" if len(points) <= 12 else "pt"))
     return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label, dense=dense)
 
 
@@ -960,6 +960,14 @@ def page_sleep(d: dict[str, Any]) -> str:
             average += f" · {abs(delta)} min {direction} per night than the week before"
         chart = both(bar_chart, window["chart"], " h", nd=1, y_label="Sleep duration (h)",
                      x_label="Month" if period == 365 else "Wake date")
+        if period != 365 and window["scored"] >= 3:
+            sleep_rows = [{"t_s": date.fromisoformat(day).toordinal(), "hours": hours,
+                           "sleep_score": nights.get(day, {}).get("score")}
+                          for day, hours in window["chart"]]
+            chart = both(_paired_chart, sleep_rows,
+                         ("hours", "Sleep duration", "Sleep duration (h)", _sleep_time),
+                         (("sleep_score", "Garmin sleep score", "Sleep score (0–100)",
+                           lambda value: _f(value, unit="/100")),), 1, date_axis=True)
         records = ""
         if period == 7:
             rows = []
@@ -1185,8 +1193,16 @@ def _workout_page(workout: dict, summary: dict | None) -> str:
 
 
 def page_training(d: dict[str, Any]) -> str:
-    fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " points", nd=1,
-               y_label="Smoothed training load (points)")
+    load_rows = [{"t_s": date.fromisoformat(day).toordinal(), "long_load": ctl, "short_load": atl}
+                 for day, ctl, atl in d["fitness"]]
+    points = lambda value: _f(value, 1, " points")
+    if sum(row["long_load"] is not None for row in load_rows) >= 2:
+        fit = both(_paired_chart, load_rows, ("long_load", "Longer-term load", "Training load (points)", points),
+                   (("short_load", "Recent load", "Recent load (points)", points),), 1,
+                   date_axis=True, shared_scale=True)
+    else:
+        fit = both(line_chart, [(r[0], r[1]) for r in d["fitness"]], " points", nd=1,
+                   y_label="Smoothed training load (points)")
     completed = [v for _, v in d["weekly_load"][-5:-1] if v is not None]
     four_week_avg = sum(completed) / 4 if len(completed) == 4 else None
     wl = both(bar_chart, d["weekly_load"], " points", y_label="Weekly training load (points)",
@@ -1235,7 +1251,8 @@ def page_training(d: dict[str, Any]) -> str:
                        f'<ul class="record-list">{"".join(entries[4:])}</ul></details>')
         body += _card("Recent workouts", recent, wide=True)
     body += (_card("Training load trend", fit, "A smoothed view of workout effort over time. A rising line "
-                    "means your recent sessions are adding more load.", wide=True)
+                    "means your recent sessions are adding more load. Recent load responds more quickly "
+                    "to workouts and rest.", wide=True)
              + _card("Load per week", wl, "Points combine workout duration and intensity. The latest week may be partial."
                      + (f" · Dashed: {_f(four_week_avg)} average of the previous four bars"
                         if four_week_avg is not None else ""), wide=True)
@@ -1300,7 +1317,7 @@ def _running_block(d: dict[str, Any]) -> str:
              f'<details><summary>Weekly totals</summary><ul class="rows">{weekly_rows}</ul></details></section>')
     efforts = block["efforts"]
     points = [(row["day"], row["pace_s_per_km"], row["pulse"]) for row in efforts]
-    chart = both(scatter, points, "Pace", "Moving heart rate", None, x_unit="/km", y_unit="bpm",
+    chart = both(scatter, points, "Pace", "Moving heart rate", None, x_unit="min/km", y_unit="bpm",
                  absolute_x=True, absolute_y=True, x_format=_run_pace, dense=True)
     run_ids = {r["activity_id"] for r in d["runs"]}
     evidence = []
@@ -1312,18 +1329,22 @@ def _running_block(d: dict[str, Any]) -> str:
         efficiency = row["decoupling_pct"]
         note = (row["kind"].replace("_", " ").capitalize()
                 + (f' · {row["km"]:.1f} km' if row["km"] else "")
-                + (f" · {efficiency:+g}% decoupling" if efficiency is not None else ""))
+                + (f" · efficiency change {-efficiency:+g}%" if efficiency is not None else ""))
         evidence.append(f'<li><div>{label}<p class="sub">{_e(note)}</p></div>'
                         f'<b>{_run_pace(row["pace_s_per_km"])}/km · {row["pulse"]:g} bpm</b></li>')
-    drift = (f'<p class="sub">Median decoupling {block["median_decoupling"]:+g}% across '
-             f'{block["decoupling_count"]} runs. Positive means less grade-adjusted speed per '
-             'heartbeat in the second half.</p>' if block["median_decoupling"] is not None else "")
-    detail = (f'<details><summary>{len(efforts)} recorded efforts</summary>'
+    drift = ""
+    if (decoupling := block["median_decoupling"]) is not None:
+        change = (f"{abs(decoupling):g}% {'less' if decoupling > 0 else 'more'}" if decoupling
+                  else "the same")
+        drift = (f'<p class="sub"><b>Second-half efficiency</b> · {change} hill-adjusted speed per heartbeat '
+                 f'at the median across {block["decoupling_count"]} runs.</p>')
+    detail = (f'<details{" open" if len(efforts) <= 6 else ""}><summary>{len(efforts)} recorded efforts</summary>'
               f'<ul class="running-effort-list">{"".join(evidence)}</ul></details>' if evidence else "")
     body += (f'<section class="card wide running-anchor" id="running-efforts"><h3>Pace and effort</h3>'
              f'<p class="sub">{len(efforts)} qualifying steady outdoor runs from '
-             f'{block["sampled"]} reviewed FIT recordings. Compare similar terrain and conditions.</p>'
-             f'{chart}{drift}{detail}</section>')
+             f'{block["sampled"]} reviewed FIT recordings. Each dot is one run. '
+             'Faster paces are on the left. Compare similar terrain and conditions.</p>'
+             f'{chart}{detail}{drift}</section>')
     return body
 
 
@@ -1667,7 +1688,8 @@ def _hr_zone_bounds(raw: str | None) -> list[float]:
 
 def _trace_rating(key: str, value: float, hr_bounds: tuple | list) -> tuple[str, str] | None:
     if rating := running.rate(key, value):
-        return rating["colour"], f'Garmin band: {rating["label"]}'
+        label = "lowest reference band" if rating["colour"] == "red" else rating["label"]
+        return rating["colour"], f"Garmin band: {label}"
     if key == "hr" and hr_bounds:
         colours = ("blue", "green", "green", "orange", "red", "purple")
         for index, upper in enumerate(hr_bounds):
@@ -1676,25 +1698,44 @@ def _trace_rating(key: str, value: float, hr_bounds: tuple | list) -> tuple[str,
     return None
 
 
+def _trace_legend(key, label, hr_bounds, *, secondary=False, shared_scale=False):
+    stroke = "Dashed" if secondary else "Solid"
+    scale = (" · left axis" if shared_scale else " · right axis") if secondary else ""
+    bands = running.GAUGES.get(key)
+    band_key = ""
+    if bands:
+        labels = {"red": "lowest band", "orange": "below average", "green": "average",
+                  "blue": "above average", "purple": "top 5%"}
+        swatches = "".join(f'<span class="zone-{colour}">{labels[colour]}</span>' for _, colour, _ in bands)
+        band_key = f'<span class="trace-bands" aria-label="Garmin reference bands">{swatches}</span>'
+    elif key == "hr" and hr_bounds:
+        band_key = " · colors show recorded heart-rate bands"
+    track = f' class="chart-key overlay-secondary" data-overlay-track="{key}"' if secondary else ' class="chart-key"'
+    return f'<p{track}><b>{_e(label)}</b> · {stroke}{scale}{band_key}</p>' if secondary or bands else ""
+
+
 def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tuple,
                   interval: int, w: int = W, *, context_by_second: dict[int, dict] | None = None,
                   faster_at_top: bool = False, hr_bounds: tuple | list = (),
-                  crossings: tuple = (), elapsed_end: int = 0) -> str:
-    """Draw one optional series on the same elapsed-time axis, with its own right scale."""
+                  crossings: tuple = (), elapsed_end: int = 0,
+                  date_axis: bool = False, shared_scale: bool = False) -> str:
+    """Compare two series on a shared time axis, with a second scale when units differ."""
     akey, alabel, axis_a, afmt = primary
+
+    allow_zero = {"power_w", "distance_km", "long_load", "short_load", "sleep_score"}
 
     def series(key: str) -> dict[int, float]:
         return {p["t_s"]: value for p in stream
                 if isinstance(value := p.get(key), (float, int)) and math.isfinite(value)
-                and (key == "altitude_m" or value > 0)}
+                and (value > 0 or key == "altitude_m" or (key in allow_zero and value == 0))}
 
     a = series(akey)
     if len(a) < 2 or stream[0]["t_s"] == stream[-1]["t_s"]:
         return '<p class="empty">Too few recorded points for this chart.</p>'
     options = []
     for key, label, axis, fmt in alternatives:
-        samples = series(key)
-        if len(a.keys() & samples.keys()) >= 3:
+        samples = {t: value for t, value in series(key).items() if t in a}
+        if len(samples) >= 3:
             options.append((key, label, axis, fmt, samples))
     h, left, right, top, bottom = 186, 52, w - (47 if options or crossings else 24), 28, 140
     start, end = stream[0]["t_s"], max(stream[-1]["t_s"], elapsed_end)
@@ -1702,8 +1743,14 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     def x(seconds: float) -> float:
         return left + (right - left) * (seconds - start) / (end - start)
 
-    def track(values, caption, fmt, *, secondary=False, reverse=False):
-        ticks = _ticks(*_scale(list(values.values())))
+    common_values = list(a.values())
+    if shared_scale:
+        common_values += [value for *_, samples in options for value in samples.values()]
+
+    gap = 1 if date_axis else 2 * interval
+
+    def track(key, values, caption, fmt, *, secondary=False, reverse=False):
+        ticks = _ticks(*_scale(common_values if shared_scale else list(values.values())))
         low, high = ticks[0], ticks[-1]
 
         def y(value: float) -> float:
@@ -1711,25 +1758,46 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
             return top + (bottom - top) * ratio if reverse else bottom - (bottom - top) * ratio
 
         if secondary:
-            parts = [f'<path class="overlay-axis" d="M{right},{top}V{bottom}"/>',
-                     (f'<text x="{right}" y="{top - 9}" class="axis-label overlay-label" '
-                      f'text-anchor="end">{_e(caption)}</text>')]
-            parts += [f'<text x="{right + 6}" y="{y(tick) + 4:.2f}" class="tick overlay-label">'
-                      f'{_e(fmt(tick))}</text>' for tick in ticks]
+            parts = ([] if shared_scale else [f'<path class="overlay-axis" d="M{right},{top}V{bottom}"/>'])
+            parts.append(f'<text x="{right}" y="{top - 9}" class="axis-label overlay-label" '
+                         f'text-anchor="end">{_e(caption)}</text>')
+            if not shared_scale:
+                parts += [f'<text x="{right + 6}" y="{y(tick) + 4:.2f}" class="tick overlay-label">'
+                          f'{_e(fmt(tick))}</text>' for tick in ticks]
         else:
             parts = _horizontal_scale(ticks, left, right, y, fmt)
             parts += _axes(left, right, top, bottom, h, "", caption)[:2]
-        path = []
-        previous = None
-        for second, value in values.items():
-            split = previous is None or second - previous > 2 * interval
-            path.append(f'{"M" if split else "L"}{x(second):.2f},{y(value):.2f}')
-            previous = second
-        colour = "s2" if secondary else "s1"
-        parts.append(f'<path class="ln {colour}" d="{" ".join(path)}"/>')
+        base = "s2" if secondary else "s1"
+        paths: dict[str, list[str]] = {}
+        samples = [(second, value, _trace_rating(key, value, hr_bounds)) for second, value in values.items()]
+        ends = {}
+
+        def segment(colour, start_point, end_point):
+            commands = paths.setdefault(colour, [])
+            if ends.get(colour) != start_point:
+                commands.append("M" + start_point)
+            commands.append("L" + end_point)
+            ends[colour] = end_point
+
+        for (t0, v0, rate0), (t1, v1, rate1) in pairwise(samples):
+            if t1 - t0 > gap:
+                continue
+            col0, col1 = (rate[0] if rate else base for rate in (rate0, rate1))
+            x0, x1, y0, y1 = x(t0), x(t1), y(v0), y(v1)
+            first, last = f'{x0:.2f},{y0:.2f}', f'{x1:.2f},{y1:.2f}'
+            if col0 == col1:
+                segment(col0, first, last)
+            else:
+                mid = f'{(x0 + x1) / 2:.2f},{(y0 + y1) / 2:.2f}'
+                segment(col0, first, mid)
+                segment(col1, mid, last)
+        for colour, path in paths.items():
+            tone = colour if colour == base else f"zone-line zone-{colour}"
+            style = " overlay-line" if secondary else ""
+            parts.append(f'<path class="ln {tone}{style}" d="{" ".join(path)}"/>')
         return parts, y
 
-    g, y_a = track(a, axis_a, afmt if faster_at_top else _tick_number, reverse=faster_at_top)
+    g, y_a = track(akey, a, axis_a, afmt if faster_at_top else _tick_number, reverse=faster_at_top)
     guides = []
     last_label = left - 28
     for km, elapsed in enumerate(crossings, 1):
@@ -1744,9 +1812,14 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     if guides:
         g.insert(0, f'<g class="split-guides" aria-hidden="true">{"".join(guides)}</g>')
     context_labels: dict[str, int] = {}
+    x_label = "Date" if date_axis else "Elapsed time"
+
+    def label_at(t):
+        return date.fromordinal(t).isoformat() if date_axis else loads._hms(t)
+
     previous = None
     for t, v in a.items():
-        starts_segment = previous is None or t - previous > 2 * interval
+        starts_segment = previous is None or t - previous > gap
         context = _condition_readout((context_by_second or {}).get(t))
         index = context_labels.setdefault(context, len(context_labels)) if context else None
         reading = f"{alabel} {afmt(v)}" + ("/km" if faster_at_top else "")
@@ -1755,17 +1828,21 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
         if rating:
             marker = f"zone-dot zone-{rating[0]}"
             reading += f" · {rating[1]}"
-        g.append(_point(x(t), y_a(v), loads._hms(t), reading, cls=marker, condition_index=index))
+        g.append(_point(x(t), y_a(v), label_at(t), reading, cls=marker, condition_index=index))
         previous = t
-    ticks_at = [start, (end + start) // 2, end]
-    labels = [loads._hms(t) for t in ticks_at]
+    ticks_at = sorted({start, (end + start) // 2, end})
+    labels = [_short(label_at(t)) if date_axis else label_at(t) for t in ticks_at]
     g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W)
     g.append(f'<text x="{(left + right) / 2:.1f}" y="{h - 8}" text-anchor="middle" '
-             'class="axis-label">Elapsed time</text>')
+             'class="axis-label">' + x_label + "</text>")
     buttons = []
+    legend = [_trace_legend(akey, alabel, hr_bounds)]
     for key, label, axis, fmt, samples in options:
-        parts, y_overlay = track(samples, axis, _tick_number, secondary=True)
+        pace = key == "pace_s_km"
+        parts, y_overlay = track(key, samples, axis, fmt if pace else _tick_number, secondary=True, reverse=pace)
+        legend.append(_trace_legend(key, label, hr_bounds, secondary=True, shared_scale=shared_scale))
         readings = {}
+        last = None
         for t, value in samples.items():
             readings[t] = f"{label} {fmt(value)}"
             if rating := _trace_rating(key, value, hr_bounds):
@@ -1773,14 +1850,17 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
                 readings[t] += f" · {description}"
                 parts.append(f'<circle class="zone-dot zone-{colour}" cx="{x(t):.2f}" '
                              f'cy="{y_overlay(value):.2f}" r="3"/>')
+            elif last is None or t - last > gap:
+                parts.append(f'<circle class="overlay-dot" cx="{x(t):.2f}" cy="{y_overlay(value):.2f}" r="1.6"/>')
+            last = t
         g.append(f'<g class="overlay-secondary" data-overlay-track="{key}">{"".join(parts)}</g>')
         buttons.append(f'<button type="button" class="overlay-control" data-overlay-control="{key}" '
                        f'data-readings="{_e(json.dumps([readings.get(t) for t in a], ensure_ascii=False))}" '
                        f'aria-pressed="false">{_e(label)}</button>')
     controls = (f'<div class="overlay-options" role="group" aria-label="Compare with">'
                 f'<span>Compare with</span>{"".join(buttons)}</div>') if buttons else ""
-    return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
-                  controls=controls, dense=True,
+    return _chart("line", g, w, h, (left, right, top, bottom), x_label, axis_a,
+                  controls=controls + "".join(legend), dense=not date_axis,
                   condition_labels=list(context_labels))
 
 
@@ -1798,8 +1878,10 @@ def _run_trace(r: dict[str, Any]) -> str:
     step = ("step_length_m", "Step length", "Step length (m)", lambda v: _f(v, 2, " m"))
     power = ("power_w", "Power", "Power (W)", lambda v: _f(v, unit=" W"))
     climb = ("altitude_m", "Elevation", "Elevation (m)", lambda v: _f(v, unit=" m"))
-    pace_hr = both(_paired_chart, for_chart, ("pace_s_km", "Pace", "Pace (min/km)", loads._hms),
-                   (heart_rate, cadence, climb, power), interval,
+    pace = ("pace_s_km", "Pace", "Pace (min/km)", loads._hms)
+    distance = ("distance_km", "Distance", "Distance (km)", lambda v: _f(v, 2, " km"))
+    pace_hr = both(_paired_chart, for_chart, pace,
+                   (heart_rate, cadence, climb, power, distance), interval,
                    context_by_second=near_sample, faster_at_top=True, hr_bounds=r.get("hr_zone_bounds", ()),
                    **timeline)
     contact = ("ground_contact_ms", "Ground contact", "Ground contact (ms)",
@@ -1807,13 +1889,19 @@ def _run_trace(r: dict[str, Any]) -> str:
     bounce = ("vertical_oscillation_cm", "Bounce", "Bounce (cm)", lambda v: _f(v, 1, " cm"))
     ratio = ("vertical_ratio_pct", "Vertical ratio", "Vertical ratio (%)",
              lambda v: _f(v, 1, "%"))
-    cadence_step = both(_paired_chart, stream, cadence,
-                        (step, heart_rate, power, contact, bounce, ratio), interval,
+    cadence_step = both(_paired_chart, for_chart, cadence,
+                        (step, pace, heart_rate, power, contact, bounce, ratio), interval,
                         hr_bounds=r.get("hr_zone_bounds", ()), **timeline)
-    elevation = both(_paired_chart, stream, climb, (), interval, **timeline)
+    elevation = both(_paired_chart, for_chart, climb, (pace, heart_rate, power, distance), interval,
+                     hr_bounds=r.get("hr_zone_bounds", ()), **timeline)
+    power_detail = ""
+    if sum(p.get("power_w") is not None for p in stream) >= 3:
+        power_chart = both(_paired_chart, for_chart, power, (pace, heart_rate, climb, cadence), interval,
+                           hr_bounds=r.get("hr_zone_bounds", ()), **timeline)
+        power_detail = (f'<details class="card wide"><summary><strong>Running power</strong></summary>'
+                        f'{power_chart}</details>')
     drift = r["pacing"].get("hr_drift_bpm")
-    cue = ("Compare readings at the same point in the run."
-           if drift is None else
+    cue = ("" if drift is None else
            f'Heart rate averaged {_f(abs(drift), 1)} bpm {"higher" if drift > 0 else "lower"} '
            "in the second half of moving time." if drift else
            "Average heart rate was the same in both halves of moving time.")
@@ -1823,9 +1911,10 @@ def _run_trace(r: dict[str, Any]) -> str:
               if crossings else "")
     body = (toggle + _card("Pace", pace_hr, cue, wide=True)
             + _card("Running form", cadence_step,
-                    "Garmin bands: red/orange below average, green average, blue/purple above. "
-                    "Running form depends on your pace.", wide=True)
+                    "Garmin reference bands describe where a reading falls. "
+                    "Compare form at similar paces.", wide=True)
             + _card("Elevation", elevation, wide=True)
+            + power_detail
             + _conditions_card(context))
     return body
 
@@ -2125,7 +2214,7 @@ def page_patterns(d: dict[str, Any]) -> str:
         body = (f'<p class="sub">{_e(statement)}.</p>{plot}'
                 f'<p class="chart-note">{p["n"]} paired days'
                 + (f' (latest {len(drawn)} drawn)' if len(drawn) < len(p["points"]) else "")
-                + ' · Zero is your recent average.</p>'
+                + ' · Each dot is a pair of readings. Zero is your recent average. The dashed line shows their overall relationship.</p>'
                 f'<details><summary>How sure is this?</summary><p class="sub">'
                 f'Correlation {p["r"]:+.2f} · 95% range '
                 f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}.'
@@ -2148,14 +2237,14 @@ CSS = """
 :root{color-scheme:light;--page:#f2f5f8;--surface:#fff;--ink:#172033;--ink2:#48556a;
 --muted:#546174;--grid:#dfe4ec;--axis:#687487;--border:#dce3eb;--s1:#1868c4;
 --accent:#edf5ff;--active:#104f9d;--cursor:#39669a;
---split-guide:#7e8fab;--overlay-ink:#a44220;
+--split-guide:#7e8fab;--overlay-ink:#48556a;--band-green:#087340;--band-amber:#986000;--band-red:#b92f3b;
 --focus:#e7f1fb;--focus-edge:#c6dbf1;
 --s2:#eb6834;--good:#0ca30c;--warn:#fab219;--serious:#ec835a;--bad:#d03b3b;--purple:#6250d6;
 --band:rgba(42,120,214,.12);--goodtext:#006300}
 :root[data-theme=dark]{color-scheme:dark;--page:#10151f;--surface:#1a2230;--ink:#f3f6fa;
 --ink2:#c4cede;--muted:#aab8cd;--grid:#354155;--axis:#899bb4;--border:#303c50;--s1:#6baaff;
 --accent:#202f48;--active:#b6d9ff;--cursor:#b6d9ff;
---split-guide:#8197b7;--overlay-ink:#ffab88;
+--split-guide:#8197b7;--overlay-ink:#c4cede;--band-green:#67d69a;--band-amber:#ffc36b;--band-red:#ff8894;
 --focus:#1c324b;--focus-edge:#355275;
 --s2:#d95926;--purple:#9085e9;--band:rgba(57,135,229,.18);--goodtext:#0ca30c}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
@@ -2321,17 +2410,27 @@ font-size:14px;font-weight:650;width:max-content}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
 .context-dot{fill:var(--s1);r:1.7}
 .zone-dot{stroke:var(--surface);stroke-width:.7;r:3px}
-.zone-red{fill:var(--bad)}.zone-orange{fill:var(--serious)}.zone-green{fill:var(--good)}
-.zone-blue{fill:var(--s1)}.zone-purple{fill:var(--purple)}
+.zone-red{--zone-ink:var(--band-red)}.zone-orange{--zone-ink:var(--band-amber)}
+.zone-green{--zone-ink:var(--band-green)}.zone-blue{--zone-ink:var(--s1)}
+.zone-purple{--zone-ink:var(--purple)}
+.zone-dot{fill:var(--zone-ink)}.ln.zone-line{stroke:var(--zone-ink)}
 .hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.85;r:1.6px}
 .chart-dense :is(.pt,.zone-dot,.context-dot){r:.95px;stroke:none}
-.fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
-.moving-average{fill:none;stroke:var(--s2);stroke-width:1.8;stroke-dasharray:5 3}
+.chart-interaction .pt.pt-sparse{r:4px;stroke:var(--surface);stroke-width:.8}
+.fit{stroke:var(--overlay-ink);stroke-dasharray:4 2;stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
+.moving-average{fill:none;stroke:var(--overlay-ink);stroke-width:1.8;stroke-dasharray:5 3}
 .overlay-secondary{display:none}
 .overlay-secondary.active{display:initial}
 .overlay-axis{stroke:var(--overlay-ink);stroke-width:1}
 .overlay-label{fill:var(--overlay-ink)}
-.overlay-secondary .ln.s2{stroke:var(--overlay-ink);stroke-dasharray:5 3}
+.overlay-secondary .ln.s2{stroke:var(--overlay-ink)}
+.overlay-dot{fill:var(--overlay-ink)}
+.ln.overlay-line{stroke-dasharray:4 2}
+.chart-key{margin:4px 0;color:var(--ink2);font-size:12px}
+.chart-key.overlay-secondary.active{display:block}
+.trace-bands{display:flex;flex-wrap:wrap;gap:3px 10px}
+.trace-bands span::before{content:"";display:inline-block;width:.75em;border-top:3px solid var(--zone-ink);
+margin-inline-end:4px;vertical-align:middle}
 .overlay-options{display:none;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 [data-ready] .overlay-options{display:flex}
 .overlay-options span{color:var(--ink2);font-size:13px;margin-right:4px}
@@ -2343,7 +2442,7 @@ padding:0 10px;cursor:pointer}
 .vo2-range{stroke:var(--axis);stroke-width:4}.vo2-middle{stroke:var(--s1);stroke-width:8}
 .vo2-garmin{fill:var(--muted);stroke:var(--surface);stroke-width:2}
 .vo2-effective{fill:var(--surface);stroke:var(--s1);stroke-width:2}
-.bar.s1{fill:var(--s1)}.bar.good{fill:var(--good)}.bar.warn{fill:var(--warn)}
+.bar.s1{fill:var(--s1)}.bar.good{fill:var(--band-green)}.bar.warn{fill:var(--band-amber)}
 .bar.bad{fill:var(--bad)}.bar.muted{fill:var(--muted)}
 .gauge{position:relative;height:20px;margin:8px 0 6px}
 .gbar{display:flex;gap:2px;height:8px;position:absolute;left:0;right:0;top:6px}

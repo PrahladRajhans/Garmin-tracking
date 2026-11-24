@@ -32,6 +32,12 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+**Chart readability.** First separate series identity from Garmin bands and goal status.
+Then make sparse comparisons readable without selecting individual points, and add overlays
+only where readings share a date or elapsed time. Review timelines, trends, bars and scatter
+plots at phone and desktop widths in Light and Dark, with split guides and offline values.
+Use the fixture checks for release and keep physical iPhone Safari acceptance open.
+
 **Ollama repair after v0.27.0 (20–24).** First reproduce the rejected Sunday output on
 fictional data and distinguish a draft failure from review rejection. Next supply each
 comparison and its baseline together, and give the model a bounded correction when the

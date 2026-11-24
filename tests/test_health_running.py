@@ -92,7 +92,7 @@ def test_scatter_shows_units_and_lagged_measurement_dates():
     svg = dashboard.scatter([("2026-01-01", -1.0, -2.0), ("2026-01-02", 0.0, 0.0),
                              ("2026-01-03", 1.0, 2.0)], "x", "y", 2.0,
                             x_unit="h", y_unit="ms", lag=1)
-    assert svg.count('class="pt"') == 3 and 'class="fit"' in svg
+    assert svg.count('class="pt pt-sparse"') == 3 and 'class="fit"' in svg
     assert "x (h)" in svg and "y (ms)" in svg and "2026-01-04" in svg
 
 

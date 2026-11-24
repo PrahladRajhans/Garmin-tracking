@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-11-25
+
+- Separate series identity from reference bands. Rated workout traces carry Garmin band
+  colors on the line itself. Secondary traces are dashed, with neutral axes and labeled keys.
+- Use larger points and visible dated readings for sparse pace-versus-pulse comparisons.
+  Keep health trends, goal bars and Patterns consistent about what their colors and lines mean.
+- Add pace and distance comparisons to more run charts, a dedicated power view when recorded,
+  recent versus longer-term load in Training, and a Garmin score overlay for weekly and monthly
+  sleep when enough nights have both readings.
+- Preserve missing FIT distance values so distance overlays can distinguish gaps from a
+  recorded zero at the start.
+
 ## [0.27.1] - 2026-11-24
 
 - Keep Ollama's measurements and baselines together so a valid comparison can cite one
