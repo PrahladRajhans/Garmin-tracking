@@ -125,6 +125,54 @@ dashboard, and compare the plan and recorded links against real coverage. The ex
 concept remains a future option. Live tracking, medical-sensor features, nutrition and 3D terrain
 need separate product and data decisions.
 
+### Repository and coaching review
+
+1. Inventory the tracked tree and its entry points. Classify release code, tests, operations,
+   governance, research and historical screenshots. Record evidence of use before removing code.
+2. Locate the owner archive and verify access. Use read-only source access and disposable output.
+   Separate historical checks from fixtures, browser checks and local inference benchmarks.
+3. Make the insight time budget, writing style and model configurable. Keep model residency
+   separate from a small, local memory of previously reviewed evidence.
+4. Improve the insight experience with the selected lens, linked readings and an explicit
+   evidence comparison. Keep deployment, model quality and full manual audit status visible.
+5. Verify the service entry points, cache invalidation, disabled paths and the dashboard.
+   Record findings, decisions, and remaining evidence in [the repository review](docs/REPOSITORY_REVIEW.md).
+
+The tracked-file inventory, verified cleanup, local coaching controls and Today layout are
+implemented. Next, review the remaining modules in runtime order: sync and normalization,
+analysis, dashboard and export, then Mac and publishing operations. Log the entry point and
+test for each proposed removal. On the Mac, replay the real archive and compare the reviewed
+answers on the three fictional cases before selecting a model. Check that each answer
+connects readings, distinguishes an exception from a trend, and leaves a useful next
+measurement. Then validate the chosen model through a scheduled refresh and check its
+evidence links on the phone.
+
+### Running performance review
+
+1. Research running dashboards and distinguish recorded effort, pace stability, changing heart
+   rate, and running dynamics. Record source decisions and where each method applies.
+2. Build calendar-based training comparisons from the archive and an inspectable effort chart
+   from qualifying FIT runs. Derive one action from the strongest available evidence.
+3. Give Running its own local coaching prompt and a separate evidence review. Verify sparse
+   history, indoor runs, stale snapshots, reference windows, model rejection and link targets.
+4. Test the running view and linked run details at phone and desktop widths. Once Running
+   passes, apply a small visual improvement to a shared dashboard element.
+5. Update governance and release notes, run local and hosted checks, and merge the reviewed
+   release to main. Track Mac archive and live model acceptance separately.
+
+The v0.26 implementation covers the dated block, effort evidence, form comparisons and checks,
+four-week coaching, local running prompt, and native split overlays. The shared follow-up explains
+load and HRV in place and marks the active chart reading more clearly. [Source decisions](research_notes/Garmin%20connector%20feature%20research/running_performance_2026-11.md).
+Open acceptance tasks are the private-archive coverage and wider model benchmark, followed by
+Safari and phone checks. Consider best efforts or durability scoring after those checks.
+
+### Local reasoning follow-up
+
+- Add an opt-in daily interpretation across measured signals, with a testable question and
+  inspectable sources. Keep guidance deterministic and reason about evidence separately.
+- Compare the larger model's latency and output on fictional evidence locally, then verify
+  quality on real archive snapshots with consent before changing any default.
+
 ### Coaching and Sleep follow-up
 
 1. Preserve the current working tree and the Mac's local-only inference boundary. Record changes

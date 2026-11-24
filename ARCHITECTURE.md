@@ -24,7 +24,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
   HRV status     VO2max, races     glossary       trends, feed   ageing, shape
       │          scores.py (Recovery %, Sleep %, Strain)   running.py (form)
       └──────────────┬──────────────────────────────────────┘
-          server.py (45 MCP tools)        dashboard.py (one HTML file, 7+ pages)
+          server.py (56 MCP tools)        dashboard.py (one HTML file, 7+ pages)
                  │                                │
           Claude Desktop / Code           Safari on Mac, iCloud Drive on phone
 ```
@@ -33,7 +33,9 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 1. **launchd** runs `garmin-mcp-sync --days 3` every 3 hours on the Mac.
 2. **Gate** (`sync.gate`): full sync only if ≥ 11 h since the last good sync, or today's activity list (1 cheap call) has a new activity. The user syncs the phone about twice a day, so this catches both.
 3. **Self-update** (`autoupdate.py`) fast-forwards the repo to `origin/main` before syncing, and reinstalls if `pyproject.toml` changed. **Settings** are seeded from `config/athlete.json`.
-4. **Store raw first**: every API response is saved verbatim (`raw_daily`, `raw_range`); FIT files are parsed into `fit_*` tables. Raw data is never overwritten by a lower-priority source.
+4. **Store raw first**: saved JSON keys keep the latest payload in the raw tables and retain changed
+   predecessors in `raw_payload_history`. FIT bytes are kept on disk, with distinct revisions by hash.
+   Decoding loads the full available records into `fit_*` tables. Timeline sampling happens in the renderer.
 5. **Normalize**: tidy tables are rebuilt from raw. Source priority is Personal API, then unofficial, then export, merged field by field.
 6. **Rebuild derived**: `loads.rebuild` (thresholds, per-activity load, fitness), then `dashboard.build`.
    Sync, the dashboard CLI, and the MCP `build_dashboard` tool then call
@@ -55,6 +57,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 | `loads.py` | HRmax policy, TRIMP, CTL/ATL/TSB, pace curve, critical speed, effective VO2max, race predictions, sense checks |
 | `coaching.py` | Per-run metrics, run analysis, form trends, glossary, fitness age levers |
 | `running.py` | Running breakdown: Garmin form bands, pace-matched form, what to work on |
+| `running_block.py` | Date-bounded running volume, pace and pulse evidence, and next-run checks |
 | `health.py` | Sleep breakdown, HR dip, activity status, pace of ageing, shifts, monthly report, Marathon shape |
 | `training_plan.py` | Seven-day starting plan shared by the daily MCP brief and Today |
 | `scores.py` | Recovery %, Sleep %, Strain 0–21, bedtime suggestion |
@@ -147,3 +150,15 @@ MCP updates either table and marks the dashboard for rebuild. The local dashboar
 its usual derived snapshot, which can include aggregate check-in comparisons and scheduled session
 rows. Optional private hosting retains its existing explicit publication settings. Raw ratings,
 notes, coordinates and route dates are omitted from the Ollama prompts.
+
+
+## Daily interpretation configuration and replay
+
+The local narrator reads an optional voice and lens profile next to the SQLite archive.
+Profile text and allowlisted evidence form the prompt; the cache key includes both. The
+worker loads the model only through local Ollama and stores limited prior evidence in
+`coach_insight_memory` after a reviewed result. The model's resident process does not
+replace that durable context. [Ollama operations](docs/OLLAMA.md#thinking-insights).
+
+Archive replay opens the original in read-only mode and renders transient HTML using a copy.
+The verification output contains aggregate counts. [Repository review](docs/REPOSITORY_REVIEW.md).

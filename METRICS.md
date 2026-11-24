@@ -581,3 +581,50 @@ time zone for the latest seven days.
 - Route replay uses FIT cumulative distance and GPS (55 m maximum separation at sampled points
   250 m apart). Totals agree within 3%, and interpolation spans at most 100 m. Display complete
   one-kilometre elapsed-time sections including stops. GPS coordinates stay out of the HTML.
+
+## Thinking interpretation evidence
+
+The opt-in interpretation reuses the non-overlapping sleep and resting heart rate comparisons,
+current and previous seven-day HRV, and the current day's matched run when coverage qualifies.
+The numbers and coverage come directly from the existing calculations. Python requires two
+or more distinct evidence domains, rejects invalid citations and disallowed text, and displays
+the cited readings separately. Model-authored interpretations and a question to check next
+undergo a separate review against the cited readings. They never drive the training plan.
+
+Remembered readings come from previously reviewed, deterministic evidence. The prompt can use
+up to two readings from the last accepted snapshot within 14 days. The prior snapshot can
+overlap current summary windows, so the model treats it as context. At least two current
+domains still must be cited.
+
+## Running performance block
+
+- Training rhythm shows 12 completed Monday–Sunday weeks and the current week to date. The two
+  scorecards compare the latest four complete calendar weeks with the four before. Garmin run,
+  trail, track, treadmill, virtual and ultra entries count. Run days are distinct local dates.
+  Distance totals sum finite positive recorded metres. A record without distance still counts as
+  a run, the weekly table discloses missing records, and a week with only missing measurements
+  has no distance bar. A zero is zero recorded distance, which can include an archive gap.
+- The pace-and-pulse plot reviews the most recent 48 outdoor FIT candidates from the block.
+  Inclusion requires at least 20 minutes of moving time, minute-speed variation below 15%,
+  moving samples covering at least 80% of elapsed time, and usable heart rate on at least 90%
+  of moving time. Each point shows FIT moving pace and time-weighted pulse. Terrain and
+  conditions can differ across points. Use the matched-run section for like-for-like comparison.
+- Half comparisons use equal moving-time windows and at least 90% heart-rate coverage in each
+  half. Raw pace uses the same intervals as the pulse reading. The decoupling percentage is
+  100 × (first-half grade-adjusted speed per heartbeat − second half) / first half. Positive
+  means less adjusted speed per heartbeat later. Block median requires three available readings
+  and describes the qualifying sample without an ability score.
+- Form notes explain step rate, step length, ground contact, vertical oscillation and the ratio
+  of oscillation to step length. Prefer the median and observed minimum–maximum of at least
+  three earlier matched runs with that metric. For sparse measurements, use an in-range
+  pace regression with at least five earlier readings from the same activity type. The two
+  methods have separate labels. Population colours are references. Optional cadence cues use
+  a comfortable pace and comfort as the check.
+- Kilometre guides use cumulative elapsed time from the full FIT stream's interpolated distance
+  crossings, relative to the first recorded sample. The pace, cadence and elevation charts
+  share those times even when displayed samples have been thinned. Pauses remain on this clock.
+  Distance resets or unavailable crossings suppress guides rather than guessing.
+- Training load trend applies exponential smoothing with a 42-day time constant to training
+  load points based on recorded duration and effort. A rising line indicates that recently
+  recorded sessions are contributing more load. Judge improvement with actual running efforts.
+- Sources and decisions are recorded in the [running research](research_notes/Garmin%20connector%20feature%20research/running_performance_2026-11.md).

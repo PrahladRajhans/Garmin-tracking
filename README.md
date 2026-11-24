@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.25.0. The 55 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama insights and private phone hosting are off by default.
+> **Status:** v0.26.0. The 56 MCP tools and offline dashboard include running block comparisons, linked running dynamics and optional local coaching reviews. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -97,6 +97,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `monthly_report(month?)` | Month vs previous month: sessions, hours, run km, sleep, resting HR, steps, HRV |
 | `running_breakdown(activity_id?)` | One run: form vs Garmin's colour bands and vs your usual at that pace, pacing, heart-rate drift, matched efforts, saved conditions and what to check |
 | `running_form_history(runs=60)` | Per-run form series with your cadence/stride-vs-speed lines |
+| `running_performance_block(end?)` | Completed running weeks, distance and frequency, steady outdoor pace and pulse evidence |
 | `explore_relationships(days=365, top=8)` | Every tested pair ranked, with r, CI, notable flag and per-day points |
 | `test_runs()` | Comparable steady runs and the efficiency (speed per heartbeat) trend |
 | `recovery_weight_study(days=180)` | Whether each Recovery % signal predicts next-night HRV / tracks Garmin; keeps or changes weights by a fixed rule |
@@ -105,7 +106,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `experiment_status()` / `end_experiment(note?)` | Each attempt versus your comparable runs before the experiment, the verdict so far and the next step; close it |
 | `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
 | `outdoor_conditions_patterns(end?)` | Local paired comparisons of weather and AQI against moving heart rate and following sleep, HRV, and resting heart rate. Includes the runs and sample sizes behind eligible results |
-| `ai_narrator(enable?, model?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
+| `ai_narrator(enable?, model?, thinking?, thinking_minutes?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
@@ -200,11 +201,17 @@ footer gives the last complete sync and the code version that built the file.
 **History** opens day, week, month and year. Full day pages cover the last 30 days.
 Older months retain day-by-day summaries. For older full detail use the daily MCP tools. **Recovery** shows usual ranges and seven-day changes for resting
 pulse and overnight metrics when enough readings exist. Open **Running → a recent run** for its
-timeline, splits, form, conditions, and similar-run comparisons on one page. In the timeline,
-**Compare with** changes the overlaid metric and its right-hand scale. **Training → Recent
+timeline, splits, form, conditions, and similar-run comparisons on one page. Running leads with a
+next-run check and completed training blocks. In a run timeline, **Kilometre splits** draws light
+guides at each recorded kilometre crossing. **Compare with** changes the overlaid metric and its
+right-hand scale. **Training → Recent
 workouts** opens the recorded summary for other activities. The **Training**
 page can show whether Garmin readiness lined up with lower or higher heart rate on comparable
 runs in your records. See [the method and limits](METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
+
+The local archive preserves received FIT files and changed source payloads. Chart sampling
+only affects the dashboard. Include both the database and the FIT directory in backups.
+[Storage and restore](docs/OPERATIONS.md#backups-and-rollback)
 
 ### Local workout weather and AQI
 
@@ -418,3 +425,7 @@ bedroom intervals and include a timezone offset. Optional `--morning-energy 1–
 morning rating. Use `--night YYYY-MM-DD --clear` to remove those measurements and the
 paired rating. Sleep and the `bedroom_conditions` MCP tool show groups once repeated
 nights qualify. Outdoor weather does not represent the room.
+
+
+Use `garmin-mcp-verify --replay-dashboard` for a read-only monthly replay and see the
+[repository review](docs/REPOSITORY_REVIEW.md) for coverage and outstanding checks.

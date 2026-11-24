@@ -202,6 +202,59 @@ def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def replay_dashboard(path, months=36) -> dict[str, Any]:
+    """Replay one snapshot per recorded month on a disposable SQLite copy."""
+    from contextlib import closing
+    from html.parser import HTMLParser
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    from garmin_mcp import dashboard, db, deep_insight
+
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.ids = set()
+            self.duplicates = 0
+            self.targets = set()
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if target := attrs.get("id"):
+                self.duplicates += target in self.ids
+                self.ids.add(target)
+            href = attrs.get("href") or ""
+            if href.startswith("#") and len(href) > 1:
+                self.targets.add(href[1:])
+
+    with TemporaryDirectory(prefix="garmin-dashboard-replay-") as work:
+        target = Path(work) / "archive.db"
+        with (closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as src,
+              closing(sqlite3.connect(target)) as copy):
+            if not src.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily'").fetchone():
+                return {"ok": False, "reason": "Archive has no normalized daily table."}
+            src.backup(copy)
+        with closing(db.connect(target)) as conn:
+            anchors = [row[0] for row in conn.execute(
+                "SELECT max(day) AS anchor FROM daily GROUP BY substr(day,1,7) ORDER BY anchor DESC LIMIT ?",
+                (months,))]
+            links = duplicates = eligible = 0
+            largest = 0
+            for end in anchors:
+                data = dashboard.collect(conn, end)
+                if deep_insight.evidence({**data, "older_snapshot": False}):
+                    eligible += 1
+                html = dashboard._compact(dashboard.render(data))
+                structure = Links()
+                structure.feed(html)
+                links += len(structure.targets - structure.ids)
+                duplicates += structure.duplicates
+                largest = max(largest, len(html.encode()))
+    return {"ok": bool(anchors) and links == duplicates == 0, "months_sampled": len(anchors),
+            "broken_internal_links": links, "duplicate_ids": duplicates,
+            "months_with_coaching_evidence": eligible, "largest_html_bytes": largest}
+
+
 def main() -> None:
     from garmin_mcp import db
     from garmin_mcp.config import db_path
@@ -209,7 +262,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Check stored Garmin data.")
     parser.add_argument("--run-timing", action="store_true",
                         help="Compare stored FIT recordings with watch summaries by year, read-only.")
+    parser.add_argument("--replay-dashboard", action="store_true",
+                        help="Check monthly dashboard snapshots without changing the archive.")
     args = parser.parse_args()
+    if args.replay_dashboard:
+        path = db_path()
+        if not path.is_file():
+            parser.error("No stored Garmin database. Run this where your archive is stored.")
+        report = replay_dashboard(path)
+        print(json.dumps(report, indent=2))
+        raise SystemExit(0 if report["ok"] else 1)
     if args.run_timing:
         path = db_path()
         if not path.is_file():

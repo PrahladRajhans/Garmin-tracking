@@ -37,7 +37,7 @@ SCRIPT = r"""
     for (const figure of page.querySelectorAll('[data-chart]:not([data-ready])')) {
       initChart(figure);
     }
-    const section = !target ? 'today' : id.startsWith('run-') ? 'running'
+    const section = !target ? 'today' : id.startsWith('run-') || id.startsWith('running-') ? 'running'
       : id.startsWith('workout-') ? 'training' : id === 'recovery' ? 'today'
       : id.startsWith('day-') || id.startsWith('month-') ||
         ['body', 'patterns', 'history'].includes(id) ? 'trends' : id;

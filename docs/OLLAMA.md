@@ -7,6 +7,38 @@ computer that builds the file.
 
 ## Coverage
 
+### Thinking insights
+
+Use `--enable --model qwen3.5:9b --thinking` with an installed thinking-capable model, or
+`--eval-insight --model qwen3.5:9b` to exercise the same flow on fictional readings. Add `--no-thinking` to that evaluation to compare
+the direct mode separately. An existing
+configuration without the flag keeps its current behavior. The same setting is available as
+`ai_narrator(thinking=True)`. `--check` reports model support and interpretation coverage.
+
+The daily interpretation uses recent and previous sleep and resting-heart-rate windows,
+seven-day HRV, and the current day's qualifying matched run when available. It requires at
+least two domains. Python supplies exact readings and links. The model writes the
+interpretation and a question to test it. A separate completion reviews the cited evidence
+for unsupported claims. This review reduces error, and model-authored interpretations can
+still be mistaken. The renderer labels them separately from deterministic guidance.
+Reasoning traces do not appear in the snapshot or local response cache.
+
+Thinking work runs first in a bounded background batch. The thinking draft defaults to ten
+minutes. Set `--thinking-minutes 5` (1–30 minutes supported) to change it. Warm-up, a direct
+retry, and review share a separate four-minute allowance. Routine
+summaries keep their faster path. If the reasoning call cannot finish, the worker can make one
+direct drafting attempt. That draft still receives the same review, and the evidence panel and
+fictional benchmark identify the mode. Incomplete work can be retried by later builds.
+Changing the draft budget gives the same evidence a fresh attempt.
+[Ollama thinking controls](https://docs.ollama.com/capabilities/thinking)
+
+Linux CPU smoke checks have yet to produce a reviewed interpretation. Qwen3.5 4B spent
+five minutes on the fictional matched-run case without completing its reasoning; its direct
+retry was withheld after review. A direct mixed-recovery run was also withheld. Unit and
+browser tests covered publication, review rejection, timeouts, and evidence links.
+Mac latency and acceptance need separate verification before changing the active model.
+
+
 The newest run can also ask the model to choose the next piece of evidence to check, if its
 moving heart rate is outside the recorded span of similar efforts. The prompt uses matched
 count, difference, span and eligible checks. The response is an ID, and the checked option
@@ -28,7 +60,8 @@ A number-only filter would still accept fabricated causes or advice with valid n
 - The snapshot includes up to eight newest FIT run pages and eight other workouts from the
   30-day History detail window. Running links to the narrated run detail pages. Body, Patterns,
   Trends and History provide calculations, source rows and links to the detail pages.
-- The worker has a 20-second standard item limit, 35 seconds for thinking-capable tags, and a 120-second batch limit. Enabling, manual
+- Routine requests have a 20-second standard item limit, or 35 seconds for thinking-capable tags.
+  Routine batches are limited to 120 seconds. Enabling, manual
   builds, and scheduled runs can start or retry it, including when Garmin downloads are
   skipped. The dashboard renders immediately, and the worker applies checked results only
   to the snapshot it started from. The next eligible worker can apply previously cached results.
@@ -38,11 +71,53 @@ A number-only filter would still accept fabricated causes or advice with valid n
   Invalid selections are cached as rejected for that prompt and model. New evidence, prompt
   rules or a different model get a fresh attempt. Service failures and timeouts remain pending.
 
+## Voice, lenses, and carry-over
+
+Copy [the example profile](../config/narrator-prompt.example.json) to `narrator-prompt.json`
+beside the active SQLite file. The voice and daily focus apply to every interpretation.
+The sleep or running focus adds instructions for the selected topic.
+
+Running has a separate `running_review` lens. With local narration enabled, it can review
+completed four-week running frequency, second-half pace and pulse, matched effort, or a
+cadence reading outside its observed matched span. It needs at least two qualifying categories.
+It uses thinking when enabled and supported. Both the review and the daily interpretation
+get a bounded opportunity to run without delaying initial HTML generation. Python supplies
+the next-run action and source links. The model writes the interpretation and test question.
+
+`--eval-insight --insight-case running-block` exercises this prompt on fictional data.
+In live Linux direct-mode tests, Qwen2.5 3B Instruct produced one reviewed observation in
+43 seconds. Qwen3.5 4B's result was withheld after 67 seconds. Compare the tags through
+several cases on the Mac before choosing one. These results used no owner data.
+Keep personal names and free-form health notes out of the profile. Invalid profiles fall back
+to built-in text and `--check` reports which profile is active. Rebuild after editing to refresh
+the snapshot. The model writes its own observation. The evidence, citation rules, and review
+remain in code.
+
+The archive stores only up to two eligible factual readings from each successful review.
+One earlier reviewed date, within 14 days, can inform a later prompt. Older rows are pruned
+on successful writes. Earlier evidence is labeled and cannot replace the required two current
+domains. No generated narrative or reasoning is replayed. Ollama keeps model weights warm
+for requests in a batch; that does not itself preserve the athlete's history between requests.
+
+Use `--insight-case mixed-recovery`, `run-exception`, or `longer-sleep` with
+`--eval-insight` to preview prompts without the archive. Add `--no-thinking` to compare direct
+drafting without changing model settings. See the [model and audit notes](REPOSITORY_REVIEW.md).
+
+## Where to make changes
+
+| Change | Location |
+|---|---|
+| Use a different local model or draft budget | `garmin-mcp-narrator --model … --thinking-minutes …` and `--check` |
+| Change the coaching voice or focus | Local `narrator-prompt.json` and the fictional evaluations above |
+| Add a measured signal or benchmark example | [Evidence and fixtures](../src/garmin_mcp/deep_insight.py). Qualify the reading, choose its evidence link, and cover sparse data. |
+| Change model transport, acceptance or cache settings | [Background narrator](../src/garmin_mcp/narrator.py) and the local response tests |
+| Change how the insight or links appear | [Today renderer](../src/garmin_mcp/dashboard.py) and [UI review](UI_REVIEW.md) |
+
 ## Runtime compatibility and wording
 
 The worker confirms cloud-off status, reads model metadata with `/api/show`, and preloads the
 model with an empty generation before sending facts. It uses the local suffix, bounds context,
-requests `think: false` on thinking-capable models, and parses only `response`.
+requests `think: false` on routine calls to thinking-capable models, and parses only `response`.
 [Thinking controls](https://docs.ollama.com/capabilities/thinking) ·
 [Generate API](https://docs.ollama.com/api/generate).
 

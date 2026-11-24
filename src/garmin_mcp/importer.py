@@ -257,8 +257,7 @@ def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list
         if match is None:
             stats["unmatched"] += 1
             continue
-        path = fit_dir() / f"{match}.fit"
-        path.write_bytes(data)
+        path = fit.retain_file(fit_dir(), match, data)
         conn.execute("UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), match))
         fit.store(conn, match, data)
         starts = {t: a for t, a in starts.items() if a != match}

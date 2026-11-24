@@ -268,3 +268,23 @@ comparisons alongside its existing history intervals. The latest run can show a 
 the earlier activity's recorded GPS corroborates the match. The graph compares elapsed time per
 kilometre, with both input times listed beneath it. The HTML remains offline and read-only.
 Use the local MCP tools to enter or revise a check-in or planned session.
+
+### Interpretation layout
+
+Today places the optional model interpretation between the core readings and the longer weekly
+plan. The lens labels its focus. Current cited readings link to their detail pages. Earlier
+reviewed evidence is labeled separately. The question below the observation suggests what to
+compare next. The evidence disclosure shows if the worker fell back to a direct draft.
+
+### Running performance
+
+Running opens with one action, its linked basis and the last four completed weeks. Volume
+and effort plots follow. Readers can expand exact recorded values and follow available run
+links. Race estimates and extra form trends stay in disclosures. Individual runs give both
+moving-time halves and prior form evidence. The timeline's native Kilometre splits control
+reveals the same elapsed-time guides on pace, cadence and elevation without changing
+metric overlays. The existence of a guide depends on usable full-resolution distance.
+For the three recent timelines, target about 200 display points and use a minimum five-second
+interval. The complete received FIT data stays in the local archive and drives metrics and split
+times. In the trace-heavy synthetic fixture, the uncompressed HTML went from about 1.24 MB to
+1.93 MB with the denser charts.

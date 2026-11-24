@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
+from hashlib import sha256
+from os import fsync, link
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from garmin_fit_sdk import Decoder, Stream
@@ -35,6 +39,26 @@ class FitDecodeError(ValueError):
     pass
 
 
+def retain_file(directory: Path, activity_id: int, data: bytes) -> Path:
+    """Keep received FIT bytes without replacing a different file."""
+    original = directory / f"{activity_id}.fit"
+    with NamedTemporaryFile(dir=directory) as temporary:
+        temporary.write(data)
+        temporary.flush()
+        fsync(temporary.fileno())
+        try:
+            link(temporary.name, original)
+        except FileExistsError:
+            if original.read_bytes() != data:
+                revision = directory / f"{activity_id}-{sha256(data).hexdigest()}.fit"
+                try:
+                    link(temporary.name, revision)
+                except FileExistsError:
+                    pass  # the same bytes are already stored under their hash
+                return revision
+    return original
+
+
 def decode(data: bytes) -> dict[str, list[dict[str, Any]]]:
     messages, errors = Decoder(Stream.from_byte_array(bytearray(data))).read()
     if errors and not messages.get("record_mesgs") and not messages.get("session_mesgs"):
@@ -61,6 +85,19 @@ def _iso(value: Any) -> str | None:
 def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, int]:
     """Decode a FIT file and replace this activity's stored streams. Returns row counts."""
     messages = decode(data)
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    conn.execute("SAVEPOINT store_fit")
+    try:
+        return _store_messages(conn, activity_id, messages)
+    except Exception:
+        conn.execute("ROLLBACK TO store_fit")
+        raise
+    finally:
+        conn.execute("RELEASE store_fit")
+
+
+def _store_messages(conn, activity_id, messages):
     for table in ("fit_records", "fit_laps", "fit_hrv", "fit_sessions", "fit_lengths",
                   "fit_sets", "fit_zones", "fit_profile"):
         conn.execute(f"DELETE FROM {table} WHERE activity_id=?", (activity_id,))
@@ -162,8 +199,6 @@ def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, 
 
 def reparse_all(conn: sqlite3.Connection) -> dict[str, int]:
     """Re-read every stored FIT file (after parser improvements). Never re-downloads."""
-    from pathlib import Path
-
     done = missing = errors = 0
     for activity_id, path in conn.execute(
         "SELECT activity_id, fit_path FROM activities WHERE fit_path IS NOT NULL"

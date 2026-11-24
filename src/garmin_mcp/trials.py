@@ -155,12 +155,6 @@ def _trial(conn: sqlite3.Connection, trial_id: int | None = None) -> dict[str, A
     return t
 
 
-def _start_gmt(conn: sqlite3.Connection, aid: int) -> str | None:
-    row = conn.execute("SELECT COALESCE(start_time_gmt, start_time_local) FROM activities "
-                       "WHERE activity_id=?", (aid,)).fetchone()
-    return row[0] if row else None
-
-
 def _attempt_runs(conn: sqlite3.Connection, trial: dict[str, Any]) -> list[tuple]:
     from garmin_mcp.loads import RUN_TYPES
 

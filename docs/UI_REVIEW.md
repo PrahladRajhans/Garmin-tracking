@@ -236,3 +236,21 @@ compares the Garmin score between groups of rested ratings and labels sparse tag
 The latest run can include a distance-aligned elapsed-time chart. See the
 [paid feature research](../research_notes/Garmin%20connector%20feature%20research/paid_coaching_2026-11.md)
 for the feature decisions.
+
+## Interpretation and archive replay
+
+The interpretation now precedes the weekly plan. An accent rule and larger observation text
+give it a distinct reading order. It names its lens and its evidence disclosure
+distinguishes earlier snapshot readings and links current readings to their source areas.
+A synthetic 36-month replay checks HTML structure and archive immutability separately from
+viewport tests. See [the repository review](REPOSITORY_REVIEW.md).
+
+## Running performance
+
+Checked a synthetic archive with 16 qualifying efforts in Chromium at 390 px and 1360 px.
+Verified that the AI evidence links open the intended section, the four-week and effort
+views are readable, and the form references open from an activity. The Kilometre splits
+control displayed four full-distance crossings on each of three timeline charts, including
+the first at 5:24. It worked alongside the step-length overlay and in the script-disabled
+mobile view. The Training trend definition was visible. Physical Safari and iPhone remain
+device checks.

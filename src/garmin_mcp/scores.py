@@ -98,8 +98,7 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     }
 
 
-def bedtime_suggestion(conn: sqlite3.Connection, day: str, wake_local: str | None = None
-                       ) -> dict[str, Any]:
+def bedtime_suggestion(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     """Suggested bedtime = usual wake time - (need + share of 7-day debt), debt repaid over a
     week (max +1 h/night). Usual wake time = median of the last 14 valid nights (local)."""
     from datetime import datetime

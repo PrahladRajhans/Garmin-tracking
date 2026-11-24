@@ -51,6 +51,12 @@ WAL, copying only `garmin.db` while writers are active can omit committed change
 SQLite's online backup API (`sqlite3.Connection.backup`) or stop writers and perform a consistent
 backup. Keep backups private; the generated dashboard is health data too.
 
+Back up the `fit/` directory with the SQLite database. The database includes superseded
+JSON payloads in `raw_payload_history`; `data_coverage()` reports counts by kind. Sync and
+import keep distinct received FIT binaries on disk. To restore into a different directory,
+check the stored FIT paths before reparsing. Earlier revisions replaced before v0.26.0
+can only be recovered from an earlier backup or another export, if available.
+
 For a code regression already merged, revert the specific change through a tested PR. Avoid
 rewriting main: the Mac follows main automatically. Repository rollback does not require
 discarding raw Garmin payloads, which permit analytics to be rebuilt. Live restore and Mac
@@ -88,3 +94,14 @@ moving HR vs Garmin activity HR. The named differences can reflect timing defini
 sampling. They are useful diagnostics for older exports, recent syncs and gaps, without an
 automatic claim of agreement or sensor accuracy. The ordinary data-quality verifier still
 covers unit ranges/source mappings and rebuilds tidy tables.
+
+## Offline monthly replay
+
+Use `garmin-mcp-verify --replay-dashboard` on the machine holding the Garmin archive.
+Replay samples the latest recorded day in up to 36 months from a temporary SQLite copy.
+It checks structural dashboard links and duplicate IDs. The result includes how many months
+had evidence for a coaching comparison. It does not render a live report, publish anything
+or run the model. The original archive stays read-only. See the
+[repository review](REPOSITORY_REVIEW.md) for fixture results and remaining checks.
+This is a structural replay. Some long-term panels read settings or records from the
+current archive, so use a separate as-of dataset for time-isolated model or forecast evaluation.

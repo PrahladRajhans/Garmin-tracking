@@ -43,7 +43,7 @@ def test_gauge_and_charts_render():
 def test_run_without_history_does_not_claim_normal_form_or_aerobic_base():
     from garmin_mcp import running
 
-    advice = running.suggestions({"decoupling_pct": -10}, {}, None)
+    advice = running.suggestions({"decoupling_pct": -10}, {})
     assert "Not enough comparable earlier runs" in advice[0]
     assert "in line with your usual" not in advice[0]
 
@@ -223,3 +223,22 @@ def test_charts_use_recorded_bands_and_label_color_status():
     assert all(label in line for label in ("below usual", "within usual range", "above usual"))
     bars = dashboard.bar_chart([("a", 5), ("b", 8)], ref=8, rate_goal=True)
     assert "below goal" in bars and "met goal" in bars
+
+
+def test_archive_replay_validates_months_without_saving_or_editing_source(conn):
+    from pathlib import Path
+
+    from garmin_mcp import db, normalize, verify
+
+    for day in ("2026-01-03", "2026-02-04"):
+        db.put_daily(conn, "ex_daily_summary", day, "export",
+                     {"calendarDate": day, "totalSteps": 5000})
+    conn.commit()
+    normalize.rebuild(conn)
+    conn.commit()
+    path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    before = path.read_bytes()
+    report = verify.replay_dashboard(path)
+    assert report["ok"] and report["months_sampled"] == 2
+    assert path.read_bytes() == before
+    assert not (path.parent / "dashboard").exists()

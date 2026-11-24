@@ -581,6 +581,15 @@ def running_breakdown(activity_id: int | None = None) -> dict[str, Any]:
 
 
 @mcp.tool()
+def running_performance_block(end: str | None = None) -> dict[str, Any]:
+    """Recorded running days and distance, completed four-week comparisons, and steady outdoor
+    pace, moving pulse and decoupling. Use end (YYYY-MM-DD) for an earlier snapshot."""
+    from garmin_mcp import running_block
+
+    return _with_db(lambda conn: running_block.collect(conn, _end(conn, end)))
+
+
+@mcp.tool()
 def running_form_history(runs: int = 60) -> dict[str, Any]:
     """Per-run form series (pace, cadence, stride, ground contact, vertical ratio, efficiency)
     with your personal cadence-vs-speed and stride-vs-speed lines."""
@@ -695,7 +704,8 @@ def _mark_dashboard_stale(conn: sqlite3.Connection) -> None:
 
 
 @mcp.tool()
-def ai_narrator(enable: bool | None = None, model: str | None = None) -> dict[str, Any]:
+def ai_narrator(enable: bool | None = None, model: str | None = None,
+                thinking: bool | None = None, thinking_minutes: int | None = None) -> dict[str, Any]:
     """Show or change optional local-only Ollama narration. Off by default.
 
     Pull the local model before enabling. Background work starts against the existing
@@ -704,7 +714,7 @@ def ai_narrator(enable: bool | None = None, model: str | None = None) -> dict[st
     from garmin_mcp import narrator
 
     try:
-        return _with_db(lambda conn: narrator.update_settings(conn, enable, model))
+        return _with_db(lambda conn: narrator.update_settings(conn, enable, model, thinking, thinking_minutes))
     except ValueError as exc:
         return {"error": str(exc)}
 
