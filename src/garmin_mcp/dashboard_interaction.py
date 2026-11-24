@@ -59,7 +59,7 @@ SCRIPT = r"""
     const secondary = readout.querySelector('span');
     const status = figure.querySelector('[role=status]');
     const overlayControls = [...figure.querySelectorAll('[data-overlay-control]')];
-    const overlayTracks = [...svg.querySelectorAll('[data-overlay-track]')];
+    const overlayTracks = [...figure.querySelectorAll('[data-overlay-track]')];
     const cursor = figure.querySelector('.chart-cursor');
     const vertical = cursor.querySelector('.cursor-x');
     const horizontal = cursor.querySelector('.cursor-y');

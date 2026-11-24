@@ -445,7 +445,7 @@ def activity_stream(conn: sqlite3.Connection, aid: int, every_s: int = 10) -> di
                         if r["vertical_oscillation"] and r["step_length"] else None,
                         "speed_m_s": r["speed"],
                         "altitude_m": _r(r["altitude"]), "power_w": r["power"],
-                        "distance_km": _r((r["distance"] or 0) / 1000, 3)})
+                        "distance_km": _r(r["distance"] / 1000, 3) if r["distance"] is not None else None})
             last = r["t"]
     return {"activity_id": aid, "every_s": every_s, "points": len(out), "stream": out,
             "cadence_unit": cadence_unit,

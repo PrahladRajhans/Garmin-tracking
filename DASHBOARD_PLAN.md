@@ -302,3 +302,11 @@ Sleep shows the most recent complete night, the saved bedtime target and its lin
 then the weekly, monthly and annual views. A saved target remains visible during a gap in
 sleep recordings. Outcome rows appear when there are at least three measured nights in
 both timing groups. The display reports observed differences for the recorded week.
+
+### Read chart identity before interpreting color
+
+On paired plots, solid is the primary reading and dashed is the comparison. Neutral axes
+identify the values and scales. Garmin band colors encode sampled classifications. Using
+one color for an entire comparison can be mistaken for a performance warning. Use larger
+dots and a dated list for sparse scatter plots, and keep dense timelines compact. Offer
+recorded comparisons with matching dates or timestamps and name both axis units.

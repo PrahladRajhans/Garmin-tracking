@@ -276,3 +276,23 @@ For v0.27.1, the running timeline and pace-versus-pulse markers have a 0.95 SVG-
 Other scatter plots use 1.6. The selected point has a 3.3 radius. Chromium verified these
 sizes, nearest-point touch selection and keyboard navigation at 320, 390 and 1200 px in both
 themes. The plotted sample count is unchanged. The physical Safari check remains open.
+
+## Chart reading by series and density
+
+- Running and workout overlays identify the series with solid and dashed strokes and label the
+  active axis. The neutral overlay palette leaves red, amber, green, blue and purple available
+  for Garmin reference bands. Band-colored trace segments follow the available samples.
+  Line colors describe the sampled bands. The point readout shows the exact recorded value
+  and band. Compare form at similar paces.
+- Running exposes more elapsed-time pairs and keeps a dedicated Power chart in a disclosure
+  on workouts with sufficient power samples. Sleep offers duration and Garmin score by date
+  for weeks and months with at least three paired readings. Training compares recent and
+  longer-term load on one scale in load points. Comparisons leave gaps where data is missing.
+- Scatter plots use larger dots for small groups (12 or fewer). On Pace and effort, each dot
+  represents one workout and up to six dated pairs are expanded initially. Keep the separate
+  second-half efficiency statistic below the paired values. Patterns labels the dashed fitted
+  relationship, and goal bars reserve semantic colors for actual goal status.
+- Chromium used a four-run generated fixture with varied cadence, FIT power, sleep scores,
+  and load. It checked nine pages at 320, 390, 768 and 1200 px in both themes, verified keyboard
+  readouts, band keys, switching overlays, split guides, and the JavaScript-disabled primary
+  charts. Physical iPhone Safari and the owner's Garmin snapshot remain separate checks.
