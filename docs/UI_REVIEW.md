@@ -227,3 +227,12 @@ the earlier weather and heart-rate medians together and labels the AQI standard.
 Weather readouts are deduplicated in the HTML and the original workout unit stays
 visible during the comparison. See [bedroom](screenshots/conditions-evidence/bedroom-phone.png)
 and [similar workouts](screenshots/conditions-evidence/similar-runs-phone.png).
+
+## v0.25 coaching review
+
+The coaching surfaces follow the existing navigation. Today links wake-time evidence to
+individual recorded nights. Training links completed sessions to retained activities. Sleep
+compares the Garmin score between groups of rested ratings and labels sparse tag evidence.
+The latest run can include a distance-aligned elapsed-time chart. See the
+[paid feature research](../research_notes/Garmin%20connector%20feature%20research/paid_coaching_2026-11.md)
+for the feature decisions.

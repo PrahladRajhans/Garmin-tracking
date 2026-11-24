@@ -93,7 +93,7 @@ def http_fake(monkeypatch):
     class HTTP:
         def __init__(self, host, port, timeout):
             assert (host, port) == ("127.0.0.1", 11434)
-            assert 0 < timeout <= 20
+            assert 0 < timeout <= 35
 
         def request(self, method, path, body, headers):
             assert headers["Host"] == "localhost:11434"
@@ -101,7 +101,13 @@ def http_fake(monkeypatch):
             calls.append((method, path, json.loads(body) if body else None))
 
         def getresponse(self):
-            result = answers.pop(0)
+            _, path, body = calls[-1]
+            if path == "/api/show":
+                result = (200, {"capabilities": ["completion"], "model_info": {"qwen.context_length": 32768}})
+            elif path == "/api/generate" and body["prompt"] == "":
+                result = (200, {"done": True})
+            else:
+                result = answers.pop(0)
             if isinstance(result, Exception):
                 raise result
             self.status, self.body = result
@@ -135,12 +141,12 @@ def test_opt_in_cache_and_input_boundaries(conn, collected, http_fake, monkeypat
     answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(i) for i in (2, 3, 1, 3, 2))])
     assert narrator.generate(conn, collected, time.monotonic() + 10)
     assert [call[:2] for call in calls] == [
-        ("GET", "/api/status"), *[("POST", "/api/generate")] * 5]
-    inputs = [json.loads(body["prompt"]) for _, _, body in calls[1:]]
+        ("GET", "/api/status"), ("POST", "/api/show"), *[("POST", "/api/generate")] * 6]
+    inputs = [json.loads(body["prompt"]) for _, _, body in calls[3:]]
     assert [item["item"] for item in inputs] == ["today", "last night's sleep", "seven-day training review",
                                                  "active experiment", "run"]
     assert all(body["model"] == "qwen2.5:3b-instruct:local" and body["stream"] is False
-               for _, _, body in calls[1:])
+               for _, _, body in calls[3:])
     assert "The run was 5.7 km." in calls[-1][2]["system"]
     assert 2 in calls[-1][2]["format"]["properties"]["selection"]["items"]["enum"]
     assert all(value not in str(calls) for value in ("818283", "Private name", "Private experiment"))
@@ -152,7 +158,7 @@ def test_opt_in_cache_and_input_boundaries(conn, collected, http_fake, monkeypat
     collected["runs"][0]["km"] = 5.8
     answers.extend([(200, {"cloud": {"disabled": True}}), _answer(99)])
     assert not narrator.generate(conn, collected, time.monotonic() + 10)
-    assert len(calls) == 2
+    assert len(calls) == 4
     summaries, pending = narrator.cached(conn, collected)
     assert "run-818283" not in summaries and not pending  # rejects are cached too
 
@@ -194,7 +200,7 @@ def test_total_budget_cuts_off_slow_response(conn, collected, http_fake):
     started = time.monotonic()
     assert not narrator.generate(conn, collected, started + 0.05)
     assert time.monotonic() - started < 1
-    assert len(calls) == 2
+    assert len(calls) == 4
 
 
 def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tmp_path, monkeypatch):
@@ -296,4 +302,39 @@ def test_diagnostics_distinguish_cache_from_file(conn, collected, http_fake, tmp
     assert status["coverage"]["today"] == {"pending": 1, "ready": 0, "rejected": 0}
     dashboard.build(conn, queue_narration=False)
     assert narrator.check(conn)["cache_matches_dashboard"]
-    assert all(method == "GET" and body is None for method, _, body in calls)
+    assert all(path in {"/api/status", "/api/tags", "/api/show"} for _, path, _ in calls)
+
+
+def test_cited_voice_accepts_composition_and_rejects_unsupported_meaning():
+    item = narrator.Item("sleep", {"sleep duration hours": 5.7, "Garmin sleep score": 75})
+    fallback = "You slept 5.7 hours."
+    text = "You slept 5.70 hours, while Garmin recorded a sleep score of 75."
+    assert item.response(json.dumps({"selection": [1], "voice": [{"text": text, "facts": [1, 4]}]})) == text
+    for invented, ids in (
+        ("You slept 5.7 hours because you trained too late.", [1]),
+        ("You should run for 5.7 hours.", [1]),
+        ("You slept 5.7 hours and Garmin recorded a sleep score of 75.", [1]),
+        ("You slept 6 hours.", [1]),
+    ):
+        assert item.response(json.dumps({"selection": [1], "voice": [{"text": invented, "facts": ids}]})) == fallback
+
+
+def test_thinking_setup_requests_final_answer_only(monkeypatch):
+    requests = []
+
+    def request(_, path, deadline, body):
+        requests.append((path, body))
+        if path == "/api/show":
+            return {"capabilities": ["thinking"], "model_info": {"qwen.context_length": 1024}}
+        return {"done": True, "thinking": "Something unchecked", "response": '{"selection":[1]}'}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    model = "qwen3.5:4b"
+    deadline = time.monotonic() + 10
+    profile = narrator._model_profile(model, deadline)
+    narrator._warm(model, profile, deadline)
+    assert requests[1][1]["prompt"] == ""
+    item = narrator.Item("measured sleep", {"sleep duration hours": 6})
+    assert narrator._infer(model, profile, item, deadline) == ("You slept 6 hours.", "accepted")
+    assert requests[-1][1]["think"] is False
+    assert requests[-1][1]["options"]["num_ctx"] == 1024

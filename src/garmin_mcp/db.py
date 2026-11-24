@@ -19,6 +19,14 @@ SCHEMA_VERSION = 1
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
+CREATE TABLE IF NOT EXISTS coach_checkin (
+    day TEXT PRIMARY KEY, rested INTEGER, energy INTEGER, soreness INTEGER, knee INTEGER
+);
+CREATE TABLE IF NOT EXISTS coach_session (
+    id INTEGER PRIMARY KEY, day TEXT NOT NULL, kind TEXT NOT NULL, minutes INTEGER NOT NULL,
+    status TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_daily (
     dataset TEXT NOT NULL, day TEXT NOT NULL, source TEXT NOT NULL,
     payload TEXT, fetched_at TEXT NOT NULL,

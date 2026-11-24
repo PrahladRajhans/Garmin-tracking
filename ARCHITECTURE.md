@@ -139,3 +139,11 @@ A run article owns its timeline, pace and comparison details. Existing section I
 within that article. Overlay controls select one secondary SVG layer and change the cursor
 readout for the same recorded timestamp. Ordinary Garmin workout details use the bounded
 calendar activity list. Narration allowlists and review steps are in [docs/OLLAMA.md](docs/OLLAMA.md).
+
+## Local coaching records (v0.25)
+
+`coach_checkin` stores date-keyed numeric ratings and `coach_session` stores scheduled sessions.
+MCP updates either table and marks the dashboard for rebuild. The local dashboard publishes only
+its usual derived snapshot, which can include aggregate check-in comparisons and scheduled session
+rows. Optional private hosting retains its existing explicit publication settings. Raw ratings,
+notes, coordinates and route dates are omitted from the Ollama prompts.

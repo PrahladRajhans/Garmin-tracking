@@ -70,6 +70,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.22.0 | Optional on-Mac Ollama narrator with inspectable, deterministic facts | Local and mocked verification; owner Mac and iPhone acceptance pending |
 | 0.23.0 | Responsive charts, single-page runs with selectable overlays, workout narration and paired conditions evidence | Synthetic viewport and data checks; owner coverage and physical-device check pending |
 | 0.24.0 | Local AI diagnostics and evidence checks, guidance changes, post-run reviews, sleep summaries and timing plan, mobile navigation | Mac Ollama, launchd, iCloud and iPhone acceptance pending. See [handover](HANDOVER.md#latest-changes-for-reviewers) |
+| 0.25.0 | Model evaluation, wake follow-up, Sunday review, journal, planned vs done, route replay | Synthetic and local inference checks passed. Mac archive acceptance pending. |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -114,6 +115,16 @@ The Mac holds the original Garmin history and account access. Synthetic checks c
 individual formulas, mappings and edge cases. The recorded agreement figures are historical
 until the owner dataset is checked again.
 
+### Paid coaching research and local delivery
+
+[Feature evidence and design decisions](research_notes/Garmin%20connector%20feature%20research/paid_coaching_2026-11.md).
+v0.25 implements model diagnostics and fictional evaluation, cited wording, Sunday review,
+wake follow-up, a sleep journal, private check-ins, a movement baseline, planned-vs-done and
+same-route replay. The Mac acceptance check is to run the fictional evaluation locally, rebuild the
+dashboard, and compare the plan and recorded links against real coverage. The existing local inbox
+concept remains a future option. Live tracking, medical-sensor features, nutrition and 3D terrain
+need separate product and data decisions.
+
 ### Coaching and Sleep follow-up
 
 1. Preserve the current working tree and the Mac's local-only inference boundary. Record changes
@@ -126,9 +137,8 @@ until the owner dataset is checked again.
    the local dashboard. Start with a local inbox and deduplicate by snapshot and finding;
    evaluate generic push alerts with quiet hours and private links only after checking delivery
    time and notification fatigue. Keep health details inside the dashboard.
-5. Separate follow-up work: persist user-approved dated sessions before scoring planned vs done.
-   Validate sleep tags, check-ins and bedtime experiments against the archive before using them
-   to adjust guidance.
+5. v0.25 saves dated sessions, compares completed activities and displays sleep journal evidence.
+   Verify real archive coverage and establish bedtime experiment outcomes before extending automation.
 
 ### Athlete intelligence follow-up
 

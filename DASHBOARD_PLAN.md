@@ -259,3 +259,12 @@ to its point on the workout timeline. Conditions across comparable workouts sit 
 Heart rate on similar runs. Sleep shows its own measured room comparisons, including
 paired dates in a disclosure, when enough observations exist. Keep these details out of
 the first screen and preserve coverage gaps.
+
+## Coaching follow-up (v0.25)
+
+Today shows a wake-time follow-up, Sunday recap and movement progress as evidence permits.
+Training shows the saved week and how recorded sessions matched it. Sleep shows journal
+comparisons alongside its existing history intervals. The latest run can show a route replay if
+the earlier activity's recorded GPS corroborates the match. The graph compares elapsed time per
+kilometre, with both input times listed beneath it. The HTML remains offline and read-only.
+Use the local MCP tools to enter or revise a check-in or planned session.

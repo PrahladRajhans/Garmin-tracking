@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-24
+
+- Inspect local Ollama models before inference, warm the selected model, and disable thinking
+  where supported. Add a fictional benchmark and show its last results in diagnostics.
+- Let Ollama compose cited measurement clauses, with checked sentence selection as fallback.
+- Add wake-time follow-up, a Sunday review, movement progress, and a distance-aligned replay
+  when a matched run has corroborating GPS coverage.
+- Add planned versus completed sessions, next-week suggestions, and private check-ins.
+  Show supported sleep tags and compare rested ratings with observed Garmin scores.
+
 ## [0.24.0] - 2026-11-24
 
 - Compare today's guidance with the last published guidance and show the prior decision only when it changes.

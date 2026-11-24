@@ -10,6 +10,7 @@ import math
 import re
 import signal
 import sqlite3
+import statistics
 import subprocess
 import sys
 import time
@@ -41,7 +42,7 @@ _BANNED = re.compile(r"\b(?:diagnos\w*|diseases?|injur(?:y|ies)[\s-]+risks?|guar
 _SYSTEM = (
     "Choose the one to three numbered sentences that best summarize the readings. "
     "Lead with the most useful reading and choose at most one sentence about each metric. "
-    "Return only their IDs in order in the selection array. Do not write sentences."
+    "Return their IDs in order in the selection array."
 )
 
 # A model selects and orders these statements. Python supplies their wording and verifies
@@ -98,19 +99,30 @@ class Item:
                     "Weigh the strength and relevance of the evidence and prioritize an actionable "
                     "follow-up consistent with recovery. Treat an association as weaker than direct "
                     "measurements over several days. Return the chosen finding ID only in the JSON field choice.")
-        return f"{_SYSTEM}\n\nPermitted sentences: {_json(dict(enumerate(_sentences(self.facts), 1)))}"
+        return (f"{_SYSTEM} Optional voice: write checked paraphrases with cited IDs. "
+                "You may join two supported clauses with 'and' or 'while'. "
+                "Do not add causes, advice or new claims. "
+                f"Permitted sentences: {_json(dict(enumerate(_sentences(self.facts), 1)))}")
 
     @property
     def schema(self) -> dict:
         if self.choices:
             fields = {"choice": {"type": "integer", "enum": list(range(1, len(self.choices) + 1))}}
         else:
-            fields = {"selection": {
-                "type": "array", "minItems": 1, "maxItems": min(3, len(self.facts)),
-                "items": {"type": "integer", "enum": list(range(1, len(_sentences(self.facts)) + 1))},
-            }}
+            ids = list(range(1, len(_sentences(self.facts)) + 1))
+            fields = {
+                "selection": {"type": "array", "minItems": 1, "maxItems": min(3, len(self.facts)),
+                              "items": {"type": "integer", "enum": ids}},
+                "voice": {"type": "array", "maxItems": 3, "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["text", "facts"], "properties": {
+                        "text": {"type": "string"}, "facts": {"type": "array", "minItems": 1,
+                            "maxItems": 2, "items": {"type": "integer", "enum": ids}},
+                    },
+                }},
+            }
         return {"type": "object", "additionalProperties": False,
-                "required": list(fields), "properties": fields}
+                "required": [next(iter(fields))], "properties": fields}
 
     def response(self, raw: Any) -> str | int | None:
         try:
@@ -122,14 +134,39 @@ class Item:
         if self.choices:
             choice = value.get("choice") if value.keys() == {"choice"} else None
             return choice if type(choice) is int and 1 <= choice <= len(self.choices) else None
-        selected = value.get("selection") if value.keys() == {"selection"} else None
+        if value.keys() - {"selection", "voice"}:
+            return None
+        selected = value.get("selection")
         sentences = list(_sentences(self.facts))
-        if not isinstance(selected, list) or not 1 <= len(selected) <= min(3, len(self.facts)):
+        if not self._citations(selected, len(sentences), min(3, len(self.facts))):
             return None
-        if not all(type(index) is int and 1 <= index <= len(sentences) for index in selected):
-            return None
+        if voice := self._voice(value.get("voice"), sentences):
+            return voice
         text = validate(" ".join(sentences[index - 1] for index in selected), self.facts)
         return _grounded(text, self.facts) if text else None
+
+    @staticmethod
+    def _citations(ids, count, limit):
+        return (isinstance(ids, list) and 1 <= len(ids) <= limit
+                and all(type(index) is int and 1 <= index <= count for index in ids))
+
+    def _voice(self, value, sentences):
+        if not isinstance(value, list) or not 1 <= len(value) <= 3:
+            return None
+        checked = []
+        for entry in value:
+            if not isinstance(entry, dict) or entry.keys() != {"text", "facts"}:
+                return None
+            ids = entry["facts"]
+            text = validate(entry["text"], self.facts)
+            if not text or not self._citations(ids, len(sentences), 2):
+                return None
+            expected = [_sentence_key(sentences[index - 1]) for index in ids]
+            actual = [_sentence_key(part) for part in re.split(r",? (?:and|while) ", text)]
+            if actual != expected:
+                return None
+            checked.append(text)
+        return validate(" ".join(checked), self.facts)
 
     def key(self, model: str) -> str:
         return hashlib.sha256(_json([1, model, self.system, self.prompt]).encode()).hexdigest()
@@ -359,8 +396,9 @@ def _request(method: str, path: str, deadline: float, body: dict | None = None) 
         response = client.getresponse()
         if response.status != 200:
             raise OllamaUnavailable
-        data = response.read(_RESPONSE_LIMIT + 1)
-        if len(data) > _RESPONSE_LIMIT:
+        limit = 256 * 1024 if path == "/api/show" else _RESPONSE_LIMIT
+        data = response.read(limit + 1)
+        if len(data) > limit:
             raise OllamaUnavailable
         value = json.loads(data)
         if not isinstance(value, dict):
@@ -374,6 +412,44 @@ def _request(method: str, path: str, deadline: float, body: dict | None = None) 
         client.close()
 
 
+def _model_profile(model: str, deadline: float) -> dict:
+    info = _request("POST", "/api/show", deadline, {"model": model + ":local"})
+    capabilities = info.get("capabilities") or []
+    controls = info.get("thinking") or {}
+    values = controls.get("values", []) if isinstance(controls, dict) else []
+    thinks = "thinking" in capabilities or any(value is not False for value in values)
+    context = next((value for key, value in (info.get("model_info") or {}).items()
+                    if key.endswith(".context_length") and type(value) is int and value > 0), None)
+    return {"thinking": thinks, "context_length": context,
+            "num_ctx": min(context or 2048, 4096 if thinks else 2048)}
+
+
+def _warm(model: str, profile: dict, deadline: float) -> None:
+    _request("POST", "/api/generate", deadline, {"model": model + ":local", "prompt": "",
+                                                "keep_alive": "5m", "stream": False,
+                                                "options": {"num_ctx": profile["num_ctx"]}})
+
+
+def _infer(model, profile, item, deadline):
+    budget = 35 if profile["thinking"] else ITEM_SECONDS
+    response = _request("POST", "/api/generate", min(deadline, time.monotonic() + budget), {
+        "model": model + ":local", "system": item.system, "prompt": item.prompt,
+        "format": item.schema, "stream": False, "keep_alive": "5m",
+        **({"think": False} if profile["thinking"] else {}),
+        "options": {"temperature": 0, "num_ctx": profile["num_ctx"],
+                    "num_predict": 96 if item.choices else 240},
+    })
+    if response.get("done") is not True or response.get("done_reason") == "length":
+        return None, "incomplete"
+    result = item.response(response.get("response"))
+    return result, "accepted" if result is not None else "failed_validation"
+
+
+def _cloud_disabled(deadline):
+    cloud = _request("GET", "/api/status", deadline).get("cloud")
+    return isinstance(cloud, dict) and cloud.get("disabled") is True
+
+
 def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
              still_current: Callable[[], bool] | None = None) -> bool:
     """Called only in the detached worker. Returns whether new text was accepted."""
@@ -385,10 +461,10 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
     if not pending:
         return False
     try:
-        status = _request("GET", "/api/status", min(deadline, time.monotonic() + ITEM_SECONDS))
-        cloud = status.get("cloud")
-        if not isinstance(cloud, dict) or cloud.get("disabled") is not True:
+        if not _cloud_disabled(min(deadline, time.monotonic() + 5)):
             return False
+        profile = _model_profile(model, min(deadline, time.monotonic() + 5))
+        _warm(model, profile, min(deadline, time.monotonic() + 30))
     except (OllamaUnavailable, TimeoutError):
         return False
     accepted = False
@@ -396,18 +472,12 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
         if (time.monotonic() >= deadline or settings(conn) != state
                 or (still_current is not None and not still_current())):
             break
-        item_deadline = min(deadline, time.monotonic() + ITEM_SECONDS)
         try:
-            response = _request("POST", "/api/generate", item_deadline, {
-                "model": model + ":local", "system": item.system, "prompt": item.prompt,
-                "format": item.schema, "stream": False,
-                "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 48},
-            })
+            text, outcome = _infer(model, profile, item, deadline)
         except (OllamaUnavailable, TimeoutError):
-            continue  # a failed request can be tried again on the next sync
-        if response.get("done") is not True or response.get("done_reason") == "length":
             continue
-        text = item.response(response.get("response"))
+        if outcome == "incomplete":
+            continue
         with conn:
             conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)",
                          ("narrator:" + item.key(model), _json(text)))
@@ -424,6 +494,7 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
     from garmin_mcp import dashboard
 
     state = settings(conn)
+    profile = None
     try:
         deadline = time.monotonic() + 5
         cloud = _request("GET", "/api/status", deadline).get("cloud")
@@ -435,6 +506,8 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
             installed = isinstance(models, list) and any(
                 isinstance(row, dict) and row.get("name") == tag for row in models)
             service = "ready" if installed else "model_not_installed"
+            if installed:
+                profile = _model_profile(state["model"], deadline)
     except (OllamaUnavailable, TimeoutError):
         service = "local_api_unavailable"
     coverage = {}
@@ -449,7 +522,10 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
         path, _ = dashboard._snapshot_paths()
         summaries, _ = cached(conn, data)
         applied = dashboard._narration_id(path) == summary_id(summaries)
-    return {**state, "ollama": service, "coverage": coverage,
+    report = conn.execute("SELECT value FROM meta WHERE key=?",
+                          ("narrator_eval:" + state["model"],)).fetchone()
+    return {**state, "ollama": service, "coverage": coverage, "model_profile": profile,
+            "last_eval": json.loads(report[0]) if report else None,
             "cache_matches_dashboard": applied, "sync_incomplete": _sync_in_progress(conn)}
 
 
@@ -502,6 +578,54 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
             conn.close()
 
 
+def evaluate(conn, models):
+    """Exercise the real response validators on fictional inputs only."""
+    fixtures = (
+        Item("fictional recovery", {"recovery percent": 73, "Garmin readiness score": 60}),
+        Item("fictional sleep", {"sleep duration hours": 7.5, "Garmin sleep score": 82}),
+        Item("fictional run", {"distance km": 5, "average pace minutes per km": "6:20",
+                               "average heart rate bpm": 143}),
+        Item("fictional workout", {"workout duration": "24:57", "average heart rate bpm": 125}),
+        Item("fictional follow-up", {"recovery percent": 61},
+             ({"title": "Review the sleep readings"}, {"title": "Compare the next easy run"})),
+    )
+    if not _cloud_disabled(time.monotonic() + 5):
+        raise ValueError("Ollama must confirm cloud access is disabled before evaluation.")
+    if not models:
+        installed = _request("GET", "/api/tags", time.monotonic() + 5).get("models", [])
+        models = [model["name"] for model in installed
+                  if isinstance(model, dict) and isinstance(model.get("name"), str)]
+    reports = {}
+    for model in dict.fromkeys(models):
+        if len(model) > 128 or not _MODEL.fullmatch(model) or "cloud" in model.lower():
+            continue
+        outcomes, durations = {}, []
+        try:
+            profile = _model_profile(model, time.monotonic() + 5)
+            _warm(model, profile, time.monotonic() + 30)
+        except (OllamaUnavailable, TimeoutError):
+            reports[model] = {"error": "model_unavailable"}
+            continue
+        for item in fixtures:
+            start = time.monotonic()
+            try:
+                _, outcome = _infer(model, profile, item, start + 35)
+            except (OllamaUnavailable, TimeoutError):
+                outcome = "request_failed_or_timed_out"
+            outcomes[outcome] = outcomes.get(outcome, 0) + 1
+            durations.append(time.monotonic() - start)
+        report = {"cases": len(fixtures), "acceptance": outcomes.get("accepted", 0) / len(fixtures),
+                  "outcomes": outcomes, "median_seconds": round(statistics.median(durations), 2)}
+        reports[model] = report
+        with conn:
+            conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
+                         ("narrator_eval:" + model, _json(report)))
+    qualified = [tag for tag, report in reports.items() if report.get("acceptance", 0) >= .95]
+    return {"models": reports,
+            "recommended": min(qualified, key=lambda tag: reports[tag]["median_seconds"])
+            if qualified else None}
+
+
 def main() -> None:
     from garmin_mcp import db
     from garmin_mcp.config import db_path
@@ -514,6 +638,8 @@ def main() -> None:
     parser.add_argument("--model", help=f"Downloaded Ollama model tag (default {DEFAULT_MODEL})")
     parser.add_argument("--check", action="store_true",
                         help="Check local Ollama and count ready, pending and rejected summaries")
+    parser.add_argument("--eval", action="store_true", help="Benchmark installed models with fiction")
+    parser.add_argument("--models", help="Comma-separated local tags to benchmark")
     parser.add_argument("--worker", nargs=3, metavar="ARG", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
@@ -523,7 +649,12 @@ def main() -> None:
     conn = db.connect(db_path())
     try:
         try:
+            if args.eval:
+                print(json.dumps(evaluate(conn, [tag.strip() for tag in args.models.split(",")] if args.models else [])))
+                return
             state = update_settings(conn, args.enable, args.model)
+        except (OllamaUnavailable, TimeoutError):
+            parser.error("Could not reach the local Ollama service.")
         except ValueError as exc:
             parser.error(str(exc))
         print(json.dumps(check(conn) if args.check else state))

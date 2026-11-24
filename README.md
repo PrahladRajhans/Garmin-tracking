@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.24.0. The 52 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama insights and private phone hosting are off by default.
+> **Status:** v0.25.0. The 55 MCP tools and offline dashboard include charts sized to their cards, touch and mouse chart inspection, Light and Dark modes, and a daily overview with training guidance and linked findings. Optional local Ollama insights and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -67,6 +67,9 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `daily_summary(day?)` | Every stored metric for one day |
 | `activities(days=30, activity_type?, end?)` | Activities with a per-type summary |
 | `activity_detail(activity_id)` | Laps with pace, HR zones, weather, Garmin training effect, load (TRIMP/rTSS, zones), running form from FIT (cadence, ground contact, vertical oscillation, power), swim (pace/100 m, SWOLF by stroke) or strength (sets, reps, volume) |
+| `coach_checkin(day?, rested?, energy?, soreness?, knee?)` | Save morning or evening ratings locally |
+| `plan_session(day, kind, minutes, status?, session_id?)` | Save, move, swap or skip a session |
+| `planned_week(end?)` | See planned sessions, observed matches and the next-week suggestion |
 | `daily_brief(day?)` | Morning report: how recovered and why, today’s suggestion and a conservative plan for the next seven days |
 | `readiness_today(day?)` | Our transparent readiness (HRV, resting HR, sleep, respiration vs your baselines, each shown) next to Garmin's; HRV normal band; sleep debt; illness/strain flag |
 | `recovery_trend(days=28)` | Day-by-day readiness, HRV vs normal band, sleep, Garmin readiness |
