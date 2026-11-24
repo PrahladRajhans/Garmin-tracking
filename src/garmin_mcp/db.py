@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from garmin_mcp.config import DEFAULT_NARRATOR_MODEL
+
 SCHEMA_VERSION = 1
 
 SCHEMA = """
@@ -161,8 +163,22 @@ def connect(path: Path | str) -> sqlite3.Connection:
     conn.execute(
         "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),)
     )
+    _migrate_narrator_default(conn)
     conn.commit()
     return conn
+
+
+def _migrate_narrator_default(conn: sqlite3.Connection) -> None:
+    applied = conn.execute("INSERT OR IGNORE INTO meta VALUES ('narrator_qwen35_default', '1')")
+    if not applied.rowcount:
+        return
+    updated = conn.execute(
+        "UPDATE meta SET value=json_set(value, '$.model', ?) WHERE key='ai_narrator' "
+        "AND CASE WHEN json_valid(value) THEN json_extract(value, '$.model') END = 'qwen2.5:3b-instruct'",
+        (DEFAULT_NARRATOR_MODEL,),
+    )
+    if updated.rowcount:
+        conn.execute("INSERT OR REPLACE INTO meta VALUES ('dashboard_rebuild_pending', '1')")
 
 
 def dumps(payload: Any) -> str:

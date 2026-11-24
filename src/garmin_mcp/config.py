@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+DEFAULT_NARRATOR_MODEL = "qwen3.5:4b"
+
 
 def data_dir() -> Path:
     path = Path(os.getenv("GARMIN_DATA_DIR", str(Path.home() / ".garmin-mcp"))).expanduser()

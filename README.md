@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.26.0. The 56 MCP tools and offline dashboard include running block comparisons, linked running dynamics and optional local coaching reviews. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.26.1. The 56 MCP tools and offline dashboard include running block comparisons, linked running dynamics and optional local coaching reviews. Local Ollama uses Qwen3.5 4B when enabled. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
