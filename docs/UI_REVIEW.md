@@ -1,5 +1,34 @@
 # Dashboard review — v0.14.1, 23 November 2026
 
+## Follow-up review — 24 November 2026
+
+The review used the public Garmin Connect Home example and synthetic archive data. Garmin
+puts the activity list, a large focus card and compact metrics in distinct groups. The dashboard
+gives daily guidance the largest card, pairs it with today's workouts on desktop, and puts the
+primary tabs at the bottom on phones. [Garmin Connect public preview](https://connect.garmin.com/)
+and [Garmin's Home layout guide](https://support.garmin.com/en-GB/?faq=35qboQSvKC2WpKkTaDaRP7).
+
+| Area | Change and review |
+|---|---|
+| Today | Put daily guidance, current activity, key readings and the week ahead first. A checked AI-prioritized follow-up retains its evidence and link. All qualified findings stay accessible. |
+| Sleep and Recovery | Put latest-night breakdown and recovery score ahead of longer charts. Keep devices' scores and project calculations separately labeled. |
+| Training, Running and activity records | Lead with weekly review and recent workout links. Fold longer lists and race planning estimates behind disclosures. Put a run's numbers ahead of form charts and support jumps to splits, timeline and matched runs. |
+| Trends, Body, Patterns and History | Verify the evidence links, confidence figures, population reference and day/week/month/year navigation. Add earlier and later recorded-day links and suppress links to workout details outside the retained window. |
+| Charts, navigation and scrolling | Keep tabs available on long pages, move focus to new page headings, and initialize chart controls on demand. Use compact readouts while retaining more room for timeline readings with weather and overlays. |
+
+Chromium and WebKit loaded 69 generated routes in both themes across phone, tablet and desktop
+viewports, for 828 page checks. The sweep opened disclosures, checked chart bounds, overflow,
+fragment links, duplicate IDs and runtime errors, and exercised Back, keyboard chart navigation,
+phone tap, chart overlay controls, and vertical touch scrolling in Chromium. Core navigation
+also passed with scripts disabled. The independent review separately checked 348 page and run
+section states in Chromium.
+
+The larger synthetic snapshot is about 1.5 MB. The 600 KB goal and load time on a physical
+iPhone still need work. Browser engine checks used Linux and localhost. Safari on the owner's Mac,
+iCloud sync and Files preview remain device acceptance checks in [the roadmap](../ROADMAP.md).
+
+## Original review — 23 November 2026
+
 Review uses the Product Design audit workflow: inspect screenshots, trace each task, make small
 repairs, then check the result. Screenshots below are **synthetic data**, not the owner's health
 records. The original repository screenshots and v0.14.0 synthetic screens were inspected first.

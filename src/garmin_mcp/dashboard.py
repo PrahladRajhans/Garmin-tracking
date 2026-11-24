@@ -26,6 +26,7 @@ from typing import Any
 
 from garmin_mcp import (
     __version__,
+    coach_review,
     coaching,
     conditions,
     dashboard_history,
@@ -42,9 +43,12 @@ from garmin_mcp import (
     running,
     scores,
     signal_context,
+    sleep_review,
     trials,
 )
 from garmin_mcp.dashboard_interaction import CONTENT_POLICY, SCRIPT
+
+SNAPSHOT_PREFIX = f"{__version__}/coach-sleep-1/"
 
 W = 340  # SVG viewBox width: phone-first, text stays ~11-16 px from phone to desktop
 
@@ -118,7 +122,9 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
                 for workout in calendar["days"][day].get("activities", [])
                 if workout["id"] not in run_ids][:8]
     return {
-        "_conn": conn, "end": end, "zone": zone, "scores": ds, "bedtime": scores.bedtime_suggestion(conn, end),
+        "_conn": conn, "end": end, "zone": zone, "scores": ds,
+        "sleep_review": sleep_review.collect(conn, end, zone, ds["sleep"]["need_h"]
+                                             or recovery.DEFAULT_SLEEP_NEED_H),
         "older_snapshot": e != datetime.now(zone).date(),
         "history": scores.history(conn, end, 14),
         "brief": insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"]),
@@ -126,9 +132,6 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "night_summary": night_summary,
         "bedroom_conditions": environment_review.bedroom(conn, end),
         "outdoor_patterns": environment_review.outdoor_patterns(conn, end, read_metrics=read_run),
-        "sleep": conn.execute("SELECT day, sleep_s/3600.0, sleep_start FROM sleep WHERE day "
-                              "BETWEEN ? AND ? AND sleep_s >= 3*3600 ORDER BY day",
-                              (lo(30), end)).fetchall(),
         "hrv": recovery.recovery_trend(conn, end, 60)["days"],
         "signals": signals,
         "hrv_context": hrv_info,
@@ -201,6 +204,9 @@ def _weekly_load(conn: sqlite3.Connection, end: str, weeks: int = 12) -> list[tu
 
 # =============================================================================== svg kit
 ICONS = {
+    "home": "M2.5 7.2 8 2.5l5.5 4.7v6.3h-4v-4h-3v4h-4z",
+    "run": "M8.2 4.8a1.65 1.65 0 1 0 0-3.3 1.65 1.65 0 0 0 0 3.3M5 7.5l3-1.3 2 2.3h3M8 6.2 6.5 10l3 1.5V15M6.5 10l-2 3H1.5",
+    "trend": "M2.5 2.5v11h11M5 10l3-3 2 1.5 3.5-4",
     "heart": "M8 13.5s-5-3.1-5-6.6A2.9 2.9 0 0 1 8 5a2.9 2.9 0 0 1 5 1.9c0 3.5-5 6.6-5 6.6z",
     "moon": "M12.5 9.5A5 5 0 0 1 6.5 3.5a5 5 0 1 0 6 6z",
     "bolt": "M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z",
@@ -245,23 +251,22 @@ def _point(x: float, y: float, label: str, value: str, cls: str = "hit",
 
 
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
-           x_label: str, y_label: str, initial: str, controls: str = "",
-           *, readout_below: bool = False, condition_labels: list[str] | None = None,
+           x_label: str, y_label: str, controls: str = "",
+           *, condition_labels: list[str] | None = None,
            compact: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
                f'<line class="cursor-y" x1="{left}" x2="{right}"/>'
                '<circle r="3.3"/></g>')
-    caption = (f'<figcaption class="chart-readout"><strong>Explore chart</strong>'
-               f'<span>{_e(initial)}</span></figcaption>')
+    caption = '<figcaption class="chart-readout"><strong></strong><span></span></figcaption>'
     lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
     layout = " chart-compact" if compact else ""
     return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}>'
-            f'{"" if readout_below else caption}{controls}<span class="sr-only" role="status"></span>'
+            f'{controls}<span class="sr-only" role="status"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
-            f'{"".join(parts)}{overlay}</svg>{caption if readout_below else ""}</figure>')
+            f'{"".join(parts)}{overlay}</svg>{caption}</figure>')
 
 
 def _horizontal_scale(ticks: list[float], left: int, right: int, y, fmt) -> list[str]:
@@ -391,8 +396,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
             display += f" · {zone[1]}"
         g.append(_point(x(i), y(value), label, display, marker))
     g += _x_ticks(labels, x, bottom, w > W)
-    return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label,
-                  "Hover, tap, or slide to read a point", readout_below=bool(details))
+    return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label)
 
 
 def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None = None,
@@ -439,8 +443,7 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
     labels = [label for label, _ in items]
     g.append(_smooth_line(labels, averages, x, y))
     g += _x_ticks(labels, x, bottom, w > W)
-    return _chart("bar", g, w, h, (left, right, top, bottom), x_label, y_label,
-                  "Hover, tap, or slide to read a bar")
+    return _chart("bar", g, w, h, (left, right, top, bottom), x_label, y_label)
 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
@@ -489,9 +492,7 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
         x_value = f"{a:g}/{x_unit.split('–')[-1]}" if absolute_x else f"{a:+.2f} {x_unit}"
         value = f"{xl}: {x_value} · {yl}: {b:+.2f} {y_unit}"
         g.append(_point(x(a), y(b), when, value, "pt"))
-    return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label,
-                  "Hover or tap a dot to read a paired day" if absolute_x
-                  else "Hover or tap a dot · difference from your usual")
+    return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label)
 
 
 def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: float,
@@ -529,6 +530,8 @@ def _clock(h: float) -> str:
 
 def _short(d: str) -> str:
     try:
+        if len(d) == 7:
+            return date.fromisoformat(d + "-01").strftime("%b %y")
         return date.fromisoformat(d[:10]).strftime("%-d %b")
     except ValueError:
         return d
@@ -553,8 +556,10 @@ def _page(pid: str, title: str, lede: str, body: str, back: str = "#today") -> s
     parent = parent or ("Run overview" if back.startswith("#run-") else "Month")
     nav = ("" if pid == "today" else f'<a class="back" href="{back}">{icon("back")}'
            f'<span>{parent}</span></a>')
-    return (f'<article class="page" id="{pid}">{nav}<header class="ph"><h2>{_e(title)}</h2>'
-            f'<p class="lede">{lede}</p></header><div class="grid">{body}</div></article>')
+    intro = f'<p class="lede">{lede}</p>' if lede else ""
+    return (f'<article class="page" id="{pid}" aria-labelledby="heading-{pid}">{nav}'
+            f'<header class="ph"><h2 id="heading-{pid}" tabindex="-1">{_e(title)}</h2>'
+            f'{intro}</header><div class="grid">{body}</div></article>')
 
 
 def _row(label: str, value: str, note: str = "", state: str = "") -> str:
@@ -569,11 +574,12 @@ _PATTERN_LABELS = {
     "trimp": "Training load", "sleep_score": "Sleep score", "last_training_end_h": "Workout end time",
     "stress": "Daytime stress", "steps": "Daily steps", "intensity_min": "Intensity minutes",
 }
-def _insight(item: dict[str, Any]) -> str:
+def _insight(item: dict[str, Any], prioritized: bool = False) -> str:
     action = f'<span class="finding-action">{_e(item["action"])}</span>' if item.get("action") else ""
     basis = (f'<details><summary>Why this?</summary><p class="sub">{_e(item["basis"])}</p></details>'
              if item.get("basis") else "")
-    return (f'<li><a class="finding" href="#{item["target"]}"><span>'
+    label = '<span class="insight-label">AI-prioritized follow-up</span>' if prioritized else ""
+    return (f'<li><a class="finding" href="#{item["target"]}"><span>{label}'
             f'<strong>{_e(item["title"])}</strong>'
             f'<span class="finding-detail">{_e(item["detail"])}</span>{action}</span>{icon("chev")}</a>'
             f'{basis}</li>')
@@ -584,19 +590,22 @@ def _narration(summary: dict | None) -> str:
         return ""
     facts = "".join(f'<li>{_e(label.capitalize())}: {_e(value)}</li>'
                     for label, value in summary["facts"].items())
-    return (f'<p>{_e(summary["text"])}</p><p class="sub">AI summary · facts checked</p>'
-            f'<details><summary>Show the facts</summary><ul>{facts}</ul></details>')
+    return (f'<div class="local-insight"><p class="insight-label">AI summary · facts checked</p>'
+            f'<p>{_e(summary["text"])}</p>'
+            f'<details><summary>Show the facts</summary><ul>{facts}</ul></details></div>')
 
 
-def _trial_card(trial: dict[str, Any], summary: dict | None = None) -> str:
+def _trial_card(trial: dict[str, Any], summary: dict | None = None, *,
+                last_target: str | None = None) -> str:
     """Today: the experiment you're running, how the last attempt went, and what's next."""
     t = trial["trial"]
     attempts = trial.get("attempts") or []
     last = attempts[-1] if attempts else None
     body = f'<p class="say">{_e(t["title"])}</p>'
     if last:
-        link = (f'<a class="flow-link" href="#run-{last["activity_id"]}">'
-                f'Last attempt · {_e(_short(last["date"] or ""))}{icon("chev")}</a>')
+        caption = f'Last attempt · {_e(_short(last["date"] or ""))}'
+        link = (f'<a class="flow-link" href="{last_target}">{caption}{icon("chev")}</a>'
+                if last_target else f'<p class="sub">{caption}</p>')
         body += f'<p>{_e(last["summary"])}</p>{link}'
     body += (f'<p class="sub"><b>Next:</b> {_e(trial["next"])}</p>'
              f'<details><summary>So far</summary><p class="sub">{_e(trial["verdict"])} '
@@ -624,9 +633,10 @@ def _trial_run_card(trial: dict[str, Any], aid: int) -> str:
     return ""
 
 
-def _overview_tile(label: str, value: str, note: str, target: str) -> str:
-    return (f'<a class="overview-tile" href="#{target}"><span>{_e(label)}{icon("chev")}</span>'
-            f'<strong>{_e(value)}</strong><small>{_e(note)}</small></a>')
+def _overview_tile(label: str, value: str, note: str, target: str, symbol: str) -> str:
+    return (f'<a class="overview-tile" href="#{target}"><span>{icon(symbol)}'
+            f'{_e(label)}{icon("chev", "chev")}</span><strong>{_e(value)}</strong>'
+            f'<small>{_e(note)}</small></a>')
 
 
 def _sleep_time(hours: float) -> str:
@@ -642,15 +652,18 @@ def page_today(d: dict[str, Any]) -> str:
     training_n = len(snapshot.get("activities", []))
     focus = d["brief"]["focus"]
     current = not (d.get("older_snapshot") or d.get("sync_retry_required"))
+    has_activity = current and bool(training_n)
+    runs = {r["activity_id"] for r in d["runs"]}
     ready = rec["pct"] is not None
     tiles = (
         _overview_tile("Recovery", _f(rec["pct"], unit="%") if ready else "—",
-                       (rec["label"] or "").capitalize() if ready else "Still learning", "recovery")
+                       (rec["label"] or "").capitalize() if ready else "Still learning",
+                       "recovery", "heart")
         + _overview_tile("Sleep", _sleep_time(sleep["hours"]) if sleep["hours"] else "—",
                          f'Goal {_sleep_time(sleep["need_h"])}' if sleep["hours"]
-                         else "No night recorded", "sleep")
+                         else "No night recorded", "sleep", "moon")
         + _overview_tile("Training", str(training_n), "Workout logged" if training_n == 1
-                         else "Workouts logged", "training"))
+                         else "Workouts logged", "training", "bolt"))
     body = ""
     if not current:
         status = ("Sync to get today’s guidance." if d.get("older_snapshot")
@@ -662,9 +675,35 @@ def page_today(d: dict[str, Any]) -> str:
         more = (f'<a class="flow-link" href="#{target}">{link[target]}{icon("chev")}</a>'
                 if target else "")
         detail = f'<p>{_e(focus["detail"])}</p>' if focus["detail"] else ""
-        body += (f'<section class="card today-focus wide"><h3>{_e(focus["title"])}</h3>'
+        change = d.get("guidance_change")
+        previous = ""
+        if change:
+            prior = change["previous"]
+            when = "Earlier today" if prior["day"] == day else _short(prior["day"])
+            previous = f'<p class="sub">{_e(when)} · {_e(prior["title"])}</p>'
+        label = "What changed?" if change else "Daily guidance"
+        width = "" if has_activity else " wide"
+        body += (f'<section class="card today-focus{width}"><p class="focus-label">{label}</p>{previous}'
+                 f'<h3>{_e(focus["title"])}</h3>'
                  f'{detail}{more}</section>')
-    body += f'<div class="overview-tiles wide" aria-label="Today’s readings">{tiles}</div>'
+    if training_n:
+        rows = [_record_link(_workout_name(a),
+                             " · ".join(filter(None, [a["duration"],
+                                         _f(a["distance_km"], 1, " km") if a["distance_km"] else ""])),
+                             _workout_link(d, a["id"], runs))
+                for a in snapshot.get("activities", [])]
+        body += _card("Today’s workouts" if current else "Workouts on this date",
+                      f'<ul class="record-list">{"".join(rows)}</ul>', wide=not has_activity)
+    body += ('<section class="overview wide" aria-label="Today’s readings">'
+             f'<h3>Health &amp; activity</h3><div class="overview-tiles">{tiles}</div></section>')
+
+    anchor = d.get("sleep_review", {}).get("anchor", {})
+    if current and anchor:
+        bedtime = (f' · In bed by {anchor["bedtime"]} this week' if anchor.get("bedtime") else "")
+        body += (f'<a class="sleep-brief wide" href="#sleep">'
+                 f'<span><strong>Sleep schedule</strong> · Wake around {anchor["wake"]}'
+                 f' · {anchor["spread"]} min variation{bedtime}</span>'
+                 f'{icon("chev")}</a>')
 
     if current:
         week = d["brief"]["week_ahead"]
@@ -673,9 +712,12 @@ def page_today(d: dict[str, Any]) -> str:
                       f'<p class="sub">{_e(week["basis"])}</p></details>', wide=True)
     findings = list(focus["findings"]) if current else []
     narration = d.get("narration", {})
+    choice = narration.get("focus", {}).get("choice")
+    prioritized = None
+    if type(choice) is int and 1 <= choice <= len(findings):
+        prioritized = findings.pop(choice - 1)
+        findings.insert(0, prioritized)
     trial = d.get("trial") or {}
-    if trial.get("active"):  # about past runs, so useful even on an older snapshot
-        body += _trial_card(trial, narration.get("trial"))
     if current and d["runs"] and not trial.get("active"):
         latest_run = d["runs"][0]
         cue = latest_run.get("cadence_experiment")
@@ -684,18 +726,14 @@ def page_today(d: dict[str, Any]) -> str:
                                 "detail": cue["suggestion"], "basis": cue["check"],
                                 "target": f'run-{latest_run["activity_id"]}'})
     if findings:
-        rows = "".join(_insight(item) for item in findings[:3])
+        rows = "".join(_insight(item, item is prioritized) for item in findings)
         body += _card("What to work on", f'<ul class="findings">{rows}</ul>', wide=True)
+    if trial.get("active"):  # About past runs, so useful even on an older snapshot.
+        last_attempt = trial["attempts"][-1] if trial["attempts"] else None
+        target = _workout_link(d, last_attempt["activity_id"], runs) if last_attempt else None
+        body += _trial_card(trial, narration.get("trial"), last_target=target)
     if narration.get("today"):
         body += _card("Recovery summary", _narration(narration["today"]), wide=True)
-    if training_n:
-        runs = {r["activity_id"] for r in d["runs"]}
-        rows = [_record_link(a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize(),
-                             " · ".join(filter(None, [a["duration"],
-                                         _f(a["distance_km"], 1, " km") if a["distance_km"] else ""])),
-                             _workout_link(d, a["id"], runs))
-                for a in snapshot.get("activities", [])]
-        body += _card("Today’s workouts" if current else "Workouts on this date", f'<ul class="record-list">{"".join(rows)}</ul>', wide=True)
     body += (f'<a class="flow-link history-entry wide" href="#trends">'
              f'Browse trends and history{icon("chev")}</a>')
     return _page("today", "Today", _date_label(day), body)
@@ -727,66 +765,101 @@ def _bedroom_card(review: dict) -> str:
                  wide=True)
 
 
+def _night_record(night: dict) -> str:
+    stats = [("Asleep", _sleep_time(night["hours"]))]
+    if night["score"] is not None:
+        stats.append(("Garmin score", f'{_f(night["score"])}/100'))
+    for field, title in (("bed", "Fell asleep"), ("wake", "Woke up")):
+        if night[field] is not None:
+            stats.append((title, sleep_review.clock(night[field])))
+    metrics = "".join(f'<div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in stats)
+    stages = [(label, seconds) for label, seconds in night["stages"].items() if seconds is not None and seconds >= 0]
+    total = sum(seconds for _, seconds in stages)
+    composition = ""
+    if total > 0:
+        bar = "".join(f'<span class="{label.lower()}" style="flex:{seconds:g}"></span>'
+                      for label, seconds in stages)
+        legend = "".join(f'<li class="{label.lower()}">{label} <b>{_sleep_time(seconds / 3600)}</b></li>'
+                         for label, seconds in stages)
+        composition = (f'<h4>Time in each stage</h4><div class="stage-strip" aria-hidden="true">{bar}</div>'
+                       f'<ul class="stage-key">{legend}</ul>')
+    timeline = ""
+    if intervals := night.get("timeline"):
+        bars = "".join(f'<span class="{stage}" style="left:{100 * start:.3f}%;'
+                       f'width:{100 * length:.3f}%"></span>' for start, length, stage in intervals)
+        timeline = ('<h4>Sleep stages through the night</h4>'
+                    '<div class="sleep-timeline" role="img" '
+                    'aria-label="Recorded stage timeline from sleep start to wake">'
+                    f'{bars}</div>')
+    return f'<dl class="sleep-measures">{metrics}</dl>{timeline}{composition}'
+
+
 def page_sleep(d: dict[str, Any]) -> str:
-    n = d["night"] or {}
-    parts = n.get("parts") or {}
-    stages = ""
-    for lab in ("Deep sleep", "REM sleep", "Light sleep"):
-        p = parts.get(lab)
-        if p and p.get("value") is not None:
-            o = p.get("optimal") or [None, None]
-            stages += _row(lab, f'{p["value"]}<small>%</small>',
-                           f'{p.get("rating") or ""} · ideal {_f(o[0])}–{_f(o[1])} %',
-                           "good" if p.get("rating") in ("Excellent", "Good") else "down")
-    for lab in ("Duration", "Awakenings", "Restlessness", "Stress during sleep"):
-        p = parts.get(lab)
-        if p:
-            stages += _row(lab, _e(p.get("rating") or "–"))
-    dip = n.get("heart_rate_dip")
-    dip_html = ""
-    if dip:
-        dip_html = (f'<div class="big">{dip["dip_pct"]:.0f}<small>%</small></div>'
-                    f'<p class="say">{_e(dip["label"].capitalize())}</p><p class="sub">Day '
-                    f'{dip["awake_mean_hr"]:.0f} bpm → sleep {dip["sleep_mean_hr"]:.0f} bpm. '
-                    f'{_e(dip["meaning"])}</p>')
-    need = d["scores"]["sleep"].get("need_h") or recovery.DEFAULT_SLEEP_NEED_H
-    ref_name = ("Garmin sleep need" if d["scores"]["sleep"].get("need_source") == "Garmin sleep need"
-                else "Planning target")
-    sleep_by_day = {row[0]: row[1] for row in d["sleep"]}
-    nights = [(day, sleep_by_day.get(day)) for day in recovery._days_back(d["end"], 30)]
-    sleep_signal = d["signals"]["sleep_h"]
-    rolling = {x["day"]: x["average"] for x in sleep_signal["days"] if x["average"] is not None}
-    durations = both(bar_chart, nights, " h", ref=need, averages=rolling,
-                     nd=1, y_label="Sleep duration (h)",
-                     x_label="Wake date", rate_goal=True)
-    bed = []
-    tz = engine._tz(d['_conn'])
-    for day, _, start in d["sleep"]:
-        if start:
-            loc = datetime.fromisoformat(start).replace(tzinfo=UTC).astimezone(tz)
-            bed.append((day, ((loc.hour - 12) % 24) + loc.minute / 60 + 12))  # 25.5 = 01:30
-    bedtimes = both(line_chart, bed, fmt=_clock, y_label="Bedtime (local)", x_label="Wake date")
-    hours, saved_score = d["night_summary"] or (None, None)
-    score = n.get("overall") if n.get("overall") is not None else saved_score
-    headline = (f'<div class="big">{_f(hours, 1)}<small> h asleep</small></div>'
-                if hours is not None else '<p class="empty">No complete night recorded yet.</p>')
-    recorded = f'Wake date {_short(n["day"])}' if n.get("day") else ""
-    garmin = f' · Garmin sleep score {_f(score)}/100' if score is not None else ""
-    body = (_card("Latest recorded night", headline + f'<p class="sub">{recorded}{garmin}</p>'
-                  + _narration(d.get("narration", {}).get("sleep")), wide=True)
-            + _card("Sleep duration over 30 nights", _signal_summary("sleep_h", sleep_signal) + durations,
-                    f"Current {ref_name.lower()} {need:.1f} h · green: met · amber: below" + (" · orange: 7-day average" if rolling else ""),
-                    wide=True)
-            + _card("Bedtime", bedtimes, "When you fell asleep in your local time zone.", wide=True))
-    if stages:
-        body += _card("Garmin sleep breakdown", f'<ul class="rows">{stages}</ul>')
-    if dip_html:
-        body += _card("Day and sleep heart rate", dip_html)
+    review = d.get("sleep_review", {})
+    nights = review.get("nights", {})
+    last = max(nights, default=None)
+    if not last:
+        return _page("sleep", "Sleep", "No complete night recorded yet.", "")
+    detail_days = set(d["calendar"]["detail_days"])
+    night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
+                  if last in detail_days else "")
+    body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
+            f'{_night_record(nights[last])}{night_link}'
+            + _narration(d.get("narration", {}).get("sleep")) + '</section>')
+    anchor = review["anchor"]
+    if anchor:
+        target = (f'<p>In bed by <b>{anchor["bedtime"]}</b> this week.</p>'
+                  if anchor.get("bedtime") else "")
+        held = ('<p class="sub">Hold near your recent bedtime before moving it earlier.</p>'
+                if anchor.get("held") else "")
+        body += (f'<section class="sleep-band wide"><h3>Keep wake time steady</h3>'
+                 f'<p>Wake around <b>{anchor["wake"]}</b>. Wake times varied by '
+                 f'<b>{anchor["spread"]} min</b> across {anchor["nights"]} nights.</p>'
+                 f'{target}{held}</section>')
     debt = d["scores"]["sleep"].get("debt_7d_h")
-    lede = (f"Seven-night sleep shortfall <b>{_f(debt, 1)} h</b>" if debt is not None else
-            "Sleep shortfall needs more nights of data.")
+    if debt is not None and debt > 0:
+        nights_to_half = math.ceil(debt * 30 / 40)
+        body += (f'<section class="sleep-band wide"><h3>Sleep shortfall · {_f(debt, 1)} h</h3>'
+                 f'<p>{nights_to_half} extra nights of 40 minutes would add at least half '
+                 'that amount.</p></section>')
+    for period, label in ((7, "Past week"), (30, "Past month"), (365, "Past year")):
+        window = review["windows"].get(period)
+        if not window:
+            continue
+        score = (f' · Garmin score {_f(window["score"])} average across {window["scored"]} nights'
+                 if window["score"] is not None else "")
+        average = f'{_sleep_time(window["hours"])} average · {window["nights"]} nights{score}'
+        if period == 7 and (delta := review["week_change_min"]):
+            direction = "more" if delta > 0 else "less"
+            average += f" · {abs(delta)} min {direction} per night than the week before"
+        chart = both(bar_chart, window["chart"], " h", nd=1, y_label="Sleep duration (h)",
+                     x_label="Month" if period == 365 else "Wake date")
+        records = ""
+        if period == 7:
+            rows = []
+            for day, night in list(nights.items())[-7:][::-1]:
+                if (date.fromisoformat(d["end"]) - date.fromisoformat(day)).days >= 7:
+                    continue
+                note = [_sleep_time(night["hours"])]
+                if night["bed"] is not None and night["wake"] is not None:
+                    note.append(f'{sleep_review.clock(night["bed"])}–{sleep_review.clock(night["wake"])}')
+                if night["score"] is not None:
+                    note.append(f'Garmin score {_f(night["score"])}')
+                rows.append(_record_link(_date_label(day), " · ".join(note),
+                                         f"#day-{day}" if day in detail_days else None))
+            records = f'<ul class="record-list">{"".join(rows)}</ul>'
+        elif period == 30:
+            records = f'<a class="flow-link" href="#history">Open daily history{icon("chev")}</a>'
+        body += (f'<details class="sleep-band wide"{" open" if period == 7 else ""}>'
+                 f'<summary><strong>{label}</strong><span>{average}</span></summary>'
+                 f'{chart}{records}</details>')
+    dip = (d["night"] or {}).get("heart_rate_dip")
+    if dip:
+        body += _card("Day and sleep heart rate",
+                      f'<p>{_f(dip["awake_mean_hr"])} bpm during the day · '
+                      f'{_f(dip["sleep_mean_hr"])} bpm asleep.</p>', wide=True)
     body += _bedroom_card(d["bedroom_conditions"])
-    return _page("sleep", "Sleep", lede, body)
+    return _page("sleep", "Sleep", "", body)
 
 
 def _signal_summary(key: str, stat: dict[str, Any]) -> str:
@@ -869,15 +942,17 @@ def page_recovery(d: dict[str, Any]) -> str:
     rec = d["scores"]["recovery"]
     garmin = (f'Garmin readiness {_f(rec["garmin_readiness"])}'
               if rec["garmin_readiness"] is not None else "")
-    status = (f'{rec["pct"]}% · {rec["label"].capitalize()}' if rec["pct"] is not None
-              else "Still learning your usual readings")
     hist = d["history"]
     chart = both(bar_chart, [(h["day"], h["recovery"]) for h in hist], "%",
                  y_label="Recovery (%)", tones=[TONE.get(h["band"] or "", "muted") for h in hist])
-    score = (f'<p class="sub">{_e(garmin)}</p>' if garmin else "")
+    score = (f'<div class="big">{_e(rec["pct"])}<small>%</small></div>'
+             f'<p class="sub">{_e(rec["label"].capitalize())}</p>'
+             if rec["pct"] is not None else '<p class="empty">Still learning your usual readings.</p>')
+    score += f'<p class="sub">{_e(garmin)}</p>' if garmin else ""
+    score += _narration(d.get("narration", {}).get("today"))
     if any(h["recovery"] is not None for h in hist):
         score += f'<details class="recovery-history"><summary>Last 14 days</summary>{chart}</details>'
-    body = (_card("Recovery score", score, _e(status), wide=True)
+    body = (_card("Recovery score", score, wide=True)
             + _card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
                   "7-day HRV · green: within usual · amber: below · blue: above", wide=True)
             + "".join(_vital_chart(metric, d["signals"][metric])
@@ -999,16 +1074,10 @@ def page_training(d: dict[str, Any]) -> str:
                 + _row("Training load", _f(week["trimp"]), prior_text)
                 + _row("Average sleep", _f(rest["avg_sleep_h"], 1, " h"),
                        f'{rest["sleep_nights"]} of 7 nights used'))
-        week_card = _card("Training and recovery this week", f'<ul class="rows">{rows}</ul>',
+        summary = _narration(d.get("narration", {}).get("training"))
+        week_card = _card("Training and recovery this week", f'<ul class="rows">{rows}</ul>{summary}',
                           f'{_short(week["from"])}–{_short(week["to"])} · recorded data', wide=True)
-    body = (week_card
-            + _outdoor_patterns_card(d.get("outdoor_patterns", {}))
-            + _readiness_benchmark(d["readiness_benchmark"], {r["activity_id"] for r in d["runs"]})
-            + _card("Training load trend", fit, "42-day smoothed load. Tracks training exposure, "
-                  "not a direct fitness test.", wide=True)
-            + _card("Load per week", wl, "Weeks start on Monday. Latest week may be partial."
-                    + (f" · Dashed: {_f(four_week_avg)} average of the previous four bars"
-                       if four_week_avg is not None else ""), wide=True))
+    body = week_card
     run_ids = {r["activity_id"] for r in d["runs"]}
     calendar = d["calendar"]
     entries = []
@@ -1017,8 +1086,17 @@ def page_training(d: dict[str, Any]) -> str:
             if target := _workout_link(d, workout["id"], run_ids):
                 entries.append(_record_link(_workout_name(workout), _date_label(day), target))
     if entries:
-        body = _card("Recent workouts", f'<ul class="record-list">{"".join(entries)}</ul>',
-                     wide=True) + body
+        recent = f'<ul class="record-list">{"".join(entries[:4])}</ul>'
+        if len(entries) > 4:
+            recent += ('<details><summary>More recent workouts</summary>'
+                       f'<ul class="record-list">{"".join(entries[4:])}</ul></details>')
+        body += _card("Recent workouts", recent, wide=True)
+    body += (_card("Training load trend", fit, "42-day smoothed load. Tracks training exposure.", wide=True)
+             + _card("Load per week", wl, "Weeks start on Monday. Latest week may be partial."
+                     + (f" · Dashed: {_f(four_week_avg)} average of the previous four bars"
+                        if four_week_avg is not None else ""), wide=True)
+             + _outdoor_patterns_card(d.get("outdoor_patterns", {}))
+             + _readiness_benchmark(d["readiness_benchmark"], run_ids))
     status = _status_label(d["brief"].get("garmin_training_status"))
     lede = (f"Garmin training status <b>{_e(status)}</b>" if status != "–" else
             "Your recorded workouts, load and recovery.")
@@ -1032,8 +1110,8 @@ def _run_label(r: dict[str, Any]) -> str:
 def page_running(d: dict[str, Any]) -> str:
     runs = d["runs"]
     lst = "".join(f'<a class="tile" href="#run-{r["activity_id"]}"><b>{_e(_run_label(r))}</b>'
-                  f'<span>avg HR {_f(r.get("avg_hr"))} · cadence '
-                  f'{_f((r["form"].get("cadence_spm") or {}).get("value"))}</span>'
+                  f'<span>Avg HR {_f(r.get("avg_hr"), unit=" bpm")} · cadence '
+                  f'{_f((r["form"].get("cadence_spm") or {}).get("value"), unit=" steps/min")}</span>'
                   f'{icon("chev")}</a>' for r in runs)
     pr = d["predictions"].get("predictions") or {}
     estimates = []
@@ -1048,7 +1126,7 @@ def page_running(d: dict[str, Any]) -> str:
     races = ('<ul class="race-estimates">' + "".join(estimates) + '</ul>' if estimates else
              '<p class="empty">No race estimates from the available data.</p>')
     ms = d["marathon"]
-    mshape = ""
+    mshape = f'<p class="empty">{_e(ms.get("reason") or "More running history is needed.")}</p>'
     if ms.get("available"):
         f = ms["marathon_shape_pct"] / 100
         need = ms["needed_for"]
@@ -1063,14 +1141,17 @@ def page_running(d: dict[str, Any]) -> str:
     fs = d["form"]["series"]
     cad = both(line_chart, [(s["date"], s["cadence_spm"]) for s in fs], " spm",
                y_label="Cadence (steps/min)", zone_metric="cadence_spm")
-    body = (f'<nav class="card tiles wide">{lst or "<p class=empty>No runs with detail yet.</p>"}'
-            f'</nav>'
+    body = (f'<nav class="card tiles wide" aria-label="Recent runs"><h3>Recent runs</h3>'
+            f'{lst or "<p class=empty>No runs with detail yet.</p>"}</nav>'
             + _card("Steady run efficiency over time", _tests(d["tests"]),
                     "Similar-distance outdoor runs · grade-adjusted speed per heartbeat", wide=True)
+            + _card("Cadence over your runs", cad, "Garmin bands: red/orange below average, "
+                    "green average, blue/purple above. Compare cadence at a similar pace.", wide=True)
+            + '<details class="card wide secondary-metrics"><summary>Race planning estimates</summary>'
+            + '<div class="grid">'
             + _card("Marathon shape", mshape, "Endurance readiness (Runalyze method)")
             + _card("Race time estimates", races, "Recorded efforts, endurance and max HR affect accuracy.")
-            + _card("Cadence over your runs", cad, "Garmin bands: red/orange below average, green average, blue/purple above. "
-                    "Compare cadence at a similar pace.", wide=True))
+            + '</div></details>')
     return _page("running", "Running", "Open a run for splits, the timeline and comparisons.", body)
 
 
@@ -1090,7 +1171,8 @@ def _tests(t: dict[str, Any]) -> str:
 
 
 def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
-             summary: dict | None = None, *, run_ids: set[int] | None = None) -> str:
+             summary: dict | None = None, *, run_ids: set[int] | None = None,
+             run_check: int | None = None) -> str:
     rows = ""
     units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
              "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
@@ -1126,9 +1208,24 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
                     f'<a href="{_e(cue["source"])}" class="source-link">Cadence study</a></p>')
     body = (_trial_run_card(d_trial, r["activity_id"])
             + _card("What to try next", work + followup, wide=True)
+            + _card("Run numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>', wide=True)
             + _card("Running form", rows + '<p class="legend"><i class="mk"></i>This run <i class='
-                    '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True)
-            + _card("Numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>', wide=True))
+                    '"mk2"></i>Your usual at this pace</p>', "Colours show Garmin’s ratings.", wide=True))
+    comparison = r["comparable_effort"]
+    if next_step := coach_review.after_run(comparison):
+        options = coach_review.run_questions(r)
+        selected = ""
+        if type(run_check) is int and 1 <= run_check <= len(options):
+            option = options[run_check - 1]
+            selected = (f'<p class="insight-label">AI evidence check</p>'
+                        f'<p><b>{_e(option["title"])}</b> · {_e(option["basis"])}</p>')
+        body = (f'<section class="coach-change wide"><h3>Post-run review</h3>'
+                f'<p class="say">{_e(run_evidence.headline(comparison))}</p>'
+                f'{selected or f"<p>{_e(next_step)}</p>"}'
+                f'<nav class="run-jumps" aria-label="Post-run links"><a class="flow-link" href="#run-{r["activity_id"]}-compare">'
+                f'See matched runs{icon("chev")}</a>'
+                f'<a class="flow-link" href="#today">Today’s guidance{icon("chev")}</a>'
+                '</nav></section>') + body
     aid = r["activity_id"]
     sections = []
     jumps = []
@@ -1397,7 +1494,7 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     controls = (f'<div class="overlay-options" role="group" aria-label="Compare with">'
                 f'<span>Compare with</span>{"".join(buttons)}</div>') if buttons else ""
     return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
-                  "Tap or hover for readings", controls=controls, readout_below=True,
+                  controls=controls,
                   condition_labels=list(context_labels))
 
 
@@ -1494,9 +1591,8 @@ def _date_label(day: str) -> str:
 def _history_nav(d: dict[str, Any], current: str, *, day: str | None = None,
                  month: str | None = None) -> str:
     calendar = d["calendar"]
-    day = day or max(calendar["detail_days"], default=None)
-    if day and day < calendar["detail_start"]:
-        day = None
+    if day not in calendar["detail_days"]:
+        day = max(calendar["detail_days"], default=None)
     month = month or calendar["current_month"]
     controls = (
         ("Day", f"#day-{day}" if day else None),
@@ -1513,7 +1609,8 @@ def _history_nav(d: dict[str, Any], current: str, *, day: str | None = None,
 
 
 def _record_link(label: str, note: str, href: str | None = None) -> str:
-    content = f'<span><strong>{_e(label)}</strong><small>{_e(note)}</small></span>'
+    caption = f'<small>{_e(note)}</small>' if note else ""
+    content = f'<span><strong>{_e(label)}</strong>{caption}</span>'
     return (f'<li><a class="record-link" href="{href}">{content}{icon("chev")}</a></li>'
             if href else f'<li class="record-link">{content}</li>')
 
@@ -1569,7 +1666,7 @@ def page_history_month(d: dict[str, Any], month: str) -> str:
     chart = both(bar_chart, sleep, " h", nd=1, x_label="Wake date", y_label="Sleep duration (h)")
     recent = any(day >= c["detail_start"] for day in days)
     days_label = "Daily readings" if not recent else "Open a recent day"
-    body = (_history_nav(d, "Month", month=month, day=days[0] if days else None)
+    body = (_history_nav(d, "Month", month=month, day=days[-1] if days else None)
             + _card("Sleep by night", chart, wide=True)
             + _card(days_label, _date_list(days, c),
                     "Full day pages cover the last 30 days. Ask Claude for older daily detail.",
@@ -1597,8 +1694,6 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
     sleep_hours = (sleep.get("sleep_s") or 0) / 3600
     if sleep_hours >= 3:
         measurements.extend((
-            ("Asleep", sleep_hours, " h", 1),
-            ("Garmin sleep score", sleep.get("score"), "/100", 0),
             ("Overnight Pulse Ox", sleep.get("avg_spo2"), "%", 1),
             ("Overnight breathing rate", sleep.get("avg_respiration"), " breaths/min", 1),
         ))
@@ -1618,9 +1713,22 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         name = a["name"] or (a["type"] or "Workout").replace("_", " ").capitalize()
         workouts.append(_record_link(name, note, _workout_link(d, a["id"], run_ids)))
     body = _history_nav(d, "Day", day=day, month=day[:7])
+    days = d["calendar"]["detail_days"]
+    index = days.index(day)
+    neighbours = ""
+    if index:
+        neighbours += (f'<a class="flow-link" href="#day-{days[index - 1]}">'
+                       f'{icon("back")}<span>Earlier · {_e(_short(days[index - 1]))}</span></a>')
+    if index + 1 < len(days):
+        neighbours += (f'<a class="flow-link" href="#day-{days[index + 1]}">'
+                       f'<span>Later · {_e(_short(days[index + 1]))}</span>{icon("chev")}</a>')
+    if neighbours:
+        body += f'<nav class="day-neighbours wide" aria-label="Adjacent recorded days">{neighbours}</nav>'
     if readings:
         body += _card("Readings", f'<ul class="rows">{readings}</ul>')
-    if stages:
+    if night := d.get("sleep_review", {}).get("nights", {}).get(day):
+        body += f'<section class="sleep-band wide"><h3>Sleep</h3>{_night_record(night)}</section>'
+    elif stages:
         body += _card("Recorded sleep stages", f'<ul class="rows">{"".join(stages)}</ul>')
     if workouts:
         body += _card("Workouts", f'<ul class="record-list">{"".join(workouts)}</ul>', wide=True)
@@ -1703,7 +1811,7 @@ def _vo2_plot(r: dict[str, Any], w: int) -> str:
     parts.extend(f'<text x="{x(v[p]):.1f}" y="72" class="tick" text-anchor="middle">'
                  f'{p}th · {v[p]:.1f}</text>' for p in (5, 50, 95))
     return _chart("scatter", parts, w, 84, (left, right, 10, 55),
-                  "VO₂max (mL/kg/min)", "Population reference", "Hover or tap the reference band",
+                  "VO₂max (mL/kg/min)", "Population reference",
                   compact=True)
 
 
@@ -1747,14 +1855,16 @@ def page_patterns(d: dict[str, Any]) -> str:
 
 # =============================================================================== render
 CSS = """
-:root{color-scheme:light;--page:#f3f5f8;--surface:#fff;--ink:#172033;--ink2:#48556a;
+:root{color-scheme:light;--page:#f2f5f8;--surface:#fff;--ink:#172033;--ink2:#48556a;
 --muted:#546174;--grid:#dfe4ec;--axis:#687487;--border:#dce3eb;--s1:#1868c4;
 --accent:#edf5ff;--active:#104f9d;--cursor:#39669a;
+--focus:#e7f1fb;--focus-edge:#c6dbf1;
 --s2:#eb6834;--good:#0ca30c;--warn:#fab219;--serious:#ec835a;--bad:#d03b3b;--purple:#6250d6;
 --band:rgba(42,120,214,.12);--goodtext:#006300}
 :root[data-theme=dark]{color-scheme:dark;--page:#10151f;--surface:#1a2230;--ink:#f3f6fa;
 --ink2:#c4cede;--muted:#aab8cd;--grid:#354155;--axis:#899bb4;--border:#303c50;--s1:#6baaff;
 --accent:#202f48;--active:#b6d9ff;--cursor:#b6d9ff;
+--focus:#1c324b;--focus-edge:#355275;
 --s2:#d95926;--purple:#9085e9;--band:rgba(57,135,229,.18);--goodtext:#0ca30c}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,
@@ -1763,21 +1873,32 @@ a{color:inherit;text-decoration:none}
 a:focus-visible,summary:focus-visible,button:focus-visible,.chart:focus-visible,.table-wrap:focus-visible{
 outline:3px solid var(--s1);outline-offset:3px}
 .chart:focus:not(:focus-visible){outline:none}
-.wrap{max-width:1080px;margin:0 auto;padding:16px 16px 48px}
-.mast{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-.mast b{font-size:16px;letter-spacing:-.01em}
+.wrap{max-width:1160px;margin:0 auto;padding:16px 24px 48px}
+.mast{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.mast b{font-size:17px;letter-spacing:-.025em;display:flex;gap:9px;align-items:center}
+.mast b .ic{width:24px;height:24px;padding:4px;border-radius:7px;background:var(--s1);color:var(--page)}
 .theme{display:none;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 [data-interactive] .theme{display:flex}
 .theme button{min-height:42px;border:0;background:transparent;color:var(--ink2);font:600 13px system-ui;
 padding:0 13px;border-radius:11px;cursor:pointer}
 .theme button[aria-pressed=true]{background:var(--accent);color:var(--active)}
-.top{display:flex;flex-wrap:wrap;gap:4px;padding:4px;margin:0 -4px 22px;border-bottom:1px solid var(--border)}
-.top a{flex:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;
-color:var(--ink2)}
+.top{display:flex;gap:4px;padding:5px;margin:0 0 22px;background:var(--surface);
+border:1px solid var(--border);border-radius:14px}
+.top a{flex:none;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:8px 15px;
+border-radius:9px;font-size:13px;font-weight:650;color:var(--ink2)}
 .top a:hover,.top a[aria-current=page]{background:var(--accent);color:var(--active)}
-@media(max-width:620px){
-.top{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible}
-.top a{justify-content:center;padding:4px;font-size:12px}
+@media(min-width:641px){
+.top{position:sticky;top:8px;z-index:5}
+.page[id],.run-section[id]{scroll-margin-top:76px}
+}
+@media(max-width:640px){
+.wrap{padding:12px 14px calc(96px + env(safe-area-inset-bottom))}
+.page[id]{scroll-margin-top:60px}
+.top{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;position:fixed;z-index:5;
+inset:auto 0 0;margin:0;padding:4px max(8px,env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
+max(8px,env(safe-area-inset-left));border-width:1px 0 0;border-radius:0}
+.top a{justify-content:center;flex-direction:column;gap:4px;min-height:51px;padding:4px 1px;font-size:11px}
+.top .ic{width:18px;height:18px}
 }
 .sr-only{width:1px;height:1px;position:absolute;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .page{display:none}#today{display:block}
@@ -1787,13 +1908,18 @@ body:has(.page:target,.run-section:target) #today:not(:target){display:none}
 .run-section>summary{color:var(--ink);font-weight:650;min-height:44px;box-sizing:border-box;
 padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
 .run-section .grid{margin-top:10px}
+.secondary-metrics{margin:0}
+.secondary-metrics>summary{font-size:15px;font-weight:650}
+.secondary-metrics>.grid{margin-top:6px}
+.secondary-metrics .card{background:var(--page)}
 .run-jumps{display:flex;gap:0 16px;flex-wrap:wrap}
-.ph{margin:0 0 19px}.ph h2{font-size:34px;line-height:1.1;letter-spacing:-.03em;margin:0 0 6px}
+.ph{margin:0 0 18px}.ph h2{font-size:clamp(28px,4vw,38px);line-height:1.1;letter-spacing:-.045em;margin:0 0 5px}
 .lede{margin:0;color:var(--ink2);font-size:17px;line-height:1.4}
 .back{display:inline-flex;align-items:center;gap:4px;min-height:44px;color:var(--active);font-weight:600;
 font-size:14px;margin:0 0 5px}
 .grid{display:grid;grid-template-columns:1fr;gap:16px}
 @media (min-width:768px){.grid{grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}}
+@media (min-width:768px){#today>.grid{grid-template-columns:minmax(0,5fr) minmax(0,3fr)}}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
 padding:20px;min-width:0}
 @media (max-width:480px){.card{padding:16px}}
@@ -1801,25 +1927,33 @@ padding:20px;min-width:0}
 margin:0 0 5px;font-weight:680;line-height:1.28}
 .card-link{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px}
 .card-link .chev{margin-left:auto}
+.card-link:hover h3{text-decoration:underline}
 .sub{color:var(--ink2);font-size:13px;line-height:1.45;margin:0 0 12px}
 .say{font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-.01em;margin:8px 0 4px}
 .big{font-size:48px;line-height:1.05;font-weight:700;letter-spacing:-.02em;margin:8px 0 4px}
 .big small{font-size:.45em;font-weight:500;color:var(--ink2);margin-left:2px}
 .empty{color:var(--muted);font-size:13px;margin:12px 0}
-.today-focus{border-top:3px solid var(--s1);padding:20px max(16px,2.4vw);}
+.card.today-focus{background:linear-gradient(115deg,var(--focus),var(--surface));
+border-color:var(--focus-edge);padding:clamp(16px,2.5vw,28px)}
 .today-focus h3{font-size:clamp(22px,4vw,31px);line-height:1.2;max-width:29ch}
 .today-focus p{margin:8px 0 0;color:var(--ink2);max-width:65ch}
+.today-focus .focus-label,.insight-label{color:var(--active);font-size:12px;font-weight:700}
+.today-focus .focus-label{margin:0 0 7px}
+.local-insight{margin:12px 0;padding:10px 12px;border-radius:10px;background:var(--accent)}
+.local-insight p{margin:0 0 4px}
+.finding .insight-label{display:block;margin-bottom:3px}
 .flow-link{display:inline-flex;align-items:center;gap:7px;min-height:44px;color:var(--active);
 font-size:14px;font-weight:650}
 .history-entry{justify-self:start}
+.overview h3{font-size:16px;margin:0 0 7px}
 .overview-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .overview-tile{display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);
-border-radius:13px;padding:11px 9px;background:var(--surface);min-width:0}
+border-radius:14px;padding:clamp(9px,1.65vw,17px);background:var(--surface);min-width:0}
 .overview-tile:hover{background:var(--accent)}
-.overview-tile>span{display:flex;align-items:center;justify-content:space-between;gap:1px;
-color:var(--ink2);font-size:12px}
-.overview-tile .ic{width:13px;height:13px}
-.overview-tile strong{font-size:clamp(17px,3.1vw,27px);line-height:1.2}
+.overview-tile>span{display:flex;align-items:center;gap:5px;color:var(--ink2);font-size:12px}
+.overview-tile .ic{width:13px;height:13px;color:var(--active)}
+.overview-tile .chev{margin-left:auto}
+.overview-tile strong{font-size:clamp(17px,3.1vw,29px);line-height:1.2;font-variant-numeric:tabular-nums}
 .overview-tile small{font-size:11px;color:var(--ink2);line-height:1.25}
 .week-cue{font-size:16px;margin:7px 0 0;color:var(--ink)}
 .run-first{font-size:17px;margin:8px 0 12px;max-width:64ch}
@@ -1831,7 +1965,7 @@ color:var(--ink2);font-size:12px}
 #today .today-focus p{font-size:13px}
 #today .flow-link{min-height:44px}
 #today .overview-tile{padding:8px 7px}
-#today .overview-tile .ic{display:none}
+#today .overview-tile .chev{display:none}
 #today .card:not(.today-focus){padding:12px}
 #today .week-cue{font-size:14px}
 }
@@ -1850,10 +1984,11 @@ font-variant-numeric:tabular-nums}
 .rows .n{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:13px;
 color:var(--ink2)}
 .rows .n:empty{display:none}
-.tiles{display:grid;gap:0;padding:4px 20px}
+.tiles{display:grid;gap:0}
 .tile{display:grid;grid-template-columns:1fr auto;align-items:center;padding:14px 0;
 border-top:1px solid var(--grid)}
-.tile:first-child{border-top:0}.tile b{font-weight:600}
+.tiles h3+.tile{border-top:0}.tile b{font-weight:600}
+.tile:hover b{text-decoration:underline}
 .tile span{grid-column:1;font-size:13px;color:var(--ink2)}
 .tile .ic{grid-row:1/3;grid-column:2;color:var(--muted)}
 .chart,.gauge{display:block;width:100%;height:auto;overflow:visible}
@@ -1861,13 +1996,14 @@ border-top:1px solid var(--grid)}
 .sm .chart-interaction{max-width:420px}
 .sm .chart-compact{max-width:390px}
 [data-ready] .chart{touch-action:pan-y pinch-zoom;cursor:crosshair;user-select:none}
-.chart-readout{display:none;color:var(--ink2);border-radius:10px;padding:8px 12px;min-height:72px;
+.chart-readout{display:none;color:var(--ink2);border-radius:10px;padding:6px 10px;min-height:52px;
 font-size:13px;line-height:1.35}
-[data-ready] .chart-readout{display:flex;flex-direction:column;justify-content:center}
+[data-ready] .chart-readout.selected{display:flex;flex-direction:column;justify-content:center}
 .chart-readout.selected{background:var(--accent);color:var(--ink)}
 .chart-readout strong{color:var(--active);font-size:13px;font-weight:650}
 .chart-readout span{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .chart-compact .chart-readout{min-height:48px}
+.chart-interaction[data-conditions] .chart-readout{min-height:75px}
 .chart-cursor{visibility:hidden;pointer-events:none}
 .chart-cursor.visible{visibility:visible}
 .chart-cursor line{stroke:var(--cursor);stroke-width:.9;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
@@ -1966,14 +2102,37 @@ caption{text-align:left;font-size:12px;color:var(--ink2);padding:8px 0}
 .history-tabs a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;
 border-radius:10px;border:1px solid var(--border);background:var(--surface);font-weight:600}
 .history-tabs a[aria-current=page]{background:var(--accent);color:var(--active)}
+.history-tabs a:hover{border-color:var(--s1)}
+.day-neighbours{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 16px}
 .record-list{list-style:none;padding:0;margin:0}
 .record-list li+li{border-top:1px solid var(--grid)}
 .record-link{display:flex;justify-content:space-between;gap:12px;align-items:center;min-height:44px;padding:10px 0}
+.record-link>span{min-width:0;overflow-wrap:anywhere}
 .record-link small{display:block;color:var(--ink2);font-size:13px}
 a.record-link:hover strong{text-decoration:underline}
 .signal-status{margin:8px 0 3px;color:var(--active)}
+.sleep-hero,.coach-change{padding:20px;border-radius:16px;background:var(--focus)}
+.sleep-hero h3,.coach-change h3,.sleep-band h3{margin:0;font-size:16px}
+.sleep-band,.sleep-brief{border-top:1px solid var(--border);padding:12px 0;margin:0;min-width:0}
+.sleep-brief{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--active)}
+.sleep-band summary{font-size:16px}
+.sleep-band summary span{display:block;color:var(--ink2);font-size:13px;margin-top:4px}
+.sleep-measures{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:12px;margin:12px 0}
+.sleep-measures dt{color:var(--ink2);font-size:13px}
+.sleep-measures dd{margin:0;font-size:clamp(19px,4vw,31px);font-weight:700;font-variant-numeric:tabular-nums}
+.stage-strip{display:flex;height:10px;overflow:hidden;border-radius:10px}
+.stage-key{display:flex;flex-wrap:wrap;gap:5px 16px;padding:0;list-style:none;font-size:13px}
+.stage-key li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;
+background:var(--stage);margin-right:5px}
+.stage-strip span,.sleep-timeline span{background:var(--stage)}
+.sleep-timeline{position:relative;min-height:68px;background:var(--surface);border-radius:8px;overflow:hidden}
+.sleep-timeline span{position:absolute;height:15px;top:var(--lane)}
+.sleep-timeline .awake{--lane:2px}.sleep-timeline .rem{--lane:18px}
+.sleep-timeline .light{--lane:34px}.sleep-timeline .deep{--lane:50px}
+.deep{--stage:var(--purple)}.light{--stage:var(--s1)}.rem{--stage:var(--good)}.awake{--stage:var(--s2)}
 footer{margin-top:48px;font-size:12px;color:var(--muted);line-height:1.6}
-@media print{.top,.mast,.back,.chart-readout{display:none!important}.page{display:block!important;break-after:page}}
+@media print{.top,.mast,.back,.chart-readout,.overlay-options{display:none!important}
+.page{display:block!important;break-after:page}}
 """
 
 
@@ -1988,7 +2147,7 @@ def page_trends() -> str:
 
 def render(d: dict[str, Any]) -> str:
     built_at = datetime.now(UTC)
-    snapshot = f"{__version__}/{built_at.isoformat()}"
+    snapshot = f"{SNAPSHOT_PREFIX}{built_at.isoformat()}"
     links = (("today", "Today"), ("sleep", "Sleep"), ("training", "Training"),
              ("running", "Running"), ("trends", "Trends"))
     if d.get("available") is False:
@@ -2004,7 +2163,9 @@ def render(d: dict[str, Any]) -> str:
         run_ids = {r["activity_id"] for r in d["runs"]}
         for r in d["runs"]:
             summary = d.get("narration", {}).get(f'run-{r["activity_id"]}')
-            pages.append(page_run(r, d.get("trial"), summary, run_ids=run_ids))
+            check = d.get("narration", {}).get(f'run-check-{r["activity_id"]}', {})
+            pages.append(page_run(r, d.get("trial"), summary, run_ids=run_ids,
+                                  run_check=check.get("choice")))
         pages.extend(_workout_page(workout, d.get("narration", {}).get(f'workout-{workout["id"]}'))
                      for workout in d.get("workouts", []))
         calendar = d["calendar"]
@@ -2015,21 +2176,31 @@ def render(d: dict[str, Any]) -> str:
     sync = d.get("last_full_sync") or "none recorded"
     build_time = built_at.astimezone(d.get("zone", UTC)).strftime("%-d %b %Y, %H:%M %Z")
     status = f'Last complete sync {_e(sync)} · Dashboard built {build_time} · Code v{__version__}.'
-    nav = "".join(f'<a href="#{p}">{t}</a>' for p, t in links)
+    symbols = ("home", "moon", "bolt", "run", "trend")
+    ai_state = ""
+    if d.get("narrator_enabled"):
+        accepted = len(d.get("narration", {}))
+        ai_state = (f' Local AI · {accepted} checked results.' if accepted else
+                    ' Local AI enabled · no checked results in this snapshot.')
+    nav = "".join(f'<a href="#{p}">{icon(symbol)}<span>{t}</span></a>'
+                  for (p, t), symbol in zip(links, symbols, strict=True))
+    narration_id = narrator.summary_id(d.get("narration", {})).decode("ascii")
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         f'<meta name="garmin-dashboard" content="{_e(snapshot)}">'
+        f'<meta name="garmin-narration" content="{narration_id}">'
         f'<meta http-equiv="Content-Security-Policy" content="{_e(CONTENT_POLICY)}">'
         '<meta name="viewport" '
         'content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Garmin Health'
         f'</title><style>{CSS}</style></head><body><main class="wrap">'
-        '<header class="mast"><b>Garmin Health</b><div class="theme" role="group" aria-label="Appearance">'
+        f'<header class="mast"><b>{icon("trend")}Garmin Health</b>'
+        '<div class="theme" role="group" aria-label="Appearance">'
         '<button type="button" data-theme-choice="light" aria-pressed="true">Light</button>'
         '<button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>'
-        '</div></header><p class="sr-only" id="chart-help">Use arrow keys to explore chart values. '
+        '</div></header><p class="sr-only" id="chart-help">Arrow keys select a reading. '
         'Home and End move to the first and last readings. Escape clears the selection.</p>'
         '<nav class="top" '
-        f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status} '
+        f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status}{ai_state} '
         f'</footer></main><script>{SCRIPT}</script></body></html>')
 
 
@@ -2068,24 +2239,32 @@ def _snapshot_paths(out_dir: Path | None = None) -> tuple[Path, Path | None]:
     return local, icloud / "Garmin" / "dashboard.html" if icloud.is_dir() else None
 
 
-def _snapshot_id(path: Path) -> bytes:
+def _read_stamp(path: Path, name: bytes) -> bytes:
     try:
         with path.open("rb") as source:
             head = source.read(512)
     except OSError:
         return b""
-    return head.partition(b'<meta name="garmin-dashboard" content="')[2].partition(b'"')[0]
+    return head.partition(b'<meta name="' + name + b'" content="')[2].partition(b'"')[0]
+
+
+def _snapshot_id(path: Path) -> bytes:
+    return _read_stamp(path, b"garmin-dashboard")
+
+
+def _narration_id(path: Path) -> bytes:
+    return _read_stamp(path, b"garmin-narration")
 
 
 def needs_rebuild(out_dir: Path | None = None) -> bool:
     local, icloud = _snapshot_paths(out_dir)
     snapshot = _snapshot_id(local)
-    return (not snapshot.startswith(f"{__version__}/".encode())
+    return (not snapshot.startswith(SNAPSHOT_PREFIX.encode()) or not _narration_id(local)
             or (icloud is not None and _snapshot_id(icloud) != snapshot))
 
 
 def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
-          queue_narration: bool = False, only_if_snapshot: bytes | None = None) -> Path:
+          queue_narration: bool = True, only_if_snapshot: bytes | None = None) -> Path:
     path, icloud = _snapshot_paths(out_dir)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     data = collect(conn)
@@ -2100,9 +2279,16 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
             _snapshot_id(path) != only_if_snapshot or narrator._sync_in_progress(conn)
         ):
             return path
+        if data.get("available", True) and not (data["older_snapshot"] or data["sync_retry_required"]):
+            data["guidance_change"] = coach_review.guidance(conn, data["end"], data["brief"]["focus"])
+        data["narrator_enabled"] = narrator.settings(conn)["enabled"]
         data["narration"], pending = narrator.cached(conn, data)
         _write_copies(path, icloud, _compact(render(data)))
-        snapshot = _snapshot_id(path) if queue_narration and pending else b""
+        if only_if_snapshot is None and data.get("available", True) and not (
+                data["older_snapshot"] or data["sync_retry_required"]):
+            coach_review.guidance(conn, data["end"], data["brief"]["focus"], save=True)
+        snapshot = (_snapshot_id(path) if queue_narration and pending
+                    and only_if_snapshot is None and not narrator._sync_in_progress(conn) else b"")
     if snapshot:
         narrator.start_worker(conn, path, snapshot)
     return path

@@ -1,4 +1,4 @@
-# Handover: Garmin-tracking (state at v0.23.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.24.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
@@ -6,6 +6,20 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
 
 ## Latest changes for reviewers
 
+- Coaching records the last published daily decision and adds an evidence-led post-run review.
+  Sleep now has nightly stage timelines where recorded, time-in-stage totals, period summaries,
+  and a weekly bedtime proposal. See [the roadmap](ROADMAP.md#coaching-and-sleep-follow-up).
+
+
+- **v0.24.0:** local Ollama work now starts from the existing archive when enabled or rebuilt.
+  Skipped fetches retry pending items and the saved HTML carries a stamp for checked results.
+  The model prioritizes an eligible Today follow-up and selects compact IDs for checked
+  summaries. Recovery and Training have their own entry points into the evidence. See
+  [Ollama coverage and checks](docs/OLLAMA.md) and the [remaining acceptance plan](ROADMAP.md).
+- **v0.24.0 UI:** persistent phone tabs, sticky desktop navigation, direct neighboring day
+  links, and tighter ordering of current readings, long-range charts, and optional estimates.
+  The independent review found and verified fixes for worker contention and findings displaced by
+  a cadence cue. See the [dashboard review](docs/UI_REVIEW.md).
 - **v0.21.0 (Claude, PR #25):** `trials.py` follows up on experiments, the dashboard keeps
   high-resolution details for recent runs, and `weather_fetch.py` retrieves opt-in Open-Meteo
   readings. See the [release entry](CHANGELOG.md#0210---2026-11-24).

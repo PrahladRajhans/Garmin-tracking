@@ -29,11 +29,15 @@ SCRIPT = r"""
     });
   }
 
-  function markPage() {
+  function markPage(event) {
     const id = location.hash.slice(1) || 'today';
     const target = document.getElementById(id);
     if (target?.classList.contains('run-section')) target.open = true;
-    const section = id.startsWith('run-') ? 'running'
+    const page = target?.closest('.page') || document.getElementById('today');
+    for (const figure of page.querySelectorAll('[data-chart]:not([data-ready])')) {
+      initChart(figure);
+    }
+    const section = !target ? 'today' : id.startsWith('run-') ? 'running'
       : id.startsWith('workout-') ? 'training' : id === 'recovery' ? 'today'
       : id.startsWith('day-') || id.startsWith('month-') ||
         ['body', 'patterns', 'history'].includes(id) ? 'trends' : id;
@@ -41,11 +45,14 @@ SCRIPT = r"""
       if (link.hash === '#' + section) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     }
+    if (event && target?.classList.contains('page')) {
+      target.querySelector('h2')?.focus({preventScroll: true});
+    }
   }
   markPage();
   window.addEventListener('hashchange', markPage);
 
-  for (const figure of document.querySelectorAll('[data-chart]')) {
+  function initChart(figure) {
     const svg = figure.querySelector('svg');
     const readout = figure.querySelector('.chart-readout');
     const primary = readout.querySelector('strong');
@@ -72,15 +79,13 @@ SCRIPT = r"""
     let overlay = null;
     let overlayReadings = [];
     const scatter = figure.dataset.chart === 'scatter';
-    const hint = primary.textContent;
-    const details = secondary.textContent;
 
     function clear() {
       selected = -1;
       cursor.classList.remove('visible');
       readout.classList.remove('selected');
-      primary.textContent = hint;
-      secondary.textContent = details;
+      primary.textContent = '';
+      secondary.textContent = '';
       status.textContent = '';
     }
 

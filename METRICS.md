@@ -197,20 +197,25 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   Garmin scores and sleep need. Run facts use the displayed distance, FIT pace, average heart rate
   and cadence. The experiment uses the number of reviewed attempts and the measured cadence
   target/time available from `trials.py`. Other recent workouts use Garmin summary duration,
-  distance and average heart rate. No recommendations, location or free-form notes enter
-  the prompt.
-- Output must be 1–3 plain sentences, at most 60 words. Every number must appear in the input
+  distance and average heart rate. The Training recap uses the existing seven-day review's
+  activity-load join, total load points and the available-night mean rounded to 0.1 h.
+  Location, dates, names and free-form notes are omitted from prompts.
+- Displayed summaries contain 1–3 plain sentences, at most 60 words. Every number appears in the input
   values. Decimal formatting such as `5.7` → `5.70` is accepted. Pace and ratio values are checked
   together as complete tokens. Unverifiable number formats, spelled-out numerals, and language
   such as “diagnose”, “disease”, “injury risk”, or “guaranteed” are rejected.
-- Ollama receives a JSON schema of permitted sentences, and Python independently checks the
-  response. Each sentence must match a permitted phrasing for its metric, number, unit, and
+- Ollama receives numbered candidate sentences and returns a JSON array of their permitted IDs.
+  Python resolves and checks each sentence against its permitted metric, number, unit, and
   source. This prevents a valid number from being swapped into another measurement or
   used for new advice, a prediction, or a medical claim. Repeated facts display once.
   The text and its facts are escaped in HTML.
+- Today can submit two or more findings already qualified by `daily_focus`, including their
+  supporting evidence and existing follow-ups. Ollama chooses one integer ID. Python accepts
+  only an ID from that request, moves the corresponding finding to the top, and displays its
+  original text and link. The choice applies only to display order.
 - Valid and rejected results are cached locally by a hash of model, prompt rules and input facts.
   Unavailable Ollama, a timeout or an unfinished response leaves the existing dashboard text
-  available and can be retried on a later complete sync.
+  available and can be retried by a manual rebuild or scheduled sync check.
 
 ## Outdoor conditions and following recovery
 
@@ -534,3 +539,24 @@ time zone for the latest seven days.
   their actual units and default colors.
 - [Garmin running dynamics bands](https://www8.garmin.com/manuals/webhelp/GUID-C001C335-A8EC-4A41-AB0E-BAC434259F92/EN-US/GUID-EE9E7F6F-49BE-4452-82E6-B40371D0AEC1.html)
   and [Garmin bounce and vertical ratio bands](https://www8.garmin.com/manuals/webhelp/GUID-C001C335-A8EC-4A41-AB0E-BAC434259F92/EN-US/GUID-E2728EFE-C7BC-418E-A31D-D44FD12D1A4C.html).
+
+## Dashboard sleep periods and timing
+
+- A complete night contains at least three recorded hours. Periods are trailing 7, 30, and
+  365 wake dates inclusive, with missing nights excluded from averages and left blank on charts.
+  Year bars average observed nights by calendar month. Garmin score averages use scored nights only.
+  Weekly change needs at least four nights in each of two adjacent seven-day blocks.
+- Wake consistency is the population standard deviation of local wake minutes over the last
+  14 dates with at least five measured wake times. Unwrap the clock at the largest gap.
+  The usual wake time is the median. The weekly plan anchors to the preceding 14 dates at
+  the start of the week when enough observations exist.
+- The bedtime proposal is a planning heuristic. It steps up to 15 minutes earlier than
+  the prior week's median measured sleep onset, stopping at the wake anchor minus sleep need.
+  If most measured nights missed the step implied by the previous block, it holds at the recent
+  median. It needs at least four nights with onset in the preceding week.
+- The shortfall scenario is the ceiling of half the reported seven-night shortfall divided by
+  40 extra minutes. This illustrates added time from the existing shortfall estimate.
+- Stage totals come from the normalized record. Draw the nightly sequence only from valid Garmin
+  Connect intervals within the recorded sleep window. Missing intervals stay blank. Reject
+  overlapping intervals. [Garmin stage overview](https://www.garmin.com/en-IE/garmin-technology/health-science/sleep-tracking/)
+  · [Connect sleep interval field mapping](https://pkg.go.dev/github.com/abrander/garmin-connect).
