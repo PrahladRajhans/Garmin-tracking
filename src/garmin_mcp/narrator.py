@@ -17,6 +17,7 @@ import time
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -397,6 +398,41 @@ def summary_id(summaries: dict) -> bytes:
     return hashlib.sha256(_json(summaries).encode()).hexdigest().encode("ascii")
 
 
+def _worker_status(conn, model):
+    row = conn.execute("SELECT value FROM meta WHERE key=?", ("narrator_worker:" + model,)).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def _record_worker(conn, model, outcome, accepted=False):
+    state = _worker_status(conn, model)
+    state["outcome"] = outcome
+    if accepted:
+        state["last_accepted"] = datetime.now(UTC).isoformat(timespec="seconds")
+    with conn:
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("narrator_worker:" + model, _json(state)))
+    return accepted
+
+
+def snapshot_status(conn, data, summaries, pending):
+    """Report recorded worker outcomes without contacting Ollama during HTML rendering."""
+    state = settings(conn)
+    if not state["enabled"]:
+        return {"outcome": "disabled", "count": 0}
+    report = _worker_status(conn, state["model"])
+    if data.get("sync_retry_required"):
+        outcome = "sync_incomplete"
+    elif pending:
+        previous = report.get("outcome")
+        outcome = previous if previous in {"cloud_blocked", "unavailable", "unsupported", "incomplete"} else "pending"
+    elif summaries:
+        outcome = "ready"
+    elif items(data) or _deep_items(conn, state, data):
+        outcome = "withheld"
+    else:
+        outcome = "no_evidence"
+    return {"outcome": outcome, "count": len(summaries), "last_accepted": report.get("last_accepted")}
+
+
 class OllamaUnavailable(Exception):
     """Local server could not verify or finish the request."""
 
@@ -493,6 +529,10 @@ def _deep_items(conn, state, data):
         result["running-insight"] = deep_insight.Insight(rows, lens, voice, focus)
     if daily := _deep_item(conn, state, data):
         result["deep-insight"] = daily
+    if rows := deep_insight.sunday_review(data):
+        lens = "sunday_review"
+        voice, focus, _ = deep_insight.writing_style(conn, lens)
+        result["sunday-insight"] = deep_insight.Insight(rows, lens, voice, focus)
     return result
 
 
@@ -593,20 +633,23 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
         return False
     try:
         if not _cloud_disabled(min(deadline, time.monotonic() + 5)):
-            return False
+            return _record_worker(conn, model, "cloud_blocked")
         profile = _model_profile(model, min(deadline, time.monotonic() + 5))
         if not profile["text_generation"]:
-            return False
+            return _record_worker(conn, model, "unsupported")
         warm_budget = INSIGHT_WARM_SECONDS if state.get("thinking") else 30
         _warm(model, profile, min(deadline, time.monotonic() + warm_budget))
     except (OllamaUnavailable, TimeoutError):
-        return False
+        return _record_worker(conn, model, "unavailable")
     accepted = False
+    incomplete = False
+    unsupported = False
     for name, insight in insights.items():
         if settings(conn) != state or (still_current is not None and not still_current()):
             return accepted
         use_thinking = bool(state.get("thinking") and profile["thinking"])
         if name == "deep-insight" and not use_thinking:
+            unsupported = True
             continue
         seconds = _thinking_seconds(state)
         item_budget = (seconds if use_thinking else 0) + 135
@@ -614,7 +657,7 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
             draft = _deep_request(model, profile, insight, min(deadline, time.monotonic() + item_budget),
                                   still_current=still_current, think_first=use_thinking, thinking_seconds=seconds)
         except (OllamaUnavailable, TimeoutError):
-            pass
+            incomplete = True
         else:
             if settings(conn) != state or (still_current is not None and not still_current()):
                 return False
@@ -626,20 +669,25 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
                                          [insight.rows[i - 1] for i in draft["evidence"]])
             accepted |= draft is not None
     for item in pending:
-        if (time.monotonic() >= deadline or settings(conn) != state
-                or (still_current is not None and not still_current())):
+        if settings(conn) != state or (still_current is not None and not still_current()):
+            return accepted
+        if time.monotonic() >= deadline:
+            incomplete = True
             break
         try:
             text, outcome = _infer(model, profile, item, deadline)
         except (OllamaUnavailable, TimeoutError):
+            incomplete = True
             continue
         if outcome == "incomplete":
+            incomplete = True
             continue
         with conn:
             conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)",
                          ("narrator:" + item.key(model), _json(text)))
         accepted |= text is not None
-    return accepted
+    result = "incomplete" if incomplete else "unsupported" if unsupported else "ready" if accepted else "withheld"
+    return _record_worker(conn, model, result, accepted)
 
 
 def _sync_in_progress(conn: sqlite3.Connection) -> bool:
@@ -669,6 +717,7 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
         service = "local_api_unavailable"
     coverage = {}
     applied = None
+    status = {"outcome": "disabled", "count": 0}
     if state["enabled"]:
         data = dashboard.collect(conn)
         for name, item in items(data).items():
@@ -680,9 +729,12 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
             found = _deep_cached(conn, insight, state)
             counts = {"ready": 0, "pending": 0, "rejected": 0}
             counts["pending" if found is None else "ready" if found[0] else "rejected"] = 1
-            coverage["interpretation" if name == "deep-insight" else "running_review"] = counts
+            groups = {"deep-insight": "interpretation", "running-insight": "running_review",
+                      "sunday-insight": "sunday_review"}
+            coverage[groups[name]] = counts
         path, _ = dashboard._snapshot_paths()
-        summaries, _ = cached(conn, data)
+        summaries, missing = cached(conn, data)
+        status = snapshot_status(conn, data, summaries, missing)
         applied = dashboard._narration_id(path) == summary_id(summaries)
     if profile and not profile["text_generation"]:
         service = "model_does_not_support_text_generation"
@@ -690,7 +742,7 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
         service = "model_does_not_support_thinking"
     report = conn.execute("SELECT value FROM meta WHERE key=?",
                           ("narrator_eval:" + state["model"],)).fetchone()
-    return {**state, "ollama": service, "coverage": coverage, "model_profile": profile,
+    return {**state, "ollama": service, "coverage": coverage, "model_profile": profile, "snapshot_status": status,
             "last_eval": json.loads(report[0]) if report else None,
             "thinking_minutes": _thinking_seconds(state) // 60,
             "prompt_profile": deep_insight.writing_style(conn, "daily")[2],
@@ -718,7 +770,7 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
     from garmin_mcp import dashboard, db
 
     path = out_dir / "index.html"
-    wait_until = time.monotonic() + 2 * (30 * 60 + INSIGHT_OVERHEAD_SECONDS) + SYNC_SECONDS
+    wait_until = time.monotonic() + 3 * (30 * 60 + INSIGHT_OVERHEAD_SECONDS) + SYNC_SECONDS
     lock_path = database.with_name(database.name + ".narrator.lock")
     with lock_path.open("a") as lock:
         # A newer build should get a turn once the older worker releases the database lock.
@@ -737,6 +789,7 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
             if settings(conn)["enabled"] and not _sync_in_progress(conn):
                 data = dashboard.collect(conn)
                 state = settings(conn)
+                before_status = _worker_status(conn, state["model"])
                 count = len(_deep_items(conn, state, data))
                 budget = SYNC_SECONDS + count * (
                     _thinking_seconds(state) + INSIGHT_OVERHEAD_SECONDS if state.get("thinking") else 135)
@@ -744,7 +797,8 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
                          still_current=lambda: dashboard._snapshot_id(path) == snapshot
                          and not _sync_in_progress(conn))
                 summaries, _ = cached(conn, data)
-                if dashboard._narration_id(path) != summary_id(summaries):
+                if (dashboard._narration_id(path) != summary_id(summaries)
+                        or _worker_status(conn, state["model"]) != before_status):
                     dashboard.build(conn, only_if_snapshot=snapshot, out_dir=out_dir)
         finally:
             conn.close()

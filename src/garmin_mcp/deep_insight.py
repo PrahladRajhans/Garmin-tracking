@@ -58,7 +58,38 @@ LENSES = {
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
     "running_review": "Think like a distance-running coach reviewing a training log. Look for a contrast "
                       "between repeatability and a single workout, then propose a measurement that would settle it.",
+    "sunday_review": "In two short sentences, connect the week's training and sleep. Name a change only when the "
+                     "readings establish it. The dashboard displays the existing plan separately.",
 }
+
+
+def sunday_review(data):
+    end = data.get("end")
+    if (not end or date.fromisoformat(end).weekday() != 6
+            or data.get("older_snapshot") or data.get("sync_retry_required")):
+        return ()
+    review = data.get("weekly_review")
+    sleep_review = data.get("sleep_review", {})
+    sleep = sleep_review.get("windows", {}).get(7, {})
+    if not review or sleep.get("nights", 0) < 4:
+        return ()
+    rows = [
+        Evidence("training", f'{review["week"]["sessions"]} workouts with load data were recorded.', "training"),
+        Evidence("sleep", f'Average sleep was {sleep["hours"]:.1f} hours across {sleep["nights"]} nights.', "sleep"),
+    ]
+    change = sleep_review.get("week_change_min")
+    if change:
+        direction = "more" if change > 0 else "less"
+        rows.append(Evidence("sleep", f"Sleep averaged {abs(change)} min {direction} per night than last week.",
+                             "sleep"))
+    elif change == 0:
+        rows.append(Evidence("sleep", "Average sleep held steady from the prior week.", "sleep"))
+    elif anchor := sleep_review.get("anchor"):
+        rows.append(Evidence("sleep timing", f'Wake times varied by {anchor["spread"]} min.', "sleep"))
+    if average := review.get("previous_4wk_weekly_avg", {}).get("sessions"):
+        rows.append(Evidence("training", f"The previous four weeks averaged {average:g} recorded workouts with "
+                             "load data per week.", "training"))
+    return tuple(rows) if len(rows) >= 3 else ()
 
 
 def running_review(data):
@@ -159,6 +190,14 @@ def remember(conn, day, rows):
 
 
 FICTIONAL_CASES = {
+    "sunday-review": (
+        "sunday_review", (
+            Evidence("training", "3 workouts with load data were recorded.", "training"),
+            Evidence("sleep", "Average sleep was 7.2 hours across 5 nights.", "sleep"),
+            Evidence("sleep", "Sleep averaged 21 min less per night than last week.", "sleep"),
+            Evidence("training", "The previous four weeks averaged 2 recorded workouts per week.", "training"),
+        ),
+    ),
     "running-block": (
         "running_review", (
             Evidence("consistency", "Running days increased from 5 to 8 across completed four-week blocks.",

@@ -12,6 +12,17 @@ the upgrade is saved normally. If Qwen3.5 has not been installed, download it wi
 `ollama pull qwen3.5:4b`. The dashboard can still render its calculated guidance while the
 local model is unavailable.
 
+The v0.26.1 live Linux smoke test accepted all five fictional routine summaries with
+Qwen3.5 4B (median generation 13.36 seconds). The open-ended running test in v0.26.0
+was withheld. The [current priorities](../ROADMAP.md#current-priorities) track the Mac
+rollout, per-surface checks, reviewed weekly story and dashboard status detail.
+
+The v0.27 footer reports the last accepted result for the selected model and whether the
+current snapshot is waiting, blocked by the local-only check, missing evidence, or withheld.
+The optional Sunday review uses recorded training and sleep facts. Its next focus and
+fallback remain deterministic. Run `--eval-insight --insight-case sunday-review --no-thinking`
+on fictional evidence. The Linux Qwen3.5 4B test completed and withheld the wording.
+
 ## Coverage
 
 ### Thinking insights

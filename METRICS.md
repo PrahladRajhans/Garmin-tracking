@@ -628,3 +628,29 @@ domains still must be cited.
   load points based on recorded duration and effort. A rising line indicates that recently
   recorded sessions are contributing more load. Judge improvement with actual running efforts.
 - Sources and decisions are recorded in the [running research](research_notes/Garmin%20connector%20feature%20research/running_performance_2026-11.md).
+
+### Comparing form within a run
+
+For steady outdoor runs, split the moving time into two halves. Require at least 20 moving
+minutes and moving coverage of 80% or more of elapsed time. Use adjacent FIT records at most
+10 seconds apart, measured pace buckets 15 s/km wide and measured uphill/downhill buckets
+2 percentage points wide. Omit missing altitude/distance, distance changes at most 2 m, and
+absolute slopes above 12%. Limits are coverage heuristics.
+
+For each recorded metric, keep only buckets with at least 60 seconds in each half. Use each
+bucket's shorter recorded duration as its weight in both halves. Show a metric only after
+at least 120 matched seconds per half. Use the existing FIT units for cadence, stride length,
+ground contact and oscillation. The result describes measured form under similar conditions
+within one run. Repeat the observation before attributing it to fatigue or technique.
+
+Split guides use elapsed seconds from the first FIT sample. The individual split table still
+measures each recorded kilometre from the first usable distance observation.
+
+### Accepted weekly bedtime targets
+
+Targets apply to nights by local wake date in a Monday–Sunday week. Times are compared on a
+noon-to-noon clock so a target after midnight compares correctly to a bedtime before midnight.
+Only complete nights with a recorded start count. After at least four timed nights, missing
+the target on a majority suggests 15 minutes later. Otherwise the suggestion may move up to
+15 minutes earlier, bounded by the wake anchor minus sleep need. Adherence and the outcome
+averages are descriptive. A comparison for a metric needs three readings in each group.

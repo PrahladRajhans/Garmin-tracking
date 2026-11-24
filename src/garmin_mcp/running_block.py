@@ -102,6 +102,11 @@ def collect(conn, end, *, read_metrics=coaching.run_metrics, latest=None):
     decoupling = [e["decoupling_pct"] for e in efforts if e["decoupling_pct"] is not None]
     cutoff = (end_day - timedelta(days=27)).isoformat()
     latest = latest if latest and cutoff <= latest["date"] <= end else None
+    next_check = _next_check(recent, previous, efforts, latest)
+    if coach_loop.knee_pause(conn, end):
+        next_check = {"title": "Leave running out today",
+                      "action": "Reassess tomorrow before choosing a repeat run.",
+                      "basis": "Your previous evening check-in flagged knee soreness.", "target": "today"}
     return {
         "weeks": [{**_totals(week["activities"]), "start": week["start"],
                    "complete": week["complete"]} for week in weeks],
@@ -112,5 +117,5 @@ def collect(conn, end, *, read_metrics=coaching.run_metrics, latest=None):
         "decoupling_count": len(decoupling),
         "has_runs": any(week["activities"] for week in weeks),
         "latest_detail_id": latest["activity_id"] if latest else None,
-        "next": _next_check(recent, previous, efforts, latest),
+        "next": next_check,
     }

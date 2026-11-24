@@ -23,6 +23,7 @@ import math
 import sqlite3
 import statistics
 from bisect import bisect_left
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -68,14 +69,18 @@ def _mean(vals: list[float]) -> float | None:
     return statistics.fmean(vals) if vals else None
 
 
-def _moving_intervals(rows: list[dict[str, Any]]) -> list[tuple[float, float, float, float | None]]:
-    intervals = []
+def _moving_pairs(rows):
     for a, b in itertools.pairwise(rows):
         dt = b["t"] - a["t"]
-        if not 0 < dt <= MAX_SAMPLE_GAP_S or not all(
+        if 0 < dt <= MAX_SAMPLE_GAP_S and all(
                 isinstance(r["speed"], (int, float)) and math.isfinite(r["speed"])
                 and r["speed"] > 1.0 for r in (a, b)):
-            continue
+            yield dt, a, b
+
+
+def _moving_intervals(rows: list[dict[str, Any]]) -> list[tuple[float, float, float, float | None]]:
+    intervals = []
+    for dt, a, b in _moving_pairs(rows):
         dd = b["distance"] - a["distance"] if None not in (a["distance"], b["distance"]) else 0
         da = b["altitude"] - a["altitude"] if None not in (a["altitude"], b["altitude"]) else 0
         grade = da / dd if dd > 2 and math.isfinite(da) else 0
@@ -84,6 +89,56 @@ def _moving_intervals(rows: list[dict[str, Any]]) -> list[tuple[float, float, fl
         speed = b["speed"]
         intervals.append((dt, speed, speed * minetti_cost(grade) / minetti_cost(0), valid_hr))
     return intervals
+
+
+def late_running_form(conn, aid, *, moving_s, elapsed_s):
+    """Compare early and late form using the common duration of similar pace and grade bins."""
+    if moving_s < 1200 or moving_s < 0.8 * elapsed_s:
+        return {}
+    channels = {
+        "cadence_spm": ("cadence", 2),
+        "step_length_m": ("step_length", 0.001),
+        "ground_contact_ms": ("stance_time", 1),
+        "vertical_oscillation_cm": ("vertical_oscillation", 0.1),
+    }
+    halves = [defaultdict(lambda: [0.0, 0.0]) for _ in range(2)]
+    elapsed = 0.0
+    for dt, a, b in _moving_pairs(_rows(conn, aid)):
+        early = min(dt, max(0.0, moving_s / 2 - elapsed))
+        elapsed += dt
+        values = (a["distance"], b["distance"], a["altitude"], b["altitude"])
+        if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
+            continue
+        distance = values[1] - values[0]
+        if distance <= 2:
+            continue
+        grade = (values[3] - values[2]) / distance
+        if abs(grade) > 0.12:
+            continue
+        pace_bin = round(1000 / b["speed"] / 15)
+        grade_bin = round(grade / 0.02)
+        for key, (field, scale) in channels.items():
+            value = b[field]
+            if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                continue
+            for half, seconds in zip(halves, (early, dt - early), strict=True):
+                stat = half[(key, pace_bin, grade_bin)]
+                stat[0] += seconds
+                stat[1] += seconds * value * scale
+    totals = defaultdict(lambda: [0.0, 0.0, 0.0])
+    first, second = halves
+    for bucket in first.keys() & second.keys():
+        a, b = first[bucket], second[bucket]
+        weight = min(a[0], b[0])
+        if weight < 60:
+            continue
+        stat = totals[bucket[0]]
+        stat[0] += weight
+        stat[1] += weight * a[1] / a[0]
+        stat[2] += weight * b[1] / b[0]
+    return {key: {"early": round(early / seconds, 2), "late": round(late / seconds, 2),
+                  "matched_s": round(seconds)} for key, (seconds, early, late) in totals.items()
+            if seconds >= 120}
 
 
 def _minute_speeds(intervals: list[tuple[float, float, float, float | None]]) -> list[float]:
@@ -118,14 +173,14 @@ def _half_efficiency(intervals: list[tuple[float, float, float, float | None]],
     return speed_sum * 60 / hr_sum, hr_sum / valid, raw_speed_sum / valid
 
 
-def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | None]:
+def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | None, list[float]]:
     """Interpolate elapsed crossings from recorded distance, with pauses included."""
     points = [(r["distance"], r["t"]) for r in rows
               if isinstance(r["distance"], (int, float)) and math.isfinite(r["distance"])
               and r["distance"] >= 0]
     distances = [d for d, _ in points]
     if len(points) < 2 or any(not 0 <= b - a < 1000 for a, b in itertools.pairwise(distances)):
-        return [], None
+        return [], None, []
     origin, t0 = points[0]
     total = distances[-1] - origin
 
@@ -143,11 +198,12 @@ def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | No
     for km in range(1, int(total // 1000) + 1):
         t = crossing(origin + 1000 * km)
         if t is None or t <= times[-1]:
-            return [], None
+            return [], None, []
         times.append(t)
     midpoint = crossing(origin + total / 2) if total >= 4000 else None
     split_delta = (points[-1][1] - midpoint) - (midpoint - t0) if midpoint is not None else None
-    return [b - a for a, b in itertools.pairwise(times)], split_delta
+    return ([b - a for a, b in itertools.pairwise(times)], split_delta,
+            [t - rows[0]["t"] for t in times[1:]])
 
 
 def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
@@ -182,7 +238,7 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
     cad = _mean(cadence_samples)
     step = _mean([r["step_length"] for r in mov if r["step_length"]])
     vo = _mean([r["vertical_oscillation"] for r in mov if r["vertical_oscillation"]])
-    splits, split_delta = _elapsed_splits(rows)
+    splits, split_delta, crossings = _elapsed_splits(rows)
     split_cv = (statistics.stdev(splits) / statistics.fmean(splits) * 100
                 if len(splits) >= 3 else None)
     return {
@@ -201,7 +257,7 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
         "power_w": _r(_mean([r["power"] for r in mov if r["power"]])),
         "temperature_c": _r(_mean([r["temperature"] for r in mov if r["temperature"] is not None])),
         "km_splits": [_hms(s) for s in splits],
-        "km_crossings_s": [_r(s, 2) for s in itertools.accumulate(splits)],
+        "km_crossings_s": [_r(s, 2) for s in crossings],
         "km_split_s": [_r(s) for s in splits], "half_split_delta_s": _r(split_delta),
         "split_cv_pct": _r(split_cv),
         "negative_split": split_delta < -1 if split_delta is not None else None,

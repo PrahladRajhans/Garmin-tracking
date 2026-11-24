@@ -114,15 +114,33 @@ def test_verify_passes_on_consistent_sources(conn):
     from garmin_mcp import verify
 
     _seed(conn)
+    conn.execute("DELETE FROM raw_daily WHERE dataset='ex_daily_summary'")
     db.put_daily(conn, "pa_sleep", DAY, "personal_api", {
         "calendarDate": DAY, "deepSleepSeconds": 3600, "lightSleepSeconds": 14400,
         "remSleepSeconds": 7200, "sleepStartTimestampGMT": EPOCH_MS - 7 * 3600 * 1000,
         "sleepScores": {"overall": {"value": 82}}})
-    db.put_daily(conn, "ex_sleep", "2026-11-21", "export", {"calendarDate": "2026-11-21"})
     conn.commit()
     rebuild(conn)
     result = verify.run(conn)
     assert result["ok"], result["problems"]
+    assert any(row["table"] == "sleep" and row["column"] == "sleep_s"
+               and row["agree"] == "1/1" for row in result["agreement"])
+
+
+def test_verify_checks_latest_finished_archive_day(conn):
+    from garmin_mcp import engine, verify
+
+    rebuild(conn)
+    today = datetime.now(engine._tz(conn)).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    conn.execute("INSERT INTO daily(day, steps) VALUES (?, 100001)", (yesterday,))
+    result = verify.run(conn)
+    assert "daily.steps: 1 values outside 0-100000 steps" in result["problems"]
+    conn.execute("DELETE FROM daily")
+    conn.execute("INSERT INTO daily(day, steps) VALUES (?, 100001)", (today.isoformat(),))
+    assert verify.run(conn)["ok"]
+
+
 def test_provenance_distinguishes_completed_sync_from_successful_request(conn):
     from garmin_mcp import db, server
     from garmin_mcp.normalize import rebuild

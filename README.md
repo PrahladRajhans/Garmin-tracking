@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.26.1. The 56 MCP tools and offline dashboard include running block comparisons, linked running dynamics and optional local coaching reviews. Local Ollama uses Qwen3.5 4B when enabled. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.27.0. The 57 MCP tools and offline dashboard include running form by comparable halves, a saved weekly bedtime experiment, and local AI status. Local Ollama uses Qwen3.5 4B when enabled. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -107,6 +107,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
 | `outdoor_conditions_patterns(end?)` | Local paired comparisons of weather and AQI against moving heart rate and following sleep, HRV, and resting heart rate. Includes the runs and sample sizes behind eligible results |
 | `ai_narrator(enable?, model?, thinking?, thinking_minutes?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
+| `bedtime_plan(day?, accept?, bedtime?)` | Review a weekly target or save the proposal with `accept=True`. An explicit target uses `HH:MM`. |
 | `daily_scores(day?, history_days=0)` | Recovery %, Sleep %, Strain (0–21) with target, each beside Garmin's value; suggested bedtime |
 | `insight_feed(end?)` | Ranked insights: level 1 what happened, level 2 associations in your data, level 3 what to do |
 | `relationships(days=365)` | Associations (sleep, stress, bedtime, load → HRV, readiness, sleep), baseline-adjusted with CIs |
@@ -140,7 +141,7 @@ pip install -e .
 # 1) Official Personal API key (primary source). Create it at
 #    https://connect.garmin.com/app/settings/personalApiToken, then save it to a private file:
 mkdir -p ~/.config/garmin && chmod 700 ~/.config/garmin
-printf '%s' 'PASTE_YOUR_KEY' > ~/.config/garmin/connect-personal-api-key
+python3 -c 'from getpass import getpass; from pathlib import Path; Path("~/.config/garmin/connect-personal-api-key").expanduser().write_text(getpass("Garmin Personal API key: ").strip())'
 chmod 600 ~/.config/garmin/connect-personal-api-key
 
 # 2) Unofficial login (adds training readiness/status, race predictor, endurance/hill score,
@@ -306,7 +307,8 @@ claude mcp add garmin -- /absolute/path/to/Garmin-tracking/.venv/bin/garmin-mcp
 
 ## Configuration
 
-Optional environment variables (or a `.env` file, see `.env.example`):
+Optional environment variables. The MCP server loads the checkout's ignored `.env` file.
+For standalone sync, export the variables in the shell or use the private Garmin key file.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

@@ -425,6 +425,33 @@ def coach_checkin(day: str | None = None, rested: int | None = None,
 
 
 @mcp.tool()
+def bedtime_plan(day: str | None = None, accept: bool = False, bedtime: str | None = None) -> dict[str, Any]:
+    """Review a local weekly bedtime target. Set accept=True to save the proposal or an explicit HH:MM."""
+    from garmin_mcp import bedtime_experiment, engine, recovery, scores, sleep_review
+
+    def run(c):
+        end = parse_date(day)
+        if accept and bedtime is not None:
+            return bedtime_experiment.accept(c, end, bedtime)
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='sleep' AND type='table'").fetchone() is None:
+            return {"error": "Sync or import sleep data to see a proposed bedtime."}
+        need = scores.daily_scores(c, end)["sleep"]["need_h"] or recovery.DEFAULT_SLEEP_NEED_H
+        review = sleep_review.collect(c, end, engine._tz(c), need)
+        result = bedtime_experiment.status(c, end, review, need)
+        if accept:
+            saved = (result["current"] or {}).get("target") or result["suggestion"]
+            if not saved:
+                return {"error": "There is no proposed bedtime yet. Provide an explicit HH:MM target."}
+            return bedtime_experiment.accept(c, end, saved)
+        return result
+
+    try:
+        return _with_db(run)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
 def plan_session(day: str, kind: str, minutes: int, status: str = "planned",
                  session_id: int | None = None) -> dict[str, Any]:
     """Schedule a run, walk, or strength session. Use its ID to move it, swap it, or skip it."""

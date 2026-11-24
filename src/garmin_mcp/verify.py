@@ -16,6 +16,7 @@ import json
 import math
 import sqlite3
 import statistics
+from datetime import datetime
 from typing import Any
 
 from garmin_mcp import normalize as N
@@ -103,12 +104,14 @@ def _agree(a: Any, b: Any) -> bool:
 
 
 def run(conn: sqlite3.Connection) -> dict[str, Any]:
+    from garmin_mcp.engine import _tz
+
+    today = datetime.now(_tz(conn)).date().isoformat()
     problems: list[str] = []
     agreement = []
     for table, ds_a, ds_b in PAIRS:
         a, b = _collect(conn, ds_a), _collect(conn, ds_b)
-        today = max(set(a) | set(b), default="")
-        common = sorted(d for d in set(a) & set(b) if d != today)  # today is still changing
+        common = sorted(d for d in set(a) & set(b) if d < today)  # today is still changing
         for col in N.TABLES[table]:
             pairs = [(d, a[d][col], b[d][col]) for d in common if col in a[d] and col in b[d]]
             if not pairs:
@@ -126,7 +129,7 @@ def run(conn: sqlite3.Connection) -> dict[str, Any]:
         try:
             n, out_of_range = conn.execute(
                 f"SELECT COUNT({col}), SUM({col} < ? OR {col} > ?) FROM {table} "
-                f"WHERE day < (SELECT MAX(day) FROM {table})", (lo, hi)  # today is partial
+                "WHERE day < ?", (lo, hi, today)
             ).fetchone()
         except sqlite3.OperationalError:
             continue

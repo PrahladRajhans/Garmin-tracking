@@ -254,3 +254,16 @@ control displayed four full-distance crossings on each of three timeline charts,
 the first at 5:24. It worked alongside the step-length overlay and in the script-disabled
 mobile view. The Training trend definition was visible. Physical Safari and iPhone remain
 device checks.
+
+## Current Light and Dark acceptance work
+
+For v0.27.0, Chromium checked nine pages on a generated dashboard at 320, 390, 768 and
+1200 px in Light and Dark. The 72 page, width and theme combinations passed the overflow
+and runtime error checks. The split checkbox accepted keyboard focus and its elapsed guides
+aligned across all three charts. The overlay remained readable with splits enabled. A 390 px
+run view also rendered with JavaScript disabled.
+
+Split guides measured 3.28:1 in Light and 5.35:1 in Dark against their chart background.
+Overlay readout text measured 6.22:1 in Light and 8.69:1 in Dark against its surface.
+The remaining [dashboard checks](../ROADMAP.md#3039-make-both-themes-readable-across-the-whole-dashboard)
+include physical iPhone Safari and Files, sparse-data states and other chart/label combinations.

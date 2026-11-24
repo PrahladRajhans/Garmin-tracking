@@ -121,9 +121,10 @@ def personal_lines(hist: list[dict]) -> dict[str, Any]:
 
 def running_breakdown(
     conn: sqlite3.Connection, aid: int, weight_kg: float | None = None,
-    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None,
+    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None, end: str | None = None,
 ) -> dict[str, Any]:
-    from garmin_mcp.coaching import _pace, run_metrics
+    from garmin_mcp.coaching import _pace, late_running_form, run_metrics
+    from garmin_mcp.loads import RUN_TYPES
 
     read_metrics = read_metrics or run_metrics
     m = read_metrics(conn, aid)
@@ -144,10 +145,13 @@ def running_breakdown(
     session = conn.execute("SELECT payload FROM fit_sessions WHERE activity_id=?", (aid,)).fetchone()
     sessions = json.loads(session[0]) if session and session[0] else []
     recorded = sessions[0] if len(sessions) == 1 else {}
-    cue = knee_cadence_experiment(conn, start[1], m) if start else None
+    cue = knee_cadence_experiment(conn, start[1], m, end=end) if start else None
+    late_form = (late_running_form(conn, aid, moving_s=m["moving_s"], elapsed_s=m["recorded_elapsed_s"])
+                 if start and start[1] in RUN_TYPES and m.get("steady") else {})
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,
+            "late_form": late_form,
             "pacing": {"km_splits": m.get("km_splits"), "split_variation_pct":
                        m.get("split_cv_pct"), "negative_split": m.get("negative_split"),
                        "km_crossings_s": m.get("km_crossings_s", []),
@@ -193,10 +197,10 @@ def form_comparison(metrics, lines, matched):
     return form
 
 
-def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics: dict
+def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics: dict, *, end: str | None = None
                             ) -> dict[str, Any] | None:
     """An optional change at the runner's own cadence for an easy, comfortable run."""
-    from garmin_mcp import athlete, engine, health, loads
+    from garmin_mcp import athlete, coach_loop, engine, health, loads
 
     measured = metrics.get("cadence_spm")
     if (kind not in loads.RUN_TYPES or not metrics.get("steady") or not measured
@@ -205,8 +209,8 @@ def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics:
     limits = str(athlete.get(conn, "injuries_or_limits") or "")
     if "knee" not in limits.lower():
         return None
-    today = datetime.now(engine._tz(conn)).date().isoformat()
-    if today in health.status_days(conn):
+    day = end or datetime.now(engine._tz(conn)).date().isoformat()
+    if day in health.status_days(conn) or coach_loop.knee_pause(conn, day):
         return None
     target = round(measured * 1.05)
     return {"recorded_steps_per_min": measured, "trial_steps_per_min": target,

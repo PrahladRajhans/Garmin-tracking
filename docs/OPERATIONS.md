@@ -32,6 +32,12 @@ Activity pagination rejects an identical repeated page and stops with an explici
 the first 100,000 items as complete history. Range chunks must have a positive size. Other
 date/record loops advance a date or bounded index; rate-limit retries already have a budget.
 
+Activity detail collection checks the individual stored summary, split, zone and weather
+payloads. Garmin Connect can fill a missing detail when the official sync has already marked
+the activity as handled. The next successful sync repairs activities within its requested
+window. Run an explicit older date window if an older activity needs recovery. Already stored
+details and raw revisions stay in place.
+
 ## Code-update failure
 
 The updater saves a per-checkout pending-install marker in the data directory before changing

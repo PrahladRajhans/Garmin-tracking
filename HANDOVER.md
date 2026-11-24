@@ -1,10 +1,23 @@
-# Handover: Garmin-tracking (state at v0.26.1, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.27.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.27.0:** source-specific activity-detail recovery, dated load and VO₂max fixes, a saved
+  bedtime target, pace- and grade-matched running form, and clearer AI status. Sunday can
+  show reviewed local AI prose with the existing plan and a rule-written fallback.
+  See the [execution log](docs/REPOSITORY_REVIEW.md#execution-log) for which checks remain open.
+
+- Start new work with the [current priorities](ROADMAP.md#current-priorities) and check the
+  [owner request audit](docs/PROGRESS_AUDIT.md#request-reconciliation-through-v0261) before
+  closing a request. Model acceptance, private archive replay and iPhone delivery have
+  separate checks.
+- The [detailed execution queue](ROADMAP.md#detailed-execution-queue) sequences the next work.
+  The [file register](docs/repository-review-queue.tsv) covers the 160 tracked paths in the
+  baseline. Completing it requires manual review evidence for each path.
 
 - **v0.26.1:** Qwen3.5 4B is the shared default for local Ollama. A one-time upgrade replaces
   the saved former default and queues a refresh. See [Ollama setup and checks](docs/OLLAMA.md).
