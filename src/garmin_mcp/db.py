@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS coach_session (
     status TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bedtime_targets (
+    week_start TEXT PRIMARY KEY, target_min INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_daily (
     dataset TEXT NOT NULL, day TEXT NOT NULL, source TEXT NOT NULL,
     payload TEXT, fetched_at TEXT NOT NULL,

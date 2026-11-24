@@ -88,6 +88,21 @@ def test_expired_token_is_refreshed_once(conn):
     assert r.errors == 0 and auth.calls == 1 and client.token == "t1"
 
 
+def test_empty_optional_env_key_uses_the_sdk_file_resolver(monkeypatch):
+    import garmin_personal_api
+
+    seen = []
+
+    def resolve(key, *, env):
+        seen.append((key, env))
+        return "fixture-key"
+
+    monkeypatch.setenv("GARMIN_PERSONAL_API_KEY", "  ")
+    monkeypatch.setattr(garmin_personal_api, "resolve_api_key", resolve)
+    monkeypatch.setattr(garmin_personal_api, "GarminPersonalApiClient", lambda _: FakeClient())
+    PersonalAPISource(authenticator=FakeAuth())
+    assert seen == [(None, {})]
+
 @pytest.mark.parametrize("size", [0, -1])
 def test_invalid_chunks_fail_instead_of_looping(size):
     with pytest.raises(ValueError, match="positive"):
@@ -101,6 +116,16 @@ def test_repeated_activity_page_is_rejected():
     src = PersonalAPISource("k", client=client)
     with pytest.raises(RuntimeError, match="repeated"):
         src.list_activities("2026-01-01", "2026-02-01")
+
+
+def test_unexpected_activity_response_marks_sync_incomplete(conn):
+    client = FakeClient()
+    client.search_activities = lambda **_: {"unexpected": []}
+    source = PersonalAPISource("k", client=client)
+    day = date.today()
+    result = Syncer(conn, source, delay=0, store_fit_files=False).run(day, day)
+    assert result.errors == 1
+    assert any("unexpected response" in message for message in result.error_samples)
 
 
 def test_never_ending_pagination_has_a_hard_limit(monkeypatch):

@@ -109,7 +109,7 @@ def hrv_status(series: dict[str, float], day: str) -> dict[str, Any]:
     mean, sd = statistics.fmean(base), statistics.stdev(base)
     lo, hi = mean - SWC_FACTOR * sd, mean + SWC_FACTOR * sd
     m7 = statistics.fmean(week)
-    cv7 = statistics.stdev(week) / m7 * 100 if len(week) > 1 else None
+    cv7 = statistics.stdev(week) / m7 * 100 if len(week) > 1 and m7 > 0 else None
     state = "within normal" if lo <= m7 <= hi else ("below normal" if m7 < lo else "above normal")
     out.update({
         "ln_rmssd_7d": round(m7, 3),

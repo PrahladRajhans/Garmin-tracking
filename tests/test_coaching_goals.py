@@ -93,6 +93,13 @@ def test_athlete_placeholders_and_goal(conn):
     assert all(q["key"] != "hr_max_override" for q in athlete.context(conn)["open_questions"])
     assert goals._parse_time("1:45:00") == 6300 and goals._parse_time("50:00") == 3000
     assert round(athlete.pace_to_speed("5:00"), 3) == 3.333
+
+
+def test_malformed_saved_race_goal_returns_an_error(conn):
+    for distance, target, race_day in (("bad", "50:00", None), (10, "00:99", None),
+                                       (10, "50:00", "not a date")):
+        athlete.set_value(conn, "goal_race", {"distance_km": distance, "target": target, "date": race_day})
+        assert "error" in goals.goal_check(conn, "2026-11-24")
 def test_invalid_athlete_overrides_are_rejected():
     from garmin_mcp import athlete
 

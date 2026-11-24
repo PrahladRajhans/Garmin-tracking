@@ -1,7 +1,16 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from garmin_mcp import dashboard, db, deep_insight, narrator, running, running_block
+from garmin_mcp import (
+    coach_loop,
+    coaching,
+    dashboard,
+    db,
+    deep_insight,
+    narrator,
+    running,
+    running_block,
+)
 from garmin_mcp.normalize import rebuild
 
 
@@ -69,3 +78,28 @@ def test_running_chart_uses_elapsed_crossings_instead_of_nearest_sample():
     assert 'x1="125.03" x2="125.03"' in svg
     assert "Km 1 · 0:20 elapsed" in svg and "Km 2 · 1:05 elapsed" in svg
     assert 'class="split-guides"' not in dashboard._paired_chart(data, metric, (), 30)
+
+
+def test_run_form_compares_the_same_pace_and_uses_trace_origin(conn):
+    start = datetime(2026, 11, 18, tzinfo=UTC)
+    conn.executemany(
+        "INSERT INTO fit_records(activity_id,ts,speed,distance,altitude,cadence,stance_time) VALUES (1,?,?,?,?,?,?)",
+        [((start + timedelta(seconds=s)).isoformat(), 3.0, 3 * s if s else None, 100,
+          84 if s <= 600 else 81, 240 if s <= 600 else 250) for s in range(0, 1201, 5)],
+    )
+    metrics = coaching.run_metrics(conn, 1)
+    assert metrics["km_crossings_s"][0] == 338.33
+    result = coaching.late_running_form(conn, 1, moving_s=metrics["moving_s"], elapsed_s=1200)
+    assert result["cadence_spm"] == {"early": 168.0, "late": 162.0, "matched_s": 595}
+    assert result["ground_contact_ms"]["late"] == 250
+    assert "step_length_m" not in result
+
+    conn.execute("UPDATE fit_records SET speed=4 WHERE ts>?", ((start + timedelta(seconds=600)).isoformat(),))
+    assert coaching.late_running_form(conn, 1, moving_s=1200, elapsed_s=1200) == {}
+
+
+def test_running_block_matches_next_day_knee_pause(conn):
+    coach_loop.save_checkin(conn, "2026-11-23", knee=4)
+    result = running_block.collect(conn, "2026-11-24")
+    assert result["next"]["title"] == "Leave running out today"
+    assert result["next"]["target"] == "today"

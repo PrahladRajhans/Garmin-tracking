@@ -288,3 +288,15 @@ For the three recent timelines, target about 200 display points and use a minimu
 interval. The complete received FIT data stays in the local archive and drives metrics and split
 times. In the trace-heavy synthetic fixture, the uncompressed HTML went from about 1.24 MB to
 1.93 MB with the denser charts.
+
+Individual steady outdoor runs can also show early and late mechanics at comparable pace
+and grade. The panel lists actual matched time and hides metrics with too little evidence.
+Split guides use a thin dashed line and a keyboard-focusable native control. See the
+[theme and viewport checks](docs/UI_REVIEW.md#current-light-and-dark-acceptance-work).
+
+### Sleep follow-up
+
+Sleep shows the most recent complete night, the saved bedtime target and its linked dates,
+then the weekly, monthly and annual views. A saved target remains visible during a gap in
+sleep recordings. Outcome rows appear when there are at least three measured nights in
+both timing groups. The display reports observed differences for the recorded week.

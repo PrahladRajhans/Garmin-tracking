@@ -26,8 +26,9 @@ import itertools
 import json
 import sqlite3
 import statistics
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS coach_trials (
@@ -142,31 +143,52 @@ def log(conn: sqlite3.Connection, *, activity_id: int | None = None,
 
 
 # --------------------------------------------------------------------------- reading
-def _trial(conn: sqlite3.Connection, trial_id: int | None = None) -> dict[str, Any] | None:
+def _trial(conn: sqlite3.Connection, trial_id: int | None = None, *,
+           before: str | None = None) -> dict[str, Any] | None:
     ensure(conn)
-    q = ("SELECT id, created, kind, title, target, status, closed FROM coach_trials WHERE "
-         + ("id=?" if trial_id else "status='active' ORDER BY id DESC LIMIT 1"))
-    row = conn.execute(q, (trial_id,) if trial_id else ()).fetchone()
+    q = "SELECT id, created, kind, title, target, status, closed FROM coach_trials WHERE "
+    if trial_id:
+        row = conn.execute(q + "id=?", (trial_id,)).fetchone()
+    elif before:
+        row = conn.execute(q + "julianday(created) < julianday(?) AND "
+                           "(closed IS NULL OR julianday(closed) >= julianday(?)) "
+                           "ORDER BY id DESC LIMIT 1", (before, before)).fetchone()
+    else:
+        row = conn.execute(q + "status='active' ORDER BY id DESC LIMIT 1").fetchone()
     if not row:
         return None
     keys = ("id", "created", "kind", "title", "target", "status", "closed")
     t = dict(zip(keys, row, strict=True))
     t["target"] = json.loads(t["target"] or "{}")
+    if before:
+        t.update(status="active", closed=None)
     return t
 
 
-def _attempt_runs(conn: sqlite3.Connection, trial: dict[str, Any]) -> list[tuple]:
+def _activity_start(gmt: str | None, local: str | None, zone: ZoneInfo) -> datetime | None:
+    try:
+        stamp = datetime.fromisoformat(gmt or local or "")
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC if gmt else zone)
+
+
+def _attempt_runs(conn: sqlite3.Connection, trial: dict[str, Any], *,
+                  through_day: str = "9999-12-31", zone: ZoneInfo | None = None) -> list[tuple]:
+    from garmin_mcp.engine import _tz
     from garmin_mcp.loads import RUN_TYPES
 
-    # Trial timestamps are UTC; compare with Garmin's GMT start when it exists.
-    created = trial["created"][:19].replace("T", " ")
-    end = (trial["closed"] or "9999")[:19].replace("T", " ")
+    zone = zone or _tz(conn)
+    created = datetime.fromisoformat(trial["created"])
+    end = datetime.fromisoformat(trial["closed"]) if trial["closed"] else datetime.max.replace(tzinfo=UTC)
     marks = ",".join("?" * len(RUN_TYPES))
-    return conn.execute(
-        f"SELECT activity_id, start_time_local, type FROM activities WHERE type IN ({marks}) "
-        "AND fit_parsed=1 AND COALESCE(start_time_gmt, start_time_local) > ? "
-        "AND COALESCE(start_time_gmt, start_time_local) <= ? ORDER BY start_time_local",
-        (*RUN_TYPES, created, end)).fetchall()
+    rows = conn.execute(
+        f"SELECT activity_id, start_time_local, type, start_time_gmt FROM activities WHERE type IN ({marks}) "
+        "AND fit_parsed=1 AND substr(start_time_local,1,10) BETWEEN ? AND ? "
+        "ORDER BY julianday(start_time_local), activity_id",
+        (*RUN_TYPES, created.astimezone(zone).date().isoformat(), through_day))
+    return [(aid, local, kind) for aid, local, kind, gmt in rows
+            if (start := _activity_start(gmt, local, zone)) is not None and created < start <= end]
 
 
 def garmin_feel(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
@@ -212,15 +234,24 @@ def _baseline(conn: sqlite3.Connection, trial: dict[str, Any], aid: int,
     """Steady runs of the same type before the trial started, near this attempt's pace and
     duration. Most recent first, at most MAX_BASELINE."""
     from garmin_mcp.coaching import run_metrics
+    from garmin_mcp.engine import _tz
 
     typ = conn.execute("SELECT type FROM activities WHERE activity_id=?", (aid,)).fetchone()
-    created = trial["created"][:19].replace("T", " ")
+    created = datetime.fromisoformat(trial["created"])
+    zone = _tz(conn)
     pace = 1000 / m["avg_speed"]
     out = []
-    for other, start in conn.execute(
-            "SELECT activity_id, start_time_local FROM activities WHERE type=? AND fit_parsed=1 "
-            "AND COALESCE(start_time_gmt, start_time_local) < ? ORDER BY start_time_local DESC "
-            "LIMIT 60", (typ[0] if typ else None, created)):
+    checked = 0
+    for other, start, gmt in conn.execute(
+            "SELECT activity_id, start_time_local, start_time_gmt FROM activities WHERE type=? AND fit_parsed=1 "
+            "AND substr(start_time_local,1,10) <= ? ORDER BY julianday(start_time_local) DESC",
+            (typ[0] if typ else None, created.astimezone(zone).date().isoformat())):
+        at = _activity_start(gmt, start, zone)
+        if at is None or at >= created:
+            continue
+        if checked == 60:
+            break
+        checked += 1
         o = run_metrics(conn, other)
         if not o or not o.get("steady") or not o.get("avg_speed"):
             continue
@@ -260,7 +291,8 @@ def _change(name: str, now: float | None, ref: list[float], unit: str, better: s
             "change": round(diff, nd), "unit": unit, "verdict": word}
 
 
-def attempt_review(conn: sqlite3.Connection, trial: dict[str, Any], aid: int) -> dict[str, Any]:
+def attempt_review(conn: sqlite3.Connection, trial: dict[str, Any], aid: int, *,
+                   before: str = "9999-12-31") -> dict[str, Any]:
     from garmin_mcp.coaching import _pace, run_metrics
 
     m = run_metrics(conn, aid)
@@ -271,8 +303,9 @@ def attempt_review(conn: sqlite3.Connection, trial: dict[str, Any], aid: int) ->
         return {**out, "available": False, "reason": "no second-by-second data for this run"}
     out.update(pace=_pace(m["avg_speed"]), garmin_feel=garmin_feel(conn, aid))
     logs = conn.execute("SELECT knee_during, knee_next_morning, felt, effort, note FROM "
-                        "coach_trial_logs WHERE trial_id=? AND activity_id=? ORDER BY id",
-                        (trial["id"], aid)).fetchall()
+                        "coach_trial_logs WHERE trial_id=? AND activity_id=? "
+                        "AND julianday(logged) < julianday(?) ORDER BY id",
+                        (trial["id"], aid, before)).fetchall()
     if logs:
         merged: dict[str, Any] = {}
         for kd, kn, felt, eff, note in logs:  # later entries fill or override earlier ones
@@ -348,16 +381,22 @@ def _sentence(a: dict[str, Any], target: int | None) -> str:
     return "; ".join(parts).capitalize() + "." if parts else "Nothing recorded yet."
 
 
-def status(conn: sqlite3.Connection, trial_id: int | None = None) -> dict[str, Any]:
+def status(conn: sqlite3.Connection, trial_id: int | None = None, *,
+           through: tuple[date, ZoneInfo] | None = None) -> dict[str, Any]:
     """The active (or given) trial, every attempt reviewed, and a plain verdict so far."""
-    trial = _trial(conn, trial_id)
+    before = (datetime.combine(through[0] + timedelta(days=1), time.min, through[1])
+              .astimezone(UTC).isoformat()) if through else None
+    trial = _trial(conn, trial_id, before=before)
     if not trial:
-        sug = suggested_cadence(conn)
+        sug = None if through else suggested_cadence(conn)
         return {"active": False, "suggestion": (
             f"No experiment running. Suggested: cadence about {sug} steps/min in 1-minute "
             "blocks on easy runs (knee-friendly)." if sug else
             "No experiment running.")}
-    attempts = [attempt_review(conn, trial, aid) for aid, _, _ in _attempt_runs(conn, trial)]
+    runs = _attempt_runs(conn, trial, through_day=through[0].isoformat() if through else "9999-12-31",
+                         zone=through[1] if through else None)
+    attempts = [attempt_review(conn, trial, aid, before=before or "9999-12-31")
+                for aid, _, _ in runs]
     done = [a for a in attempts if a.get("available")]
     return {"active": trial["status"] == "active", "trial": trial, "attempts": done,
             "verdict": _verdict(done), "next": _next(trial, done)}
@@ -374,10 +413,12 @@ def _verdict(attempts: list[dict[str, Any]]) -> str:
     eff = [c["change_pct"] for a in attempts for c in a.get("changes", [])
            if c["metric"] == "efficiency_factor"]
     bits = []
-    if eff:
+    if len(eff) >= 3:
         med = statistics.median(eff)
         bits.append("speed per heartbeat " + ("about the same" if abs(med) < 3 else
                                                f"{med:+.1f}% vs before"))
+    else:
+        bits.append(f"{len(eff)} comparable pace-and-pulse results so far")
     if knees:
         bits.append(f"knee next morning median {statistics.median(knees):g}/10")
     return (f"After {len(attempts)} attempts: " + "; ".join(bits) + "."

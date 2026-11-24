@@ -1,3 +1,3 @@
 """Garmin MCP server package."""
 
-__version__ = "0.26.1"
+__version__ = "0.27.0"

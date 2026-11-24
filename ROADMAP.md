@@ -8,6 +8,116 @@ into it, and every item there is mapped to a phase here:
 - `MAC_SETUP.md`: deployment steps for the Mac.
 - `CHANGELOG.md`: what shipped, per version.
 
+## Current priorities
+
+Reviewed 24 November 2026 against v0.26.1, the owner's messages, and the Claude handoff
+and review briefs. Use this order for new work. The older phases below retain their original
+rationale. The [request audit](docs/PROGRESS_AUDIT.md#request-reconciliation-through-v0261)
+records what shipped, where it was tested, and the specific gaps.
+
+| Priority | Work and why | What closes it | Access needed |
+|---|---|---|---|
+| P0 | Verify the release the owner actually sees. Check the scheduled Mac checkout, Qwen3.5 4B, local-only mode, both sync paths, Ollama cache, build stamp and iCloud/Safari/Files. Replay the three-year Garmin database locally. | Record the version and scheduled-run outcome, per-surface AI counts and reasons, archive coverage and timing checks, and whether Today, Sleep, Training and Running open correctly on the phone. | Mac archive and job logs, plus the actual phone. The cloud can prepare and verify the commands against fixtures. |
+| P1 | Make Qwen3.5 coaching worth reading. Keep the requested model default. Explain the existing recommendation using verified reasons, compare signals, and propose one useful follow-up. Finish the AI-written Sunday review and the footer's last-success time and blocked state. | Compare routine summaries and open-ended reviews against fixed fictional cases and dated local records. Score whether they connect evidence, avoid invented claims, provide a useful next check, and handle silence and deadlines. Record direct and thinking mode separately. | Fictional cases, tests and diagnostics can advance in the workspace. Mac latency and real-data acceptance need the Mac. |
+| P1, in parallel | Finish the requested repository clean sweep. Start with sync, normalization and storage, then analytics, dashboard/exports, MCP/CLI, and Mac/publishing operations. | Maintain per-file coverage and record caller, runtime path, tests, judgment and rationale for each candidate. Remove confirmed dead code. Preserve historically useful research and validate opt-in paths before retirement. | Static/manual work and tests can advance now. Live credentials, launchd, iCloud and publishing behavior require the configured environment. |
+| P2 | Finish the shared UX sweep. Apply Running's visual hierarchy and metric explanations across Today, Sleep, Recovery, Training, Patterns and History. Review redundant copy, empty states, chart labels, scroll, navigation, evidence links and contrast. Profile the real saved file before changing chart retention. | Check core tasks at phone and desktop widths under both themes, and with keyboard and JavaScript off. Then verify iPhone Safari/Files and a five-second read on actual data. Preserve full-resolution archive and split timestamps. | Workspace fixtures and browser tests first. Final size, relevance and rendering require a real snapshot and phone. |
+| P2 | Close the loop on Sleep and Running. Finish the bedtime experiment and step-back progression across weeks. Let the owner record what was tried, then link the actual response or say coverage is thin. Review the knee-aware strength suggestion and descriptive evening follow-up from the earlier brief. | Follow one bedtime cycle with available sleep/readiness signals and one comparable running cycle. Show dates, coverage, what changed and one next action. | Code and synthetic tests can advance now. Personal effect and sensor coverage need dated records and check-ins. |
+| P3 | Evaluate longer-running ideas after acceptance: best efforts and late-run durability, optional larger Qwen, a separate decision-model benchmark, and a closer competitor walkthrough if a session is available. | Each experiment answers a concrete question, defines adequate data and limits, and documents whether to ship. Keep the local digest or inbox at design stage. | Public research and synthetic work can advance. Larger-model benchmarks may need a compatible Mac. Signed-in competitor comparison and optional private hosting need account access. |
+
+Before implementation, state the goal, scope, priorities, dependencies, and acceptance checks
+here. Update the request audit when evidence changes, then update the changelog, handover,
+setup, formulas and source ledger where affected. At each handoff, report what shipped,
+what the tests exercised, and what still needs the owner's environment. The Mac's older
+Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1 rollout.
+
+## Detailed execution queue
+
+The [request audit](docs/PROGRESS_AUDIT.md#claude-suggestion-checklist) records the outstanding
+Claude suggestions. The [repository review](docs/REPOSITORY_REVIEW.md#dependency-and-failure-paths)
+records what changes affect downstream. The [file register](docs/repository-review-queue.tsv)
+is the file-by-file work record. The IDs below are the implementation sequence. See the
+[execution log](docs/REPOSITORY_REVIEW.md#execution-log) for completed work and remaining acceptance.
+
+Execution began 24 November 2026 from `aa14346` using Python 3.12.14. The first slice
+reviews source requests, retained activity evidence, and the old-database path. Its gate
+checks two-source sync, a failed detail retry, and repeated sync without duplicate requests.
+The next slices use the same baseline to compare AI, chart and coaching behavior. The private
+Mac archive and device steps remain open. Completed evidence goes in the
+[execution log](docs/REPOSITORY_REVIEW.md#execution-log).
+
+### 00–09. Establish a baseline and verify what is deployed
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 00 | Capture the reviewed commit, clean checkout, runtime versions, entry points and flags. | Pin the fixture versions, current test results, release reference, and pre-change visual samples. Reconcile every tracked path with the file register. |
+| 01 | Confirm the Mac's scheduled job uses the intended checkout, virtual environment and archive. Check the v0.26.1 default migration and model availability. | One scheduled run identifies code version, database path and local-only status. Check an enabled record using the old default and an explicitly selected alternative model. |
+| 02 | Verify full sync and skipped-fetch behavior. Follow the timestamps for data, local HTML, and the iCloud copy. | A complete sync advances freshness. An incomplete sync remains visible and retries. A skipped fetch can still rebuild and retry pending AI. Compare each destination's version and timestamps. |
+| 03 | Run read-only archive replay, timing checks, and coverage on the three-year Mac history. | Document which months, valid sleep nights, runs with FIT and dynamics fields, and matched pairs are actually available. Review a small set of Garmin comparisons and outliers. No public data export is needed. |
+| 04 | Verify restore using a disposable database/FIT copy. | Restore both together and regenerate a dashboard. Check file paths, revisions, source data and incomplete sync behavior. |
+| 05 | Open the resulting snapshot in Mac Safari and iPhone Safari/Files or the configured private path. | Open Today → Sleep → a dated night and Running → a run → split and form details. Record which copies are readable and current. Protected hosting verification applies only if already configured or approved. |
+
+The static and fixture work below can advance if owner-device results are pending. Keep device
+acceptance open and label any findings derived from fixtures.
+
+### 10–19. Review every file, in dependency order
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 10 | Review sync, source adapters, auth, pagination, retry/backoff, and date windows. | Map scheduled, force, no-update, skipped-fetch, and partial-source paths. Verify loop progress, timeout, local dates, and the next-run retry condition. |
+| 11 | Review SQLite, FIT, import and normalization. | Trace source priority and writes, old schema and upgrade behavior, stale/missing/invalid values, atomic FIT replacement, deduplication, and revisions. Exercise incomplete import/reparse, rollback and an existing database. |
+| 12 | Review analytics and formula sources across Recovery, Sleep, Training, goals, Running, and sport/conditions analyses. | Record units, sign conventions, time windows, min samples, prior-only evidence, profile/settings use and agreement checks. Track each change back to `METRICS.md`. Identify duplicated definitions and assign ownership before refactoring. |
+| 13 | Review recommendation and AI inputs, trial and check-in state, work queues, retries, cache and setting changes. | Trace both ordinary and thinking calls, cloud-off gate, result states, snapshot replacement, cancellation, fallback scope, and local memory retention. Review dynamic entry points and disabled/opt-in paths. |
+| 14 | Review renderers, shared chart and navigation code, exports and optional publishing. | Check that script hash, fragment IDs, links, background rebuild, stale copies, desktop and phone access roles remain consistent. Record which HTML sections and tests each shared helper affects. |
+| 15 | Review every CLI/MCP registration, platform integration, config/example, dependency, test, doc and asset. | Record invoked entry points as well as imports, user docs, launchd and optional CLI workflows. Classify historical evidence with its provenance. Compare test presence with actual branch coverage. |
+| 16 | Remove or consolidate confirmed dead or duplicate code in small changes. | For each candidate record callers, runtime checks, decision and test evidence. Preserve exercised or documented entry points. Re-run the affected entry points after changes. |
+
+### 20–29. Finish the local coaching and status work
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 20 | Map each AI display and its eligibility: Today, Sleep, Recovery, Training, Sunday, experiments, Running, FIT-run and workout detail. | Per-surface matrix of present/absent data, disabled, pending, timed out, withheld, accepted and current-snapshot behavior. |
+| 21 | Add approved reasons and actions to the evidence contract. Let Qwen3.5 explain a real trade-off and suggest one useful next measurement. | Cite evidence per claim, including a verified reason for a causal-sounding statement or existing action for advice. Keep refusal and deterministic fallback. Test invented numbers, unsupported advice, incorrect direction and invented causes separately. |
+| 22 | Finish the reviewed AI Sunday story. Reuse completed weekly facts and the existing plan. | In a covered week, show what improved, what slipped and one focus. Missing or rejected output leaves the current rule-written review usable. Test week rollover and missing data. |
+| 23 | Finish status feedback in the footer and diagnostics. | Show last accepted time and a concise reason when results are pending, unavailable, disabled or withheld. Distinguish sync freshness, build time and AI freshness. Exercise CLI and offline HTML using the same state. |
+| 24 | Test standard and thinking Qwen3.5 paths and whether carry-over helps. | Compare relevance, factual correctness, actionability, latency, validation reasons and successful coverage. Use fictional cases and dated held-out local records where available. Confirm old evidence cannot replace new observations or override dated values. Benchmark alternate tags separately. |
+
+### 30–39. Make both themes readable across the whole dashboard
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 30 | Audit contrast and text hierarchy in Light and Dark. Cover page and card backgrounds, muted text, small labels and links, chart axes, focus, status badges, split guides and overlays. | Measure rendered pairings. Target WCAG AA contrast of 4.5:1 for normal text and 3:1 for large text, and 3:1 for meaningful graphical cues and controls. Use text, marker shape or line style where colour alone carries meaning. |
+| 31 | Review page flow one page at a time: Today, Sleep, Recovery, Training, Running, run/workout detail, Body, Patterns and History. | Each page has a clear first reading and a useful next link. Check redundant instructions, jargon, dead ends, duplicated charts and sparse states. Exact values remain available for each priority chart. |
+| 32 | Check interactive and offline paths. | Test 320, 390, 768 and 1200+ px, both themes, keyboard, touch/scroll, back navigation, disclosures, JavaScript off, sparse data and extended history. Check active navigation and evidence fragment targets in HTML. |
+| 33 | Profile dashboard size and input responsiveness on a trace-heavy fixture and the real snapshot. | Identify whether duplicate markup, SVG layers, older detail or link depth drives the cost. Preserve downloaded FIT, actual split times and recent chart resolution. Record before/after size, load and interaction. |
+| 34 | Retest real Safari and iPhone after rollout. | Verify chart and comparison legibility, scroll, disclosures, orientation, and theme rendering. Capture one representative light and dark state per affected page where feasible. |
+
+### 40–49. Deepen Running before expanding the advice
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 40 | Validate absolute values and source coverage for cadence, stride length, ground contact, vertical oscillation and vertical ratio. Include absent power/balance fields and estimates wherever applicable. | Compare full FIT, Garmin session/lap views, MCP and dashboard on dated examples. Record units, sensor type, missingness and which values are derived. Wrist and accessory metrics stay distinguishable. |
+| 41 | Audit how similar runs and fallback personal pace fits are chosen. | Show included and excluded candidates, prior-only date handling, comparable pace, duration, climb, type, quality and sensor coverage. Inspect confounding by surface, terrain or conditions where recorded. Verify thin cohorts stay inconclusive and pace fits stay within their observed range. |
+| 42 | Add a within-run mechanics analysis design. Test whether cadence, contact and bounce change late in the run at comparable pace. | Define comparable early/late segments and minimum usable coverage, with rules for stops, hills, intervals and gaps. Check repeated runs. Existing side-by-side half data measures pace and pulse, so the mechanics result needs its own acceptance case. |
+| 43 | Build a recommendation/evidence map per metric, including cadence and stride together, ground contact and surface, and oscillation relative to step length. | Separate measurement, plausible interpretation, what to try, and what to observe on a comparable repeat. Test advice for improvement, unchanged and inconclusive outcomes. Verify the effect of knee check-ins on relevant recommendation surfaces. |
+| 44 | Complete the feedback loop: suggestion → attempt → comparable repeat → explicit outcome → next check. | Use existing trial plumbing where it fits. Link dated attempts and comfort check-ins, and display when the baseline or repeat is too thin. Application state remains reproducible on historical replay. |
+| 45 | Verify split boundaries and practical chart use on real workouts. Evaluate best efforts or durability later as separate proposals. | Include stops, partial last kilometres, distance resets, treadmill, hills, point thinning, multiple overlays and no-data states. Gate new best-effort or durability claims on demonstrated coverage. |
+
+### 50–59. Close the remaining Claude requests and release each slice
+
+| ID | Pending work | Evidence required |
+|---|---|---|
+| 50 | Make the bedtime experiment persist across weeks, including target acceptance, adherence and step-back. | Link the experiment to dated outcomes. Handle midnight, sparse valid nights and missed targets. Show measured sleep duration, score, HRV and readiness wherever available. Label uncertainty instead of attributing a cause. |
+| 51 | Verify planned-vs-done and optional check-ins through the whole coaching path. Evaluate the earlier strength and evening review proposals. | Test activity matching and caps, repeated or partial sync, pause and next-day behavior, existing optional strength tracking, and what any evening stress/Body Battery observation can support. |
+| 52 | Close competitor traceability and retain messaging as a design record. | Link features to verified research. Recover the original AthleteData item labels or record the ambiguity. Signed-in product comparisons need authorized access. Keep inbox and notifications as design, including privacy, quiet hours and deduplication. |
+| 53 | Ship narrow slices in dependency order and record results. | Before each slice, record intended outcome, touched files, impact paths, test matrix and rollback. Run focused and full tests, lint, and applicable fixture/replay/browser checks. Verify both Python versions on the exact PR head, then merge when authorized. Record release and main CI, plus Mac/phone status where applicable. |
+
+Use one [changelog](CHANGELOG.md) entry per meaningful change. Update the [handover](HANDOVER.md)
+and [README](README.md) for workflow or capabilities, [metrics](METRICS.md) and research
+notes for calculations and sources, the [dashboard plan](DASHBOARD_PLAN.md) and
+[UI review](docs/UI_REVIEW.md) for visual changes, and
+[Mac setup](MAC_SETUP.md), [operations](docs/OPERATIONS.md), or
+[Ollama guidance](docs/OLLAMA.md) for rollout and AI changes.
+
 ## Goal
 A free, private connector that gives Claude everything a Forerunner 955 records, plus
 transparent analysis on top. Five uses: race training · recovery/readiness · health trends and
@@ -71,6 +181,9 @@ compute: activity recaps, daily brief, weekly review.
 | 0.23.0 | Responsive charts, single-page runs with selectable overlays, workout narration and paired conditions evidence | Synthetic viewport and data checks; owner coverage and physical-device check pending |
 | 0.24.0 | Local AI diagnostics and evidence checks, guidance changes, post-run reviews, sleep summaries and timing plan, mobile navigation | Mac Ollama, launchd, iCloud and iPhone acceptance pending. See [handover](HANDOVER.md#latest-changes-for-reviewers) |
 | 0.25.0 | Model evaluation, wake follow-up, Sunday review, journal, planned vs done, route replay | Synthetic and local inference checks passed. Mac archive acceptance pending. |
+| 0.26.0 | Running dashboard, matched dynamics, split guides, local running review, archive replay and revision retention | Merged and published. Browser, synthetic archive and local checks recorded in [PR #31](https://github.com/PrahladRajhans/Garmin-tracking/pull/31). |
+| 0.26.1 | Qwen3.5 4B default and one-time upgrade of the former default | Merged and published. 234 tests, CI, and five fictional routine summaries accepted on local Ollama. Mac acceptance open. [PR #32](https://github.com/PrahladRajhans/Garmin-tracking/pull/32). |
+| 0.27.0 | Running form by comparable halves, weekly bedtime trial, Sunday AI and status, source/archive repairs and file audit | See the [execution log](docs/REPOSITORY_REVIEW.md#execution-log) and [PR #33](https://github.com/PrahladRajhans/Garmin-tracking/pull/33). Mac and private archive acceptance remain open. |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)
@@ -142,7 +255,7 @@ The tracked-file inventory, verified cleanup, local coaching controls and Today 
 implemented. Next, review the remaining modules in runtime order: sync and normalization,
 analysis, dashboard and export, then Mac and publishing operations. Log the entry point and
 test for each proposed removal. On the Mac, replay the real archive and compare the reviewed
-answers on the three fictional cases before selecting a model. Check that each answer
+answers on the fictional cases with the selected Qwen3.5 default. Check that each answer
 connects readings, distinguishes an exception from a trend, and leaves a useful next
 measurement. Then validate the chosen model through a scheduled refresh and check its
 evidence links on the phone.
@@ -170,8 +283,8 @@ Safari and phone checks. Consider best efforts or durability scoring after those
 
 - Add an opt-in daily interpretation across measured signals, with a testable question and
   inspectable sources. Keep guidance deterministic and reason about evidence separately.
-- Compare the larger model's latency and output on fictional evidence locally, then verify
-  quality on real archive snapshots with consent before changing any default.
+- Qwen3.5 4B became the default in v0.26.1 at the owner's request. Verify real archive
+  quality on the Mac and benchmark larger tags as optional settings.
 
 ### Coaching and Sleep follow-up
 
@@ -182,9 +295,10 @@ Safari and phone checks. Consider best efforts or durability scoring after those
 3. Give the local model eligible cross-signal findings to prioritize while Python owns claims
    and actions. Verify repeated builds, insufficient data, stale syncs, links and narrow layouts.
 4. Messaging concept: a private, opt-in digest containing one reviewed change and a link to
-   the local dashboard. Start with a local inbox and deduplicate by snapshot and finding;
+   the local dashboard. Design a local inbox with deduplication by snapshot and finding;
    evaluate generic push alerts with quiet hours and private links only after checking delivery
-   time and notification fatigue. Keep health details inside the dashboard.
+   time and notification fatigue. Keep health details inside the dashboard. Implementation
+   remains outside scope unless the owner asks for it.
 5. v0.25 saves dated sessions, compares completed activities and displays sleep journal evidence.
    Verify real archive coverage and establish bedtime experiment outcomes before extending automation.
 

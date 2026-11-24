@@ -248,12 +248,26 @@ def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tm
     assert "Recovery percent: 46" in html
     assert "The run was 5.7 km." in html and "Distance km: 5.7" in html
     assert "What to try next" in html
+    assert "last accepted" in html
     before = len(calls)
     dashboard.build(conn, tmp_path, queue_narration=True)
     assert len(queued) == 1 and len(calls) == before
     # The old worker can't overwrite a newly rendered snapshot.
     narrator._worker(*queued[0])
     assert len(calls) == before
+
+
+def test_render_status_changes_when_cloud_gate_blocks_worker(conn, collected, http_fake, tmp_path, monkeypatch):
+    _, answers = http_fake
+    monkeypatch.setattr(dashboard, "collect", lambda _: collected.copy())
+    queue = []
+    monkeypatch.setattr(narrator, "start_worker", lambda _, path, snapshot: queue.append((path.parent, snapshot)))
+    narrator.configure(conn, enable=True)
+    path = dashboard.build(conn, tmp_path)
+    assert "waiting for review" in path.read_text()
+    answers.append((200, {"cloud": {"disabled": False}}))
+    narrator._worker(Path(conn.execute("PRAGMA database_list").fetchone()[2]), *queue[0])
+    assert "waiting for confirmation that Ollama cloud is off" in path.read_text()
     monkeypatch.setattr(dashboard, "_snapshot_paths", lambda _dir: (path, None))
     narrator.update_settings(conn, enable=False, model=None)
     assert "AI summary" not in path.read_text() and "Next seven days" in path.read_text()

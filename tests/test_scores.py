@@ -1,3 +1,5 @@
+from datetime import UTC
+
 import pytest
 
 from garmin_mcp import scores
@@ -19,6 +21,23 @@ def test_recovery_mapping_and_bands():
     assert scores.band(50) == ("yellow", "moderate")
     assert scores.band(20) == ("red", "low")
     assert scores.band(None) == (None, None)
+
+
+def test_bedtime_uses_14_calendar_dates_and_keeps_explicit_offset(conn, monkeypatch):
+    from garmin_mcp import engine
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    monkeypatch.setattr(engine, "_tz", lambda _: UTC)
+    monkeypatch.setattr(scores, "daily_scores", lambda *_: {"sleep": {"need_h": 8, "debt_7d_h": 0}})
+    conn.executemany("INSERT INTO sleep(day,sleep_end,sleep_s) VALUES (?,?,25200)",
+                     [(f"2026-11-{day:02d}", f"2026-11-{day:02d}T08:30:00+05:30")
+                      for day in (1, 11, 12, 13, 15)])
+    assert scores.bedtime_suggestion(conn, "2026-11-15")["available"] is False
+    conn.execute(
+        "INSERT INTO sleep(day,sleep_end,sleep_s) VALUES ('2026-11-14','2026-11-14T08:30:00+05:30',25200)",
+    )
+    assert scores.bedtime_suggestion(conn, "2026-11-15")["usual_wake"] == "03:00"
 
 
 def test_zero_correlation_is_not_treated_as_missing():

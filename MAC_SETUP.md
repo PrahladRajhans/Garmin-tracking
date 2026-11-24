@@ -53,6 +53,9 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
 
 Set a sleep schedule separately in Garmin Connect when you want a watch reminder. The local
 dashboard's sleep schedule is a suggestion. Reminder behavior depends on device settings.
+Use `bedtime_plan()` to see the local weekly proposal and `bedtime_plan(accept=True)` to
+save it through MCP. You can supply an explicit `bedtime="00:30"`. Sleep shows recorded
+adherence and outcome averages once enough dated readings are available.
 See [Garmin sleep tracking and settings](https://support.garmin.com/en-IN/?faq=mBRMf4ks7XAQ03qtsbI8J6).
 
 

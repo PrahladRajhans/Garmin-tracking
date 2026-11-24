@@ -26,11 +26,13 @@ from typing import Any
 
 from garmin_mcp import (
     __version__,
+    bedtime_experiment,
     coach_loop,
     coach_review,
     coaching,
     conditions,
     dashboard_history,
+    deep_insight,
     engine,
     environment_review,
     health,
@@ -100,13 +102,12 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     hrv_info = recovery.hrv_status(hrv, end)
     hrv_info["previous_average"] = recovery.hrv_status(hrv, previous_week).get("rolling_7d_ms")
     runs = []
-    weight = _weight(conn)
     read_run = lru_cache(maxsize=160)(coaching.run_metrics)
     for aid, start, dist in conn.execute(
             "SELECT activity_id, start_time_local, distance_m FROM activities WHERE type LIKE "
             "'%run%' AND fit_parsed=1 AND substr(start_time_local,1,10)<=? "
             "ORDER BY julianday(start_time_local) DESC LIMIT 8", (end,)):
-        b = running.running_breakdown(conn, aid, weight, read_metrics=read_run)
+        b = running.running_breakdown(conn, aid, _weight(conn, start[:10]), read_metrics=read_run, end=end)
         if b.get("available"):
             interval = max(5, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0)
                                          / TRACE_POINTS))
@@ -124,13 +125,14 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     workouts = [workout for day in sorted(calendar["detail_days"], reverse=True)
                 for workout in calendar["days"][day].get("activities", [])
                 if workout["id"] not in run_ids][:8]
-    sleep_data = sleep_review.collect(conn, end, zone, ds["sleep"]["need_h"]
-                                     or recovery.DEFAULT_SLEEP_NEED_H)
+    need_h = ds["sleep"]["need_h"] or recovery.DEFAULT_SLEEP_NEED_H
+    sleep_data = sleep_review.collect(conn, end, zone, need_h)
     if runs:
         runs[0]["route_review"] = route_review.compare(conn, runs[0])
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
         "sleep_review": sleep_data,
+        "bedtime_experiment": bedtime_experiment.status(conn, end, sleep_data, need_h),
         "wake_followup": coach_loop.wake_followup(sleep_data["nights"], end),
         "rested_review": coach_loop.rested_review(conn, end),
         "tag_review": engine.tag_impact(conn, end)["tags"],
@@ -156,12 +158,13 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "shifts": health.shifts(conn, end),
         "ageing": health.pace_of_ageing(conn, end),
         "marathon": health.marathon_shape(conn, end),
-        "fitness_age": coaching.fitness_age(conn),
+        "fitness_age": coaching.fitness_age(conn, end),
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
         "calendar": calendar, "workouts": workouts,
         "last_full_sync": _last_full_sync(conn, zone),
-        "trial": trials.status(conn), "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run, end=end),
+        "trial": trials.status(conn, through=(e, zone) if e != datetime.now(zone).date() else None),
+        "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run, end=end),
         "running_block": running_block.collect(conn, end, read_metrics=read_run, latest=runs[0] if runs else None),
         "explore": explore,
         "tests": running.test_runs(conn, read_metrics=read_run, end=end),
@@ -188,10 +191,13 @@ def _has(conn: sqlite3.Connection, t: str) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (t,)).fetchone() is not None
 
 
-def _weight(conn: sqlite3.Connection) -> float | None:
+def _weight(conn: sqlite3.Connection, end: str) -> float | None:
     if not _has(conn, "fit_profile"):
         return None
-    row = conn.execute("SELECT weight_kg FROM fit_profile ORDER BY rowid DESC LIMIT 1").fetchone()
+    row = conn.execute("SELECT p.weight_kg FROM fit_profile p JOIN activities a USING(activity_id) "
+                       "WHERE p.weight_kg > 0 AND substr(a.start_time_local,1,10)<=? "
+                       "ORDER BY julianday(a.start_time_local) DESC, a.activity_id DESC LIMIT 1",
+                       (end,)).fetchone()
     return row[0] if row else None
 
 
@@ -662,31 +668,19 @@ def _sleep_time(hours: float) -> str:
 
 
 def _sunday_story(d: dict) -> str:
-    if date.fromisoformat(d["end"]).weekday() != 6:
+    if not (facts := deep_insight.sunday_review(d)):
         return ""
-    review = d.get("weekly_review")
-    sleep = d.get("sleep_review", {}).get("windows", {}).get(7, {})
-    if not review or sleep.get("nights", 0) < 4:
-        return ""
-    change = d["sleep_review"].get("week_change_min")
-    sessions = review["week"]["sessions"]
-    facts = [
-        "The training review counted one workout with load data." if sessions == 1
-        else f"The training review counted {sessions} workouts with load data.",
-        f'You averaged {_sleep_time(sleep["hours"])} of sleep across {sleep["nights"]} recorded nights.',
-    ]
-    if change is not None:
-        if change:
-            facts.append(f'You slept {abs(change)} min {"more" if change > 0 else "less"} per night '
-                         'than the prior week.')
-        else:
-            facts.append("Your average sleep held steady from the prior week.")
-    elif "anchor" in d["sleep_review"] and d["sleep_review"]["anchor"]:
-        facts.append(f'Your wake times had {d["sleep_review"]["anchor"]["spread"]} min of variation.')
-    if len(facts) < 3:
-        return ""
-    facts.append(d["brief"]["week_ahead"]["plan"])
-    return _card("Sunday review", f'<p>{_e(" ".join(facts))}</p>'
+    intro = f'<p>{_e(" ".join(row.text for row in facts))}</p>'
+    if result := d.get("narration", {}).get("sunday-insight"):
+        sources = "".join(f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
+                          for row in result["readings"])
+        intro = (f'<p class="insight-label">Local AI review</p><p>{_e(result["observation"])}</p>'
+                 f'<p>{_e(result["question"])}</p><details><summary>Recorded evidence</summary>'
+                 f'<ul>{sources}</ul></details>')
+    plan = d["brief"]["week_ahead"]
+    basis = f'<p class="sub">{_e(plan["basis"])}</p>' if plan.get("basis") else ""
+    return _card("Sunday review", intro + f'<p><strong>Next focus</strong> · {_e(plan["plan"])}</p>'
+                 f'{basis}'
                  f'<a class="flow-link" href="#training">Review the week{icon("chev")}</a>', wide=True)
 
 
@@ -743,8 +737,11 @@ def page_today(d: dict[str, Any]) -> str:
              f'<h3>Health &amp; activity</h3><div class="overview-tiles">{tiles}</div></section>')
 
     anchor = d.get("sleep_review", {}).get("anchor", {})
+    bedtime_plan = d.get("bedtime_experiment", {})
+    saved_target = (bedtime_plan.get("current") or {}).get("target")
     if current and anchor:
-        bedtime = (f' · In bed by {anchor["bedtime"]} this week' if anchor.get("bedtime") else "")
+        target = saved_target or bedtime_plan.get("suggestion") or anchor.get("bedtime")
+        bedtime = f' · In bed by {_e(target)} this week' if target else ""
         body += (f'<a class="sleep-brief wide" href="#sleep">'
                  f'<span><strong>Sleep schedule</strong> · Wake around {anchor["wake"]}'
                  f' · {anchor["spread"]} min variation{bedtime}</span>'
@@ -901,24 +898,50 @@ def page_sleep(d: dict[str, Any]) -> str:
     review = d.get("sleep_review", {})
     nights = review.get("nights", {})
     last = max(nights, default=None)
-    if not last:
+    plan = d.get("bedtime_experiment", {})
+    if not last and not (plan.get("current") or plan.get("previous")):
         return _page("sleep", "Sleep", "No complete night recorded yet.", "")
     detail_days = set(d["calendar"]["detail_days"])
-    night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
-                  if last in detail_days else "")
-    body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
-            f'{_night_record(nights[last])}{night_link}'
-            + _narration(d.get("narration", {}).get("sleep")) + '</section>')
+    body = ""
+    if last:
+        night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
+                      if last in detail_days else "")
+        body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
+                f'{_night_record(nights[last])}{night_link}'
+                + _narration(d.get("narration", {}).get("sleep")) + '</section>')
     anchor = review["anchor"]
     if anchor:
-        target = (f'<p>In bed by <b>{anchor["bedtime"]}</b> this week.</p>'
-                  if anchor.get("bedtime") else "")
-        held = ('<p class="sub">Hold near your recent bedtime before moving it earlier.</p>'
-                if anchor.get("held") else "")
+        suggested = plan.get("suggestion") or anchor.get("bedtime")
+        target = (f'<p>Suggested bedtime <b>{_e(suggested)}</b></p>'
+                  if suggested and not plan.get("current") else "")
         body += (f'<section class="sleep-band wide"><h3>Keep wake time steady</h3>'
                  f'<p>Wake around <b>{anchor["wake"]}</b>. Wake times varied by '
                  f'<b>{anchor["spread"]} min</b> across {anchor["nights"]} nights.</p>'
-                 f'{target}{held}</section>')
+                 f'{target}</section>')
+    elif plan.get("suggestion") and not plan.get("current"):
+        body += _card("Suggested bedtime", f'<p>{_e(plan["suggestion"])}</p>', wide=True)
+    for label, tracked in (("This week’s target", plan.get("current")),
+                           ("Previous bedtime target", plan.get("previous"))):
+        if not tracked:
+            continue
+        comparisons = "".join(
+            _row(name, f'{v["on_time"]:g} vs {v["later"]:g}',
+                 f'On time {v["on_time_n"]} nights · later {v["later_n"]} nights')
+            for key, name in (("hours", "Sleep hours"), ("sleep_score", "Sleep score"),
+                              ("hrv_ms", "Overnight HRV (ms)"), ("readiness", "Garmin readiness"))
+            if (v := tracked["comparisons"].get(key)) is not None
+        )
+        evidence = (f'<ul class="rows">{comparisons}</ul>' if comparisons else
+                    '<p class="sub">Collecting enough nights for a comparison.</p>')
+        if tracked_nights := tracked["nights"]:
+            dates = "".join(_record_link(_date_label(row["day"]),
+                                         "On time" if row["on_time"] else "Later",
+                                         f'#day-{row["day"]}' if row["day"] in detail_days else None)
+                            for row in reversed(tracked_nights))
+            evidence += f'<details><summary>Recorded nights</summary><ul class="record-list">{dates}</ul></details>'
+        body += _card(label, f'<p>Sleep start by <b>{_e(tracked["target"])}</b> · '
+                      f'{tracked["on_time"]} of {tracked["recorded"]} timed nights</p>{evidence}',
+                      f'Week of {_date_label(tracked["week_start"])}', wide=True)
     debt = d["scores"]["sleep"].get("debt_7d_h")
     if debt is not None and debt > 0:
         nights_to_half = math.ceil(debt * 30 / 40)
@@ -1581,6 +1604,14 @@ def _run_pacing(r: dict[str, Any]) -> str:
             + _card("Timing", f'<ul class="rows">{timing}</ul>')
             + _card("Pace and heart rate", halves + f'<ul class="rows">{effort}</ul>',
                     "Equal moving-time halves. Needs a steady run with enough heart-rate data."))
+    if late_form := r.get("late_form"):
+        units = {"cadence_spm": " steps/min", "step_length_m": " m",
+                 "ground_contact_ms": " ms", "vertical_oscillation_cm": " cm"}
+        rows = "".join(_row(running.LABELS[key], _e(f'{v["early"]:g} → {v["late"]:g}{units[key]}'),
+                            f'{loads._hms(v["matched_s"])} comparable moving time in each half')
+                       for key, v in late_form.items())
+        body += _card("Running form at similar pace and grade", f'<ul class="rows">{rows}</ul>',
+                      "First half → second half. Read this as a measured change and check whether it repeats.", wide=True)
     return body
 
 
@@ -1984,7 +2015,8 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         body += f'<nav class="day-neighbours wide" aria-label="Adjacent recorded days">{neighbours}</nav>'
     if readings:
         body += _card("Readings", f'<ul class="rows">{readings}</ul>')
-    if night := d.get("sleep_review", {}).get("nights", {}).get(day):
+    night = d.get("sleep_review", {}).get("nights", {}).get(day)
+    if night:
         body += f'<section class="sleep-band wide"><h3>Sleep</h3>{_night_record(night)}</section>'
     elif stages:
         body += _card("Recorded sleep stages", f'<ul class="rows">{"".join(stages)}</ul>')
@@ -1995,7 +2027,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
                      y_label="Heart rate (bpm)",
                      elapsed={hour: int(hour[:2]) for hour, _ in row["hourly_hr"]})
         body += _card("Heart rate during the day", pulse, "Average of samples in each recorded hour.", wide=True)
-    if not readings and not workouts:
+    if not any((readings, workouts, night, stages, row.get("hourly_hr"))):
         body += _card("Readings", '<p class="empty">No usable readings for this date.</p>')
     return _page(f"day-{day}", _date_label(day), "Garmin records for this date",
                  body, back=f"#month-{day[:7]}")
@@ -2116,19 +2148,21 @@ CSS = """
 :root{color-scheme:light;--page:#f2f5f8;--surface:#fff;--ink:#172033;--ink2:#48556a;
 --muted:#546174;--grid:#dfe4ec;--axis:#687487;--border:#dce3eb;--s1:#1868c4;
 --accent:#edf5ff;--active:#104f9d;--cursor:#39669a;
+--split-guide:#7e8fab;--overlay-ink:#a44220;
 --focus:#e7f1fb;--focus-edge:#c6dbf1;
 --s2:#eb6834;--good:#0ca30c;--warn:#fab219;--serious:#ec835a;--bad:#d03b3b;--purple:#6250d6;
 --band:rgba(42,120,214,.12);--goodtext:#006300}
 :root[data-theme=dark]{color-scheme:dark;--page:#10151f;--surface:#1a2230;--ink:#f3f6fa;
 --ink2:#c4cede;--muted:#aab8cd;--grid:#354155;--axis:#899bb4;--border:#303c50;--s1:#6baaff;
 --accent:#202f48;--active:#b6d9ff;--cursor:#b6d9ff;
+--split-guide:#8197b7;--overlay-ink:#ffab88;
 --focus:#1c324b;--focus-edge:#355275;
 --s2:#d95926;--purple:#9085e9;--band:rgba(57,135,229,.18);--goodtext:#0ca30c}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,
 "Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-a:focus-visible,summary:focus-visible,button:focus-visible,.chart:focus-visible,.table-wrap:focus-visible{
+a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,.chart:focus-visible,.table-wrap:focus-visible{
 outline:3px solid var(--s1);outline-offset:3px}
 .chart:focus:not(:focus-visible){outline:none}
 .wrap{max-width:1160px;margin:0 auto;padding:16px 24px 48px}
@@ -2277,8 +2311,8 @@ font-size:14px;font-weight:650;width:max-content}
 .split-toggle input{width:18px;height:18px;accent-color:var(--active)}
 .split-guides{display:none;pointer-events:none}
 .run-section:has(.split-toggle input:checked) .split-guides{display:initial}
-.split-guides line{stroke:var(--active);stroke-opacity:.30;stroke-width:1;vector-effect:non-scaling-stroke}
-.split-guides text{font-size:10px;fill:var(--ink2)}
+.split-guides line{stroke:var(--split-guide);stroke-width:1;stroke-dasharray:2 3;vector-effect:non-scaling-stroke}
+.split-guides text{font-size:11px;fill:var(--ink2)}
 .tick{font-size:11px;fill:var(--ink2);font-variant-numeric:tabular-nums}
 .axis-label{font-size:12px;fill:var(--ink);font-weight:640}
 .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
@@ -2294,9 +2328,9 @@ font-size:14px;font-weight:650;width:max-content}
 .moving-average{fill:none;stroke:var(--s2);stroke-width:1.8;stroke-dasharray:5 3}
 .overlay-secondary{display:none}
 .overlay-secondary.active{display:initial}
-.overlay-axis{stroke:var(--s2);stroke-width:1}
-.overlay-label{fill:#9d3814}
-[data-theme="dark"] .overlay-label{fill:#ff9c78}
+.overlay-axis{stroke:var(--overlay-ink);stroke-width:1}
+.overlay-label{fill:var(--overlay-ink)}
+.overlay-secondary .ln.s2{stroke:var(--overlay-ink);stroke-dasharray:5 3}
 .overlay-options{display:none;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 [data-ready] .overlay-options{display:flex}
 .overlay-options span{color:var(--ink2);font-size:13px;margin-right:4px}
@@ -2466,7 +2500,28 @@ def render(d: dict[str, Any]) -> str:
     status = f'Last complete sync {_e(sync)} · Dashboard built {build_time} · Code v{__version__}.'
     symbols = ("home", "moon", "bolt", "run", "trend")
     ai_state = ""
-    if d.get("narrator_enabled"):
+    if ai := d.get("narrator_status"):
+        labels = {
+            "disabled": "disabled",
+            "sync_incomplete": "waiting for a complete Garmin sync",
+            "pending": "waiting for review",
+            "cloud_blocked": "waiting for confirmation that Ollama cloud is off",
+            "unavailable": "Ollama or the selected model was unavailable",
+            "unsupported": "the selected model lacks a required capability",
+            "incomplete": "a review could not finish",
+            "withheld": "no output passed review",
+            "no_evidence": "no eligible readings",
+        }
+        parts = []
+        if ai["count"]:
+            parts.append(f'{ai["count"]} checked results')
+        if reason := labels.get(ai["outcome"]):
+            parts.append(reason)
+        if stamp := ai.get("last_accepted"):
+            last = datetime.fromisoformat(stamp).astimezone(d.get("zone", UTC))
+            parts.append(f'last accepted {last:%-d %b %Y, %H:%M %Z}')
+        ai_state = f' Local AI · {_e(" · ".join(parts))}.'
+    elif d.get("narrator_enabled"):
         accepted = len(d.get("narration", {}))
         ai_state = (f' Local AI · {accepted} checked results.' if accepted else
                     ' Local AI enabled · no checked results in this snapshot.')
@@ -2522,7 +2577,11 @@ def _atomic_write(path: Path, content: str) -> None:
 def _snapshot_paths(out_dir: Path | None = None) -> tuple[Path, Path | None]:
     from garmin_mcp.config import data_dir
 
-    local = (out_dir or data_dir() / "dashboard") / "index.html"
+    configured = data_dir() / "dashboard"
+    selected = out_dir or configured
+    local = selected / "index.html"
+    if selected.resolve() != configured.resolve():
+        return local, None  # a custom build must not overwrite the owner's iCloud copy
     icloud = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
     return local, icloud / "Garmin" / "dashboard.html" if icloud.is_dir() else None
 
@@ -2571,6 +2630,7 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
             data["guidance_change"] = coach_review.guidance(conn, data["end"], data["brief"]["focus"])
         data["narrator_enabled"] = narrator.settings(conn)["enabled"]
         data["narration"], pending = narrator.cached(conn, data)
+        data["narrator_status"] = narrator.snapshot_status(conn, data, data["narration"], pending)
         _write_copies(path, icloud, _compact(render(data)))
         if only_if_snapshot is None and data.get("available", True) and not (
                 data["older_snapshot"] or data["sync_retry_required"]):

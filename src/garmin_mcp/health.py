@@ -259,7 +259,7 @@ def marathon_shape(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
     from garmin_mcp import loads
 
     hrmax = loads.thresholds(conn, end).get("hr_max") or 190
-    v = loads.effective_vo2max(conn, end, hrmax).get("value") or garmin_vo2(conn)
+    v = loads.effective_vo2max(conn, end, hrmax).get("value") or garmin_vo2(conn, end)
     if not v:
         return {"available": False, "reason": "no VO2max estimate yet"}
     v = max(25.0, v)
@@ -267,7 +267,7 @@ def marathon_shape(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
     long_target = math.log(v / 4) * 12
     endd = date.fromisoformat(end)
     first = conn.execute("SELECT MIN(substr(start_time_local,1,10)) FROM activities WHERE type "
-                         "LIKE '%run%'").fetchone()[0]
+                         "LIKE '%run%' AND substr(start_time_local,1,10)<=?", (end,)).fetchone()[0]
     window = 182
     if first:
         window = max(70, min(182, (endd - date.fromisoformat(first)).days + 1))
@@ -298,7 +298,8 @@ def marathon_shape(conn: sqlite3.Connection, end: str) -> dict[str, Any]:
                        "13 km in the last 10 weeks (1/3)."}
 
 
-def garmin_vo2(conn: sqlite3.Connection) -> float | None:
-    row = conn.execute("SELECT vo2max FROM activities WHERE vo2max IS NOT NULL ORDER BY "
-                       "start_time_local DESC LIMIT 1").fetchone()
+def garmin_vo2(conn: sqlite3.Connection, end: str | None = None) -> float | None:
+    row = conn.execute("SELECT vo2max FROM activities WHERE vo2max IS NOT NULL "
+                       "AND (? IS NULL OR substr(start_time_local,1,10)<=?) "
+                       "ORDER BY start_time_local DESC LIMIT 1", (end, end)).fetchone()
     return row[0] if row else None

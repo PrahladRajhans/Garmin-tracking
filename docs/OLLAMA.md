@@ -12,6 +12,17 @@ the upgrade is saved normally. If Qwen3.5 has not been installed, download it wi
 `ollama pull qwen3.5:4b`. The dashboard can still render its calculated guidance while the
 local model is unavailable.
 
+The v0.26.1 live Linux smoke test accepted all five fictional routine summaries with
+Qwen3.5 4B (median generation 13.36 seconds). The open-ended running test in v0.26.0
+was withheld. The [current priorities](../ROADMAP.md#current-priorities) track the Mac
+rollout, per-surface checks, reviewed weekly story and dashboard status detail.
+
+The v0.27 footer reports the last accepted result for the selected model and whether the
+current snapshot is waiting, blocked by the local-only check, missing evidence, or withheld.
+The optional Sunday review uses recorded training and sleep facts. Its next focus and
+fallback remain deterministic. Run `--eval-insight --insight-case sunday-review --no-thinking`
+on fictional evidence. The Linux Qwen3.5 4B test completed and withheld the wording.
+
 ## Coverage
 
 ### Thinking insights
@@ -106,7 +117,7 @@ on successful writes. Earlier evidence is labeled and cannot replace the require
 domains. No generated narrative or reasoning is replayed. Ollama keeps model weights warm
 for requests in a batch; that does not itself preserve the athlete's history between requests.
 
-Use `--insight-case mixed-recovery`, `run-exception`, or `longer-sleep` with
+Use `--insight-case mixed-recovery`, `run-exception`, `longer-sleep`, or `sunday-review` with
 `--eval-insight` to preview prompts without the archive. Add `--no-thinking` to compare direct
 drafting without changing model settings. See the [model and audit notes](REPOSITORY_REVIEW.md).
 
@@ -147,6 +158,11 @@ simulated iCloud copy. Disabling removed the AI results from both files. A separ
 covered the experiment summary and verified that Today's chooser favored several nights of
 direct sleep evidence over an association. These runs used Linux. The owner's Mac, launchd
 job and iCloud and iPhone path remain in the [roadmap](../ROADMAP.md).
+
+On the v0.27.0 fictional Sunday case, the live Qwen3.5 4B direct draft first got the
+training evidence wrong by treating workout count as a jump in volume. The reviewer withheld
+it. After clarifying the distinction in the prompt, a second direct attempt took about 58 s
+and was also withheld. The weekly display still has its rule-written summary and dated links.
 
 ## Changes to review
 

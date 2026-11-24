@@ -163,28 +163,34 @@ class Syncer:
             if "activityId" not in item:
                 continue
             existing = self.conn.execute(
-                "SELECT details_fetched, fit_parsed FROM activities WHERE activity_id=?",
+                "SELECT fit_parsed FROM activities WHERE activity_id=?",
                 (int(item["activityId"]),),
             ).fetchone()
             activity_id = db.upsert_activity(self.conn, item)
             if existing is None:
                 self.result.new_activities += 1
-            if not existing or not existing["details_fetched"]:
+            if self.source.activity_details:
                 self._fetch_details(activity_id)
             if not existing or not existing["fit_parsed"]:
                 self._fetch_fit(activity_id)
             self.conn.commit()
 
     def _fetch_details(self, activity_id: int) -> None:
+        stored = {row[0] for row in self.conn.execute(
+            "SELECT kind FROM activity_details WHERE activity_id=?", (activity_id,),
+        )}
         all_ok = True
         for kind, fn in self.source.activity_details.items():
+            if kind in stored:
+                continue
             ok, payload = self._call(f"activity.{kind}", str(activity_id), fn, activity_id)
             all_ok &= ok
             if ok:
                 db.put_activity_detail(self.conn, activity_id, kind, payload)
         if all_ok:
             self.conn.execute(
-                "UPDATE activities SET details_fetched=1 WHERE activity_id=?", (activity_id,)
+                "UPDATE activities SET details_fetched=1 WHERE activity_id=? AND details_fetched=0",
+                (activity_id,),
             )
 
     def _fetch_fit(self, activity_id: int) -> None:

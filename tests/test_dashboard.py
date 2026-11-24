@@ -116,8 +116,18 @@ def test_icloud_failure_keeps_local_build(conn, tmp_path, monkeypatch):
 
     monkeypatch.setattr(dashboard, "_atomic_write", write)
     with pytest.warns(RuntimeWarning, match="local dashboard is available"):
-        path = dashboard.build(conn, tmp_path / "local")
+        path = dashboard.build(conn)
     assert path.is_file() and "No Garmin data" in path.read_text()
+
+
+def test_temporary_dashboard_does_not_overwrite_icloud(conn, tmp_path, monkeypatch):
+    drive = tmp_path / "Library/Mobile Documents/com~apple~CloudDocs/Garmin"
+    drive.mkdir(parents=True)
+    snapshot = drive / "dashboard.html"
+    snapshot.write_text("live dashboard")
+    monkeypatch.setattr(dashboard.Path, "home", classmethod(lambda cls: tmp_path))
+    assert dashboard.build(conn, tmp_path / "temporary").is_file()
+    assert snapshot.read_text() == "live dashboard"
 
 
 def test_new_health_files_are_owner_only_on_posix(conn, tmp_path):
@@ -195,6 +205,8 @@ def test_history_gives_an_intraday_only_record_a_real_target(conn):
     rebuild(conn)
     html = dashboard.render(dashboard.collect(conn, day))
     assert f'href="#day-{day}"' in html and f'id="day-{day}"' in html
+    intraday = html.split(f'id="day-{day}"', 1)[1].split("</main>", 1)[0]
+    assert "Heart rate during the day" in intraday and "No usable readings" not in intraday
 
 
 def test_workout_pace_stays_visible_when_secondary_readings_are_missing():

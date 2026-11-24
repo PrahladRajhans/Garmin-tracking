@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-24
+
+- Fetch Garmin activity details by field so the official sync can be followed by Connect
+  splits, zones and weather. Retry only missing details. Report malformed official activity
+  pages as failures and let an empty optional API-key variable fall back to the key file.
+- Add reviewed Sunday wording and recorded AI status with a last accepted time. Keep the
+  existing plan and the rule-written Sunday fallback.
+- Save an accepted bedtime target by week and review adherence, sleep, overnight HRV and
+  Garmin readiness. Add the `bedtime_plan` MCP tool.
+- Compare early and late running form using the common pace and grade ranges. Align elapsed
+  split guides to the first full FIT sample and honor next-day knee check-ins in Running.
+- Improve split guides, overlay labels and keyboard focus in Light and Dark.
+- Fix dated VO₂max and FIT profile selection, naive FIT clock handling, the 14-night
+  wake-window boundary, zero log-mean HRV, and validation of saved goals and workout steps.
+- Keep later trial runs, closure and notes out of earlier dashboard snapshots. Verify the
+  last full day of an older archive while excluding the still-changing current day.
+- Match original FIT exports to the nearest unique activity start. Report ambiguous files,
+  retain revisions of already parsed activities, and reject malformed export dates. Compare
+  trial start and end boundaries by instant across both Garmin timestamp formats.
+- Fix cycling cadence in MCP activity details and streams. Use date-bounded fitness age,
+  VO₂max and run weight on historical dashboards. Refresh the dashboard after athlete settings change.
+- Keep saved bedtime targets visible alongside sleep history. Keep temporary builds out of iCloud
+  and omit the empty-state message when History has an intraday pulse or sleep reading.
+
+- Reconcile the owner's requests and Claude briefs with the shipped releases. Record priorities
+  and separate repository verification from Mac, historical-archive and phone acceptance.
+- Add a file-by-file review register and an ordered dependency, Running analytics, and
+  Light/Dark verification plan.
+
 ## [0.26.1] - 2026-11-24
 
 - Use local Qwen3.5 4B by default for every Ollama review and summary. Move saved installs

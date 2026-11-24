@@ -267,8 +267,8 @@ def athlete_context() -> dict[str, Any]:
 @mcp.tool()
 def update_athlete_setting(key: str, value: str, note: str | None = None) -> dict[str, Any]:
     """Save a setting the user stated, e.g. hr_max_override=198, goal_race='{"distance_km":10,
-    "date":"2027-03-01","target":"50:00"}', timezone='Asia/Kolkata'. Overrides apply to all
-    calculations after the next refresh_data/rebuild. Only save what the user said."""
+    "date":"2027-03-01","target":"50:00"}', timezone='Asia/Kolkata'. Recalculate now and
+    schedule the next dashboard build. Only save what the user said."""
     import json as _json
 
     from garmin_mcp import athlete
@@ -286,6 +286,8 @@ def update_athlete_setting(key: str, value: str, note: str | None = None) -> dic
     def run(c: sqlite3.Connection) -> dict[str, Any]:
         athlete.set_value(c, key, parsed, note)
         counts = rebuild(c)
+        if not counts.get("loads_error"):
+            _mark_dashboard_stale(c)
         return {"saved": {key: parsed}, "recalculated": not bool(counts.get("loads_error")),
                 "rebuild": counts}
 
@@ -416,6 +418,33 @@ def coach_checkin(day: str | None = None, rested: int | None = None,
     def run(c):
         result = coach_loop.save_checkin(c, parse_date(day), rested, energy, soreness, knee)
         _mark_dashboard_stale(c)
+        return result
+
+    try:
+        return _with_db(run)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def bedtime_plan(day: str | None = None, accept: bool = False, bedtime: str | None = None) -> dict[str, Any]:
+    """Review a local weekly bedtime target. Set accept=True to save the proposal or an explicit HH:MM."""
+    from garmin_mcp import bedtime_experiment, engine, recovery, scores, sleep_review
+
+    def run(c):
+        end = parse_date(day)
+        if accept and bedtime is not None:
+            return bedtime_experiment.accept(c, end, bedtime)
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='sleep' AND type='table'").fetchone() is None:
+            return {"error": "Sync or import sleep data to see a proposed bedtime."}
+        need = scores.daily_scores(c, end)["sleep"]["need_h"] or recovery.DEFAULT_SLEEP_NEED_H
+        review = sleep_review.collect(c, end, engine._tz(c), need)
+        result = bedtime_experiment.status(c, end, review, need)
+        if accept:
+            saved = (result["current"] or {}).get("target") or result["suggestion"]
+            if not saved:
+                return {"error": "There is no proposed bedtime yet. Provide an explicit HH:MM target."}
+            return bedtime_experiment.accept(c, end, saved)
         return result
 
     try:

@@ -7,6 +7,7 @@ expressed in fitness units, not only time.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from datetime import date
 from typing import Any
@@ -23,6 +24,8 @@ def _parse_time(text: str) -> float | None:
         parts = [int(p) for p in text.split(":")]
     except (ValueError, AttributeError):
         return None
+    if len(parts) not in (2, 3) or parts[0] < 0 or any(not 0 <= value < 60 for value in parts[1:]):
+        return None
     secs = 0
     for p in parts:
         secs = secs * 60 + p
@@ -35,7 +38,12 @@ def goal_check(conn: sqlite3.Connection, today: str | None = None) -> dict[str, 
         return {"needs_input": True,
                 "question": athlete.PLACEHOLDERS["goal_race"][0],
                 "example": {"distance_km": 10, "date": "2027-03-01", "target": "50:00"}}
-    dist_m = float(goal["distance_km"]) * 1000
+    try:
+        dist_m = float(goal["distance_km"]) * 1000
+    except (TypeError, ValueError, OverflowError):
+        return {"error": "distance_km must be a positive, finite number"}
+    if isinstance(goal["distance_km"], bool) or not math.isfinite(dist_m) or dist_m <= 0:
+        return {"error": "distance_km must be a positive, finite number"}
     target_s = _parse_time(str(goal["target"]))
     if not target_s:
         return {"error": "target must look like 'mm:ss' or 'h:mm:ss'"}
@@ -43,7 +51,11 @@ def goal_check(conn: sqlite3.Connection, today: str | None = None) -> dict[str, 
         date.today().isoformat()
     weeks = None
     if goal.get("date"):
-        weeks = round((date.fromisoformat(goal["date"]) - date.fromisoformat(today)).days / 7, 1)
+        try:
+            race_day = date.fromisoformat(goal["date"])
+        except (TypeError, ValueError):
+            return {"error": "race date must be YYYY-MM-DD"}
+        weeks = round((race_day - date.fromisoformat(today)).days / 7, 1)
 
     th = loads.thresholds(conn, today)
     eff = loads.effective_vo2max(conn, today, th["hr_max"], 180) if th["hr_max"] else {}

@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from garmin_mcp import deep_insight, narrator
+from garmin_mcp import dashboard, deep_insight, narrator
 
 
 @pytest.fixture
@@ -56,6 +56,26 @@ def test_missing_cross_signal_data_hides_interpretation():
     d["hrv_context"] = {"rolling_7d_ms": 57, "previous_average": 59}
     assert {row.domain for row in deep_insight.evidence(d)} == {"sleep", "recovery"}
     assert not deep_insight.evidence({**d, "sync_retry_required": True})
+
+
+def test_sunday_review_keeps_plan_and_links_checked_evidence(conn):
+    data = {"end": "2026-11-22",
+            "weekly_review": {"week": {"sessions": 3}},
+            "sleep_review": {"windows": {7: {"nights": 5, "hours": 7.2}}, "week_change_min": -21},
+            "brief": {"week_ahead": {"plan": "Repeat the easy run.", "basis": "Based on recent sessions."}}}
+    facts = deep_insight.sunday_review(data)
+    assert {row.domain for row in facts} == {"sleep", "training"}
+    assert "21 min less" in dashboard._sunday_story(data)
+    assert "sunday-insight" in narrator._deep_items(conn, {"thinking": False}, data)
+    data["narration"] = {"sunday-insight": {
+        "observation": "The log shows several workouts alongside shorter nights.",
+        "question": "Does that pattern repeat next week?",
+        "readings": [{"page": row.page, "text": row.text} for row in facts],
+    }}
+    html = dashboard._sunday_story(data)
+    assert all(s in html for s in ("Local AI review", "Repeat the easy run.", 'href="#sleep"', 'href="#training"'))
+    assert not dashboard._sunday_story({**data, "end": "2026-11-23"})
+    assert not dashboard._sunday_story({**data, "sync_retry_required": True})
 
 
 def test_opt_in_result_is_cached_with_python_readings(conn, monkeypatch, packet):

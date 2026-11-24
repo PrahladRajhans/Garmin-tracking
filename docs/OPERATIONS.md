@@ -32,6 +32,12 @@ Activity pagination rejects an identical repeated page and stops with an explici
 the first 100,000 items as complete history. Range chunks must have a positive size. Other
 date/record loops advance a date or bounded index; rate-limit retries already have a budget.
 
+Activity detail collection checks the individual stored summary, split, zone and weather
+payloads. Garmin Connect can fill a missing detail when the official sync has already marked
+the activity as handled. The next successful sync repairs activities within its requested
+window. Run an explicit older date window if an older activity needs recovery. Already stored
+details and raw revisions stay in place.
+
 ## Code-update failure
 
 The updater saves a per-checkout pending-install marker in the data directory before changing
@@ -57,6 +63,12 @@ import keep distinct received FIT binaries on disk. To restore into a different 
 check the stored FIT paths before reparsing. Earlier revisions replaced before v0.26.0
 can only be recovered from an earlier backup or another export, if available.
 
+For an imported FIT, the closest unique Garmin start within 120 seconds is the candidate.
+Equal-distance candidates remain unassigned and count as both `ambiguous` and `unmatched`.
+An archive FIT that matches an already parsed activity is retained without switching that
+activity's active FIT path. The importer does not revise earlier automatic matches. Inspect a
+copy of the activity and file before manually correcting a suspected old mismatch.
+
 For a code regression already merged, revert the specific change through a tested PR. Avoid
 rewriting main: the Mac follows main automatically. Repository rollback does not require
 discarding raw Garmin payloads, which permit analytics to be rebuilt. Live restore and Mac
@@ -79,7 +91,8 @@ is still the last request-run log and must not be used as a freshness guarantee.
 New POSIX SQLite/HTML files use 0600 and new data/FIT/dashboard directories 0700; no chmod is
 applied to existing paths. Check permissions of pre-existing data/backups separately. Atomic
 HTML replacement preserves the old file on failure; an iCloud error warns and leaves local
-output available. Empty databases now render a waiting dashboard rather than crashing.
+output available. Only builds at the configured dashboard location are copied to iCloud.
+Custom output directories are local-only. Empty databases render a waiting dashboard.
 
 Requested MCP results may leave the Mac through the selected AI client/model provider.
 Cloudflare Access protects reader access; the HTML is still stored by Cloudflare. Keep the

@@ -39,6 +39,14 @@ class FitDecodeError(ValueError):
     pass
 
 
+def cadence_units(activity_type: str | None) -> tuple[int, str | None]:
+    """Scale one-foot running cadence to steps; keep cycling pedal revolutions as read."""
+    kind = activity_type or ""
+    if "run" in kind:
+        return 2, "steps/min"
+    return 1, "rev/min" if "cycl" in kind else None
+
+
 def retain_file(directory: Path, activity_id: int, data: bytes) -> Path:
     """Keep received FIT bytes without replacing a different file."""
     original = directory / f"{activity_id}.fit"

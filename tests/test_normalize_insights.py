@@ -98,6 +98,48 @@ def test_activity_detail(conn):
     assert json.dumps(out)
 
 
+def test_activity_detail_reports_cycling_and_running_cadence_units(conn):
+    from garmin_mcp import coaching
+
+    conn.executemany("INSERT INTO activities(activity_id,type,updated_at) VALUES (?,?,'x')",
+                     [(1, "running"), (2, "indoor_cycling")])
+    conn.executemany("INSERT INTO fit_records(activity_id,ts,cadence) VALUES (?,'2026-11-20T07:00:00Z',90)",
+                     [(1,), (2,)])
+    conn.executemany("INSERT INTO fit_laps(activity_id,lap_index,avg_cadence) VALUES (?,0,90)", [(1,), (2,)])
+    for aid, cadence, unit in ((1, 180, "steps/min"), (2, 90, "rev/min")):
+        detail = insights.activity_detail(conn, aid)
+        for values in (detail["running_form_from_fit"], detail["laps"][0]):
+            assert (values["avg_cadence_spm"], values["cadence_unit"]) == (cadence, unit)
+        sampled = coaching.activity_stream(conn, aid)
+        assert (sampled["stream"][0]["cadence_spm"], sampled["cadence_unit"]) == (cadence, unit)
+
+
+def test_fitness_age_as_of_uses_earlier_readings(conn):
+    from garmin_mcp import coaching, dashboard
+
+    rebuild(conn)
+    db.put_daily(conn, "pa_fitness_age", "2026-11-01", "personal_api", {"fitnessAge": 27})
+    db.put_daily(conn, "pa_fitness_age", "2026-11-03", "personal_api", {"fitnessAge": 25})
+    conn.executemany("INSERT INTO training(day,vo2max_run) VALUES (?,?)",
+                     [("2026-11-01", 48), ("2026-11-03", 51)])
+    archived = coaching.fitness_age(conn, "2026-11-02")
+    assert (archived["garmin_fitness_age"], archived["vo2max_run"]) == (27, 48)
+    assert coaching.fitness_age(conn)["vo2max_run"] == 51
+    conn.executemany("INSERT INTO activities(activity_id,start_time_local,updated_at) VALUES (?,?,'x')",
+                     [(1, "2026-11-03T07:00:00"), (2, "2026-11-01T07:00:00")])
+    conn.executemany("INSERT INTO fit_profile(activity_id,weight_kg) VALUES (?,?)", [(1, 76), (2, 78)])
+    assert dashboard._weight(conn, "2026-11-02") == 78
+
+
+def test_setting_change_marks_dashboard_for_regeneration(conn, monkeypatch):
+    from garmin_mcp import server
+
+    monkeypatch.setattr(server, "_with_db", lambda fn: fn(conn))
+    result = server.update_athlete_setting("timezone", "Asia/Kolkata")
+    assert result["recalculated"]
+    assert conn.execute("SELECT value FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()[0] == "1"
+
+
 def test_units_floors_metres_distance_and_timestamp_format(conn):
     from garmin_mcp.normalize import _ms_to_iso, daily_from_summary
 
@@ -114,15 +156,33 @@ def test_verify_passes_on_consistent_sources(conn):
     from garmin_mcp import verify
 
     _seed(conn)
+    conn.execute("DELETE FROM raw_daily WHERE dataset='ex_daily_summary'")
     db.put_daily(conn, "pa_sleep", DAY, "personal_api", {
         "calendarDate": DAY, "deepSleepSeconds": 3600, "lightSleepSeconds": 14400,
         "remSleepSeconds": 7200, "sleepStartTimestampGMT": EPOCH_MS - 7 * 3600 * 1000,
         "sleepScores": {"overall": {"value": 82}}})
-    db.put_daily(conn, "ex_sleep", "2026-11-21", "export", {"calendarDate": "2026-11-21"})
     conn.commit()
     rebuild(conn)
     result = verify.run(conn)
     assert result["ok"], result["problems"]
+    assert any(row["table"] == "sleep" and row["column"] == "sleep_s"
+               and row["agree"] == "1/1" for row in result["agreement"])
+
+
+def test_verify_checks_latest_finished_archive_day(conn):
+    from garmin_mcp import engine, verify
+
+    rebuild(conn)
+    today = datetime.now(engine._tz(conn)).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    conn.execute("INSERT INTO daily(day, steps) VALUES (?, 100001)", (yesterday,))
+    result = verify.run(conn)
+    assert "daily.steps: 1 values outside 0-100000 steps" in result["problems"]
+    conn.execute("DELETE FROM daily")
+    conn.execute("INSERT INTO daily(day, steps) VALUES (?, 100001)", (today.isoformat(),))
+    assert verify.run(conn)["ok"]
+
+
 def test_provenance_distinguishes_completed_sync_from_successful_request(conn):
     from garmin_mcp import db, server
     from garmin_mcp.normalize import rebuild
