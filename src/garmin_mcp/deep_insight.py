@@ -10,6 +10,8 @@ from pathlib import Path
 
 from garmin_mcp.config import data_dir
 
+INSIGHT_CONTRACT = 2
+
 
 @dataclass(frozen=True)
 class Evidence:
@@ -57,7 +59,7 @@ LENSES = {
     "sleep": "Pay attention to the relationship between sleep and recovery readings.",
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
     "running_review": "Look for a contrast between running frequency and a measured response on the latest run. "
-                      "Pulse, pace and cadence describe the recording. Avoid conclusions about fitness or effort felt. "
+                      "Describe pulse, pace or cadence as up, down or similar in the recording. "
                       "Ask what pattern is worth checking on the next comparable run.",
     "sunday_review": "Connect the week's training frequency and sleep in plain language. Training frequency "
                      "is a count of workouts. It does not measure training volume, load, or intensity. "
@@ -259,7 +261,7 @@ SYSTEM = (
     "Keep counts, duration, load and intensity distinct. Treat a single workout as one example. "
     "For the question, ask whether the measured pattern repeats in the next comparable record. "
     "Earlier rows are context only and can overlap current windows. Stay with what was measured. "
-    "Avoid causes, diagnoses, how the athlete felt, calculated ratios, advice and forecasts. "
+    "Use measured verbs such as was, rose, fell or stayed. Avoid causes, diagnoses, ratios, advice and forecasts. "
     "Use at least two current domains. If nothing useful stands out, return empty strings and an empty list."
 )
 REVIEW_REASONS = ("supported", "wrong_comparison", "unsupported_claim", "advice_or_prediction")
@@ -318,7 +320,23 @@ class Insight:
     def response(self, raw):
         return self.assess(raw)[0]
 
-    def assess(self, raw):
+    def _repeat_question(self, ids):
+        domains = {self.rows[i - 1].domain for i in ids if not self.rows[i - 1].previous}
+        if self.lens == "sunday_review":
+            return "Do this week's workout count and sleep pattern recur next week?"
+        if self.lens == "running_review":
+            for domain, question in (
+                ("matched mechanics", "Does cadence change similarly on another run at comparable pace and grade?"),
+                ("pacing", "Do pace and pulse follow the same pattern on your next comparable run?"),
+                ("matched effort", "Does moving pulse stay in the same range on another run at a similar pace?"),
+                ("running form", "Does a run at a similar pace show the same cadence pattern?"),
+            ):
+                if domain in domains:
+                    return question
+            return "Does the same pattern recur in the next comparable training block?"
+        return "Does this pattern repeat in the next comparable set of readings?"
+
+    def assess(self, raw, *, repair_question=False):
         if isinstance(raw, str):
             fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", raw.strip(), re.DOTALL)
             if fenced:
@@ -338,13 +356,19 @@ class Insight:
                 or len({self.rows[i - 1].domain for i in ids if not self.rows[i - 1].previous}) < 2):
             return None, "missing_citations"
         observation = _plain(data["observation"], 9, 55)
-        question = _plain(data["question"], 5, 24)
-        if not observation or not question or question.count("?") != 1 or not question.endswith("?"):
+        if not observation:
             return None, "unsupported_wording"
-        if _UNMEASURED.search(f"{observation} {question}"):
+        if _UNMEASURED.search(observation):
             return None, "unsupported_claim"
         pattern = r"[+−-]?\d+(?:[.:/]\d+)*"
         allowed = {n for i in ids for n in re.findall(pattern, self.rows[i - 1].text)}
-        if re.search(pattern, question) or not set(re.findall(pattern, observation)) <= allowed:
+        if not set(re.findall(pattern, observation)) <= allowed:
             return None, "uncited_number"
+        question = _plain(data["question"], 5, 24)
+        if (not question or question.count("?") != 1 or not question.endswith("?")
+                or _UNMEASURED.search(question) or re.search(pattern, question)):
+            if not repair_question:
+                return None, "unsupported_question"
+            return {"observation": observation, "question": self._repeat_question(ids),
+                    "evidence": ids}, "question_reframed"
         return {"observation": observation, "question": question, "evidence": ids}, "valid"
