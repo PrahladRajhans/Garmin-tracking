@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-24
+
+- Rebuild Running with a next-run recommendation, completed four-week comparisons, weekly
+  distance, and an evidence-linked pace and moving-heart-rate plot. Add the
+  `running_performance_block` MCP tool.
+- Compare both moving-time halves and show prior comparable ranges for cadence, stride length,
+  ground contact, vertical oscillation, and vertical ratio. Explain each metric and offer a practical
+  check. Use the Kilometre splits toggle to align guides across the run timeline.
+- Give Running its own editable local Ollama prompt and evidence review. Add plain-language
+  explanations of training load and HRV, and improve the selected-chart readout across pages.
+
+- Expose the thinking draft budget, an editable local coaching voice and per-topic prompts.
+- Carry reviewed factual context across days and show the interpretation lens and evidence in Today.
+- Add a read-only monthly dashboard replay for archive testing. Record the repository inventory
+  and remove unused internal code and duplicate agent rules.
+- Distinguish Ollama decision-only models from models that can generate coaching text.
+- Add an opt-in thinking model for a daily cross-signal interpretation.
+- Generate original observations and testable follow-up questions from recorded sleep,
+  recovery and eligible matched-run evidence, with a separate review and linked source values.
+
+
 ## [0.25.0] - 2026-11-24
 
 - Inspect local Ollama models before inference, warm the selected model, and disable thinking

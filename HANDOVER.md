@@ -1,10 +1,22 @@
-# Handover: Garmin-tracking (state at v0.25.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.26.0, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.26.0 Running:** calendar blocks, pace and pulse plot, linked matched form, elapsed
+  kilometre guides, and a separate local running review. See the [roadmap](ROADMAP.md#running-performance-review)
+  and [running metrics](METRICS.md#running-performance-block).
+
+- **v0.26.0 audit and workflow:** adjustable thinking time, local coach profile and
+  bounded evidence carry-over. The 36-month synthetic dashboard replay passed. The private
+  archive and Mac inference remain to verify. See the [repository review](docs/REPOSITORY_REVIEW.md).
+
+- **v0.26.0:** opt-in Ollama thinking produces a separately labelled observation and
+  a next measurement question from linked cross-domain evidence. See
+  [model setup and evaluation](docs/OLLAMA.md#thinking-insights).
 
 - **v0.25.0:** WHOOP-inspired local journal and weekly plan, wake follow-up and Sunday review,
   distance-aligned route replay, and Ollama compatibility and fictional benchmarks. See

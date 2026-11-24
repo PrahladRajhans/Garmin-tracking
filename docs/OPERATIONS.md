@@ -88,3 +88,14 @@ moving HR vs Garmin activity HR. The named differences can reflect timing defini
 sampling. They are useful diagnostics for older exports, recent syncs and gaps, without an
 automatic claim of agreement or sensor accuracy. The ordinary data-quality verifier still
 covers unit ranges/source mappings and rebuilds tidy tables.
+
+## Offline monthly replay
+
+Use `garmin-mcp-verify --replay-dashboard` on the machine holding the Garmin archive.
+Replay samples the latest recorded day in up to 36 months from a temporary SQLite copy.
+It checks structural dashboard links and duplicate IDs. The result includes how many months
+had evidence for a coaching comparison. It does not render a live report, publish anything
+or run the model. The original archive stays read-only. See the
+[repository review](REPOSITORY_REVIEW.md) for fixture results and remaining checks.
+This is a structural replay. Some long-term panels read settings or records from the
+current archive, so use a separate as-of dataset for time-isolated model or forecast evaluation.

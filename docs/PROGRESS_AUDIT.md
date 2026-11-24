@@ -32,3 +32,18 @@ phone path. The bar is on Body. The private publisher exists and requires the ac
 and device checks in [MAC_SETUP](../MAC_SETUP.md#private-phone-access-optional).
 The original synthetic findings are historical. [ROADMAP](../ROADMAP.md) owns the order
 of outstanding work.
+
+## Coaching and repository follow-up
+
+The unreleased pass tracks the interpretation layout, local model and prompt controls, and
+the repository inventory in [the repository review](REPOSITORY_REVIEW.md). Three-year replay
+passed against generated fixtures. The owner's original Mac archive and the complete manual
+line review remain open. The [roadmap](../ROADMAP.md#repository-and-coaching-review) carries the
+order of work.
+
+## Running performance
+
+The running redesign adds a four-week comparison, pace-and-pulse evidence, matched form
+references, next-run checks, a separate local running review, and an elapsed kilometre
+overlay. The [running roadmap](../ROADMAP.md#running-performance-review) tracks open
+Mac archive validation, device checks and model selection.

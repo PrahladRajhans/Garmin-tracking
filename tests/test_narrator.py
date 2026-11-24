@@ -305,6 +305,20 @@ def test_diagnostics_distinguish_cache_from_file(conn, collected, http_fake, tmp
     assert all(path in {"/api/status", "/api/tags", "/api/show"} for _, path, _ in calls)
 
 
+def test_diagnostics_report_decision_only_models(conn, monkeypatch):
+    model = "nimble-v3:9b-q4_K_M"
+    narrator.configure(conn, model=model)
+    responses = {
+        "/api/status": {"cloud": {"disabled": True}},
+        "/api/tags": {"models": [{"name": model}]},
+        "/api/show": {"capabilities": ["decision"]},
+    }
+    monkeypatch.setattr(narrator, "_request", lambda _, path, *_args: responses[path])
+    status = narrator.check(conn)
+    assert status["ollama"] == "model_does_not_support_text_generation"
+    assert status["model_profile"]["text_generation"] is False
+
+
 def test_cited_voice_accepts_composition_and_rejects_unsupported_meaning():
     item = narrator.Item("sleep", {"sleep duration hours": 5.7, "Garmin sleep score": 75})
     fallback = "You slept 5.7 hours."

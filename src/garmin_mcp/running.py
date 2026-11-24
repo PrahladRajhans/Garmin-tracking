@@ -40,6 +40,32 @@ GAUGES: dict[str, list[tuple[float | None, str, str]]] = {
 LABELS = {"cadence_spm": "Cadence", "ground_contact_ms": "Ground contact time",
           "vertical_oscillation_cm": "Bounce (vertical oscillation)",
           "vertical_ratio_pct": "Vertical ratio", "step_length_m": "Stride length"}
+FORM_GUIDE = {
+    "cadence_spm": (
+        "Steps per minute. Your usual cadence changes with pace.",
+        ("If cadence repeatedly runs low at the same easy pace, try slightly quicker, shorter steps "
+        "for a brief stretch and keep the speed unchanged. Compare comfort with your usual stride."),
+    ),
+    "step_length_m": (
+        "Distance covered per step, recorded as stride length by Garmin.",
+        ("Compare it at the same pace. To check a shorter-step cue, keep speed steady and let cadence "
+        "rise naturally. Avoid reaching forward just to increase the number."),
+    ),
+    "ground_contact_ms": (
+        "Time one foot spends on the ground per step.",
+        ("If it stays longer than usual at the same pace, repeat on a similar surface and grade "
+        "before changing your stride."),
+    ),
+    "vertical_oscillation_cm": (
+        "How far your body moves up and down with each step.",
+        ("Compare on the same route and at the same pace. If you test a stride cue, watch how bounce "
+        "and comfort change together."),
+    ),
+    "vertical_ratio_pct": (
+        "Vertical motion divided by step length. A shorter step can raise it even when bounce stays steady.",
+        "When it shifts, check bounce and step length together. Use similar paces and the same sensor.",
+    ),
+}
 
 
 def rate(metric: str, value: float | None) -> dict[str, Any] | None:
@@ -61,15 +87,20 @@ def _fit(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
 
 
 def _history(conn: sqlite3.Connection, before: str | None, limit: int = 120,
-             read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None
+             read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None,
+             *, end: str | None = None, activity_type: str | None = None,
              ) -> list[dict]:
     from garmin_mcp.coaching import run_metrics
 
     q = ("SELECT activity_id, start_time_local FROM activities WHERE type LIKE '%run%' AND "
-         "fit_parsed=1 AND julianday(start_time_local) IS NOT NULL " + ("AND julianday(start_time_local) < julianday(?) " if before else "") +
+         "fit_parsed=1 AND julianday(start_time_local) IS NOT NULL "
+         "AND (? IS NULL OR substr(start_time_local,1,10)<=?) "
+         "AND (? IS NULL OR type=?) "
+         + ("AND julianday(start_time_local) < julianday(?) " if before else "") +
          "ORDER BY julianday(start_time_local) DESC LIMIT ?")
     out = []
-    for aid, ts in conn.execute(q, (before, limit) if before else (limit,)).fetchall():
+    filters = (end, end, activity_type, activity_type)
+    for aid, ts in conn.execute(q, (*filters, before, limit) if before else (*filters, limit)).fetchall():
         m = (read_metrics or run_metrics)(conn, aid)
         if m and m.get("avg_speed"):
             out.append({"activity_id": aid, "start": ts, **m})
@@ -78,7 +109,7 @@ def _history(conn: sqlite3.Connection, before: str | None, limit: int = 120,
 
 def personal_lines(hist: list[dict]) -> dict[str, Any]:
     lines = {}
-    for key in ("cadence_spm", "step_length_m", "ground_contact_ms", "vertical_ratio_pct"):
+    for key in FORM_GUIDE:
         pts = [(h["avg_speed"], h[key]) for h in hist if h.get(key)]
         f = _fit([p[0] for p in pts], [p[1] for p in pts])
         if f:
@@ -100,23 +131,13 @@ def running_breakdown(
         return {"available": False, "reason": "no second-by-second data for this run"}
     start = conn.execute("SELECT start_time_local, type FROM activities WHERE activity_id=?",
                          (aid,)).fetchone()
-    hist = _history(conn, start[0], read_metrics=read_metrics) if start and start[0] else []
-    lines = personal_lines(hist)
+    effort = run_evidence.matched_effort(conn, aid, m, read_metrics)
+    hist = _history(conn, start[0], read_metrics=read_metrics, activity_type=start[1]) if start and start[0] else []
+    history_by_id = {row["activity_id"]: row for row in hist}
+    matched = [history_by_id.get(row["activity_id"]) or read_metrics(conn, row["activity_id"]) or {}
+               for row in effort["matches"]]
+    form = form_comparison(m, personal_lines(hist), matched)
     speed = m["avg_speed"]
-    form = {}
-    for key in ("cadence_spm", "step_length_m", "ground_contact_ms", "vertical_oscillation_cm",
-                "vertical_ratio_pct"):
-        v = m.get(key)
-        if v is None:
-            continue
-        row: dict[str, Any] = {"label": LABELS[key], "value": v, "garmin_gauge": rate(key, v)}
-        ln = lines.get(key)
-        if ln and ln["min_speed_m_s"] <= speed <= ln["max_speed_m_s"]:
-            exp = ln["intercept"] + ln["slope_per_ms"] * speed
-            if math.isfinite(exp) and exp > 0:
-                row["your_usual_at_this_pace"] = round(exp, 3)
-                row["vs_usual_pct"] = round((v - exp) / exp * 100, 1)
-        form[key] = row
     eff = None
     if m.get("power_w") and weight_kg:
         eff = round(speed / (m["power_w"] / weight_kg), 3)
@@ -124,24 +145,52 @@ def running_breakdown(
     sessions = json.loads(session[0]) if session and session[0] else []
     recorded = sessions[0] if len(sessions) == 1 else {}
     cue = knee_cadence_experiment(conn, start[1], m) if start else None
-    effort = run_evidence.matched_effort(conn, aid, m, read_metrics)
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,
             "pacing": {"km_splits": m.get("km_splits"), "split_variation_pct":
                        m.get("split_cv_pct"), "negative_split": m.get("negative_split"),
+                       "km_crossings_s": m.get("km_crossings_s", []),
                        "km_split_s": m["km_split_s"], "half_split_delta_s": m["half_split_delta_s"],
                        "recorded_moving_s": m["moving_s"], "recorded_elapsed_s": m["recorded_elapsed_s"],
                        "garmin_timer_s": recorded.get("total_timer_time"),
                        "garmin_elapsed_s": recorded.get("total_elapsed_time"),
                        "hr_drift_bpm": m.get("hr_drift_bpm"),
+                       "effort_halves": m.get("effort_halves"),
                        "decoupling_pct": m.get("decoupling_pct")},
-            "work_on": suggestions(m, form, eff, cadence_experiment=cue),
+            "work_on": suggestions(m, form, cadence_experiment=cue),
             "cadence_experiment": cue,
             "comparable_effort": effort,
             "conditions_comparison": environment_review.comparable_runs(conn, effort),
             "conditions": conditions.for_activity(conn, aid),
             "comparison_runs": len(hist)}
+
+
+def form_comparison(metrics, lines, matched):
+    """Prefer a matched cohort for each observed form metric, with an in-range pace fit as fallback."""
+    speed = metrics["avg_speed"]
+    form = {}
+    for key, (meaning, check) in FORM_GUIDE.items():
+        measured = metrics.get(key)
+        if measured is None:
+            continue
+        row = {"label": LABELS[key], "value": measured, "garmin_gauge": rate(key, measured),
+               "meaning": meaning, "check": check}
+        prior = [value for m in matched if (value := m.get(key)) is not None
+                 and math.isfinite(value) and value > 0]
+        reference = None
+        if len(prior) >= run_evidence.MIN_MATCHES:
+            reference = statistics.median(prior)
+            row["matched_range"] = [min(prior), max(prior)]
+            row["reference_runs"] = len(prior)
+        elif (line := lines.get(key)) and line["min_speed_m_s"] <= speed <= line["max_speed_m_s"]:
+            reference = line["intercept"] + line["slope_per_ms"] * speed
+            row["reference_runs"] = line["runs"]
+        if reference and math.isfinite(reference) and reference > 0:
+            row["your_usual_at_this_pace"] = round(reference, 3)
+            row["vs_usual_pct"] = round((measured - reference) / reference * 100, 1)
+        form[key] = row
+    return form
 
 
 def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics: dict
@@ -171,13 +220,19 @@ def knee_cadence_experiment(conn: sqlite3.Connection, kind: str | None, metrics:
             "source": "https://pubmed.ncbi.nlm.nih.gov/20581720/"}
 
 
-def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None, *,
+def suggestions(m: dict[str, Any], form: dict[str, Any], *,
                 cadence_experiment: dict[str, Any] | None = None) -> list[str]:
     out = [cadence_experiment["suggestion"]] if cadence_experiment else []
     cad = form.get("cadence_spm") or {}
     if not cadence_experiment and cad.get("vs_usual_pct", 0) < -3:
-        out.append("Cadence was below your usual at this pace. Check terrain and how your "
-                   "stride felt on another easy run at the same pace.")
+        stride = form.get("step_length_m") or {}
+        if stride.get("vs_usual_pct", 0) > 3:
+            out.append("You took fewer steps per minute and covered more ground per step than usual at this pace. "
+                       "On a comfortable repeat run, try slightly shorter steps without speeding up and compare "
+                       "how both strides feel.")
+        else:
+            out.append("Cadence was below your usual at this pace. Check terrain and how your "
+                       "stride felt on another easy run at the same pace.")
     gct = form.get("ground_contact_ms")
     if gct and gct.get("vs_usual_pct", 0) > 4:
         out.append("Ground contact was longer than your usual at this pace. Compare on a "
@@ -198,13 +253,14 @@ def suggestions(m: dict[str, Any], form: dict[str, Any], eff: float | None, *,
 
 def form_trends(
     conn: sqlite3.Connection, days_runs: int = 60,
-    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None,
+    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None, end: str | None = None,
 ) -> dict[str, Any]:
-    hist = list(reversed(_history(conn, None, days_runs, read_metrics)))
+    hist = list(reversed(_history(conn, None, days_runs, read_metrics, end=end)))
     lines = personal_lines(hist)
     series = [{"date": h["start"][:10], "pace_s_per_km": round(1000 / h["avg_speed"]),
                "cadence_spm": h.get("cadence_spm"), "step_length_m": h.get("step_length_m"),
                "ground_contact_ms": h.get("ground_contact_ms"),
+               "vertical_oscillation_cm": h.get("vertical_oscillation_cm"),
                "vertical_ratio_pct": h.get("vertical_ratio_pct"),
                "efficiency_factor": h.get("efficiency_factor")} for h in hist]
     return {"runs": len(series), "series": series, "personal_lines": lines,
@@ -215,7 +271,7 @@ def form_trends(
 # --------------------------------------------------------------------------- test tracking
 def test_runs(
     conn: sqlite3.Connection, tolerance: float = 0.10,
-    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None,
+    *, read_metrics: Callable[[sqlite3.Connection, int], dict | None] | None = None, end: str | None = None,
 ) -> dict[str, Any]:
     """Standardised test tracking (roadmap 8.11) without asking you to run special tests.
 
@@ -231,7 +287,8 @@ def test_runs(
             f"SELECT activity_id, start_time_local, name, distance_m FROM activities "
             f"WHERE type IN ({','.join('?' * len(RUN_TYPES))}) AND fit_parsed=1 "
             "AND distance_m > 0 AND julianday(start_time_local) IS NOT NULL "
-            "ORDER BY julianday(start_time_local)", RUN_TYPES):
+            "AND (? IS NULL OR substr(start_time_local,1,10)<=?) "
+            "ORDER BY julianday(start_time_local)", (*RUN_TYPES, end, end)):
         m = (read_metrics or run_metrics)(conn, aid)
         if m and m.get("efficiency_factor") and m.get("steady"):
             rows.append({"activity_id": aid, "date": ts[:10], "km": round((dist or 0) / 1000, 2),

@@ -119,6 +119,33 @@ Before changing model tags, run a fictional benchmark on the Mac:
 The benchmark uses fictional inputs. The diagnostics report the active model, thinking support
 and its last benchmark. Evaluate the model before making it active.
 
+### Try a larger thinking model
+
+Pull the model in Ollama, then test it on fictional data before enabling it on your archive.
+
+```bash
+ollama pull qwen3.5:9b
+.venv/bin/garmin-mcp-narrator --eval-insight --model qwen3.5:9b
+```
+
+Try the other fictional cases using `--insight-case`. If the observations are accepted and
+useful, activate the chosen tag and verify the installed configuration.
+
+```bash
+.venv/bin/garmin-mcp-narrator --enable --model qwen3.5:9b --thinking --thinking-minutes 10
+.venv/bin/garmin-mcp-narrator --check
+```
+
+`qwen3.8:27b` is a newer candidate. Ollama lists its download at about 18 GB. The Mac also
+needs room for the working context and the system. Use the same fictional checks before
+switching to that tag. When memory is limited, compare using the existing `qwen3.5:4b` download.
+[Qwen3.5 tags](https://ollama.com/library/qwen3.5/tags) · [Qwen3.8 tags](https://ollama.com/library/qwen3.8/tags).
+
+
+Run `.venv/bin/garmin-mcp-verify --replay-dashboard` on the Mac to check up to 36
+monthly snapshots from the local archive. This uses a temporary SQLite copy and prints
+aggregate checks. See [archive replay details](docs/REPOSITORY_REVIEW.md#how-to-validate-on-the-mac).
+
 ## Private phone access (optional)
 
 This part is new in v0.13.1. It is implemented and tested with stand-ins, but **not yet deployed

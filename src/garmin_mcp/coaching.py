@@ -101,20 +101,21 @@ def _minute_speeds(intervals: list[tuple[float, float, float, float | None]]) ->
 
 
 def _half_efficiency(intervals: list[tuple[float, float, float, float | None]],
-                     start: float, end: float) -> tuple[float, float] | None:
-    elapsed = valid = speed_sum = hr_sum = 0.0
-    for dt, _, graded, hr in intervals:
+                     start: float, end: float) -> tuple[float, float, float] | None:
+    elapsed = valid = speed_sum = raw_speed_sum = hr_sum = 0.0
+    for dt, speed, graded, hr in intervals:
         overlap = max(0.0, min(end, elapsed + dt) - max(start, elapsed))
         if hr is not None and overlap:
             valid += overlap
             speed_sum += overlap * graded
+            raw_speed_sum += overlap * speed
             hr_sum += overlap * hr
         elapsed += dt
         if elapsed >= end:
             break
     if valid < 0.9 * (end - start) or not hr_sum:
         return None
-    return speed_sum * 60 / hr_sum, hr_sum / valid
+    return speed_sum * 60 / hr_sum, hr_sum / valid, raw_speed_sum / valid
 
 
 def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | None]:
@@ -163,16 +164,19 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
     gs = sum(dt * graded for dt, _, graded, _ in intervals) / dur
     avg_speed = sum(dt * speed for dt, speed, _, _ in intervals) / dur
     whole = _half_efficiency(intervals, 0, dur)
-    ef, hr = whole if whole else (None, None)
-    decoupling = drift = None
+    ef, hr, _ = whole if whole else (None, None, None)
+    decoupling = drift = halves = None
     if steady:
         first = _half_efficiency(intervals, 0, dur / 2)
         second = _half_efficiency(intervals, dur / 2, dur)
         if first and second:
-            ef1, h1 = first
-            ef2, h2 = second
+            ef1, h1, speed1 = first
+            ef2, h2, speed2 = second
             decoupling = (ef1 - ef2) / ef1 * 100
             drift = h2 - h1
+            if dur >= 0.8 * (rows[-1]["t"] - rows[0]["t"]):
+                halves = [{"pace_s_per_km": round(1000 / speed), "hr": _r(pulse)}
+                          for speed, pulse in ((speed1, h1), (speed2, h2))]
     cadence_samples = [cadence for r in mov if isinstance(cadence := r["cadence"], (int, float))
                        and math.isfinite(cadence) and cadence > 0]
     cad = _mean(cadence_samples)
@@ -187,6 +191,7 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
         "avg_speed": avg_speed, "graded_speed": gs, "avg_hr": _r(hr),
         "efficiency_factor": _r(ef, 3), "decoupling_pct": _r(decoupling),
         "hr_drift_bpm": _r(drift),
+        "effort_halves": halves,
         "cadence_spm": _r(cad * 2) if cad else None,
         "cadence_coverage_pct": _r(100 * len(cadence_samples) / len(mov)),
         "step_length_m": _r(step / 1000, 3) if step else None,
@@ -196,6 +201,7 @@ def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
         "power_w": _r(_mean([r["power"] for r in mov if r["power"]])),
         "temperature_c": _r(_mean([r["temperature"] for r in mov if r["temperature"] is not None])),
         "km_splits": [_hms(s) for s in splits],
+        "km_crossings_s": [_r(s, 2) for s in itertools.accumulate(splits)],
         "km_split_s": [_r(s) for s in splits], "half_split_delta_s": _r(split_delta),
         "split_cv_pct": _r(split_cv),
         "negative_split": split_delta < -1 if split_delta is not None else None,
