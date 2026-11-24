@@ -58,8 +58,9 @@ LENSES = {
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
     "running_review": "Think like a distance-running coach reviewing a training log. Look for a contrast "
                       "between repeatability and a single workout, then propose a measurement that would settle it.",
-    "sunday_review": "In two short sentences, connect the week's training and sleep. Name a change only when the "
-                     "readings establish it. The dashboard displays the existing plan separately.",
+    "sunday_review": "Connect the week's training frequency and sleep in plain language. Training frequency "
+                     "is a count of workouts. It does not measure training volume, load, or intensity. "
+                     "The dashboard displays the next plan separately.",
 }
 
 
@@ -240,7 +241,8 @@ SYSTEM = (
     "contrast across signals. Separate single efforts from multi-day averages. Describe what the "
     "measurements show without inferring how the athlete felt, what caused the difference, "
     "or what will happen next. Cite the IDs you used across at least two domains. Use numbers "
-    "only when they help, copied exactly from cited readings. Ask one neutral question about "
+    "only when they help, copied exactly from cited readings. Keep each measurement paired with "
+    "its unit and time window. Avoid computed ratios, even in words. Ask one neutral question about "
     "whether the same signals repeat when measured again. Keep the question free of targets, "
     "new quantities, and advice. "
     "Output JSON with observation and question strings and an evidence array of IDs. "

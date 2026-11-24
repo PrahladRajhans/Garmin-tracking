@@ -35,8 +35,8 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 The [request audit](docs/PROGRESS_AUDIT.md#claude-suggestion-checklist) records the outstanding
 Claude suggestions. The [repository review](docs/REPOSITORY_REVIEW.md#dependency-and-failure-paths)
 records what changes affect downstream. The [file register](docs/repository-review-queue.tsv)
-is the file-by-file work record. The IDs below are the implementation sequence. All steps
-below remain pending or need acceptance evidence. This planning pass only records scope.
+is the file-by-file work record. The IDs below are the implementation sequence. See the
+[execution log](docs/REPOSITORY_REVIEW.md#execution-log) for completed work and remaining acceptance.
 
 Execution began 24 November 2026 from `aa14346` using Python 3.12.14. The first slice
 reviews source requests, retained activity evidence, and the old-database path. Its gate
@@ -183,6 +183,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.25.0 | Model evaluation, wake follow-up, Sunday review, journal, planned vs done, route replay | Synthetic and local inference checks passed. Mac archive acceptance pending. |
 | 0.26.0 | Running dashboard, matched dynamics, split guides, local running review, archive replay and revision retention | Merged and published. Browser, synthetic archive and local checks recorded in [PR #31](https://github.com/PrahladRajhans/Garmin-tracking/pull/31). |
 | 0.26.1 | Qwen3.5 4B default and one-time upgrade of the former default | Merged and published. 234 tests, CI, and five fictional routine summaries accepted on local Ollama. Mac acceptance open. [PR #32](https://github.com/PrahladRajhans/Garmin-tracking/pull/32). |
+| 0.27.0 | Running form by comparable halves, weekly bedtime trial, Sunday AI and status, source/archive repairs and file audit | See the [execution log](docs/REPOSITORY_REVIEW.md#execution-log) and [PR #33](https://github.com/PrahladRajhans/Garmin-tracking/pull/33). Mac and private archive acceptance remain open. |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)

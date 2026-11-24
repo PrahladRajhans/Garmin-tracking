@@ -1,6 +1,6 @@
 import pytest
 
-from garmin_mcp import bedtime_experiment
+from garmin_mcp import bedtime_experiment, dashboard
 from garmin_mcp.normalize import rebuild
 
 
@@ -29,3 +29,20 @@ def test_missing_recordings_do_not_shift_saved_target(conn):
     review = {"nights": {}, "anchor": {"wake": "08:00"}}
     result = bedtime_experiment.status(conn, "2026-11-25", review, 8)
     assert result["suggestion"] == "23:50"
+
+
+def test_saved_target_renders_with_and_without_recorded_nights(conn, monkeypatch):
+    monkeypatch.setenv("GARMIN_TZ", "UTC")
+    rebuild(conn)
+    day = "2026-11-24"
+    conn.execute("INSERT INTO daily(day,steps) VALUES (?,8000)", (day,))
+    bedtime_experiment.accept(conn, day, "00:00")
+    html = dashboard.render(dashboard.collect(conn, day))
+    assert "This week’s target" in html and "0 of 0 timed nights" in html
+
+    conn.execute("INSERT INTO sleep(day,sleep_s,sleep_start,sleep_end) VALUES (?,25200,?,?)",
+                 (day, "2026-11-23 23:30:00", "2026-11-24 06:30:00"))
+    html = dashboard.render(dashboard.collect(conn, day))
+    assert "This week’s target" in html and "1 of 1 timed nights" in html
+    assert "Recent nights" in html or "Past week" in html
+    assert f'href="#day-{day}"' in html

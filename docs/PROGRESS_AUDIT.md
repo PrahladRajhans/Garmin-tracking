@@ -67,7 +67,7 @@ evidence per step. Best efforts and durability claims remain separate evaluation
 | Claude's Sunday and AI status suggestions | Evidence-linked Sunday wording, the existing rule fallback and the current model's status with last accepted time. | The live Qwen Sunday draft was withheld. Compare with thinking on the Mac and evaluate stronger prose and action reasons across surfaces. |
 | One-step bedtime trial | A saved Monday target, gradual adjustments and dated comparisons of sleep, overnight HRV and Garmin readiness when enough measurements exist. | Review adherence and coverage on the owner's archive. A tailored strength progression and evening stress and Body Battery review are open. |
 | Running depth and charts | Pace- and grade-matched late-run mechanics, thinner elapsed split guides, keyboard focus, consistent knee guidance, and stricter trial comparison counts. | Verify against Garmin on real runs and observe the full trial loop. Evaluate best efforts and durability independently. |
-| Review and release | Per-file evidence register, dependency traces, source retry repair and compatibility fixes. Chromium and generated 36-month archive verification. | Finish the register's partial and pending paths. Mac, Safari, iCloud, optional protected hosting and private archive acceptance remain open. |
+| Review and release | All 160 baseline paths have a review record, with dependency traces and repair evidence. Chromium and generated 36-month archive verification. | Mac, Safari, iCloud, optional protected hosting, private archive and other runtime checks in the execution log remain open. |
 
 The [execution log](REPOSITORY_REVIEW.md#execution-log) records the order, evidence and
 remaining verification by workstream.

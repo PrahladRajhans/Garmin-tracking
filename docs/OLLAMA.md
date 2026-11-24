@@ -117,7 +117,7 @@ on successful writes. Earlier evidence is labeled and cannot replace the require
 domains. No generated narrative or reasoning is replayed. Ollama keeps model weights warm
 for requests in a batch; that does not itself preserve the athlete's history between requests.
 
-Use `--insight-case mixed-recovery`, `run-exception`, or `longer-sleep` with
+Use `--insight-case mixed-recovery`, `run-exception`, `longer-sleep`, or `sunday-review` with
 `--eval-insight` to preview prompts without the archive. Add `--no-thinking` to compare direct
 drafting without changing model settings. See the [model and audit notes](REPOSITORY_REVIEW.md).
 
@@ -158,6 +158,11 @@ simulated iCloud copy. Disabling removed the AI results from both files. A separ
 covered the experiment summary and verified that Today's chooser favored several nights of
 direct sleep evidence over an association. These runs used Linux. The owner's Mac, launchd
 job and iCloud and iPhone path remain in the [roadmap](../ROADMAP.md).
+
+On the v0.27.0 fictional Sunday case, the live Qwen3.5 4B direct draft first got the
+training evidence wrong by treating workout count as a jump in volume. The reviewer withheld
+it. After clarifying the distinction in the prompt, a second direct attempt took about 58 s
+and was also withheld. The weekly display still has its rule-written summary and dated links.
 
 ## Changes to review
 

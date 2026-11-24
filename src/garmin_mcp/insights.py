@@ -13,6 +13,7 @@ import statistics
 from datetime import date, timedelta
 from typing import Any
 
+from garmin_mcp.fit import cadence_units
 from garmin_mcp.normalize import TABLES
 
 
@@ -274,6 +275,7 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
         return None
     a = dict(a)
     summary = json.loads(a.pop("summary") or "{}")
+    cadence_scale, cadence_unit = cadence_units(a["type"])
     laps = [dict(r) for r in conn.execute(
         "SELECT lap_index, timer_s, distance_m, avg_hr, max_hr, avg_speed, avg_cadence, "
         "avg_power FROM fit_laps WHERE activity_id=? ORDER BY lap_index", (activity_id,))]
@@ -281,8 +283,8 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
         sp = lap.pop("avg_speed")
         lap["pace_min_km"] = _hms(1000 / sp) if sp else None
         cad = lap.pop("avg_cadence")
-        # FIT running cadence counts one foot; x2 = steps per minute (same as the run average).
-        lap["avg_cadence_spm"] = cad * 2 if cad and a["type"] and "run" in a["type"] else cad
+        lap["avg_cadence_spm"] = cad * cadence_scale if cad is not None else None
+        lap["cadence_unit"] = cadence_unit
     stream = conn.execute(
         "SELECT COUNT(*), AVG(heart_rate), AVG(cadence), AVG(power), AVG(vertical_oscillation),"
         " AVG(stance_time), AVG(step_length), MAX(altitude)-MIN(altitude), AVG(temperature) "
@@ -290,8 +292,8 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
     form = None
     if stream and stream[0]:
         form = {"samples": stream[0], "avg_hr": _r(stream[1]),
-                # FIT running cadence is one foot (strides/min); x2 = steps/min.
-                "avg_cadence_spm": _r(stream[2] * 2) if stream[2] else None,
+                "avg_cadence_spm": _r(stream[2] * cadence_scale) if stream[2] is not None else None,
+                "cadence_unit": cadence_unit,
                 "avg_power_w": _r(stream[3]),
                 "avg_vertical_oscillation_mm": _r(stream[4]),
                 "avg_ground_contact_ms": _r(stream[5]),

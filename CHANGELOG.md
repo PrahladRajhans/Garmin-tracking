@@ -22,6 +22,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   wake-window boundary, zero log-mean HRV, and validation of saved goals and workout steps.
 - Keep later trial runs, closure and notes out of earlier dashboard snapshots. Verify the
   last full day of an older archive while excluding the still-changing current day.
+- Match original FIT exports to the nearest unique activity start. Report ambiguous files,
+  retain revisions of already parsed activities, and reject malformed export dates. Compare
+  trial start and end boundaries by instant across both Garmin timestamp formats.
+- Fix cycling cadence in MCP activity details and streams. Use date-bounded fitness age,
+  VO₂max and run weight on historical dashboards. Refresh the dashboard after athlete settings change.
+- Keep saved bedtime targets visible alongside sleep history. Keep temporary builds out of iCloud
+  and omit the empty-state message when History has an intraday pulse or sleep reading.
 
 - Reconcile the owner's requests and Claude briefs with the shipped releases. Record priorities
   and separate repository verification from Mac, historical-archive and phone acceptance.

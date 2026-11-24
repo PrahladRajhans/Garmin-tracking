@@ -102,13 +102,12 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     hrv_info = recovery.hrv_status(hrv, end)
     hrv_info["previous_average"] = recovery.hrv_status(hrv, previous_week).get("rolling_7d_ms")
     runs = []
-    weight = _weight(conn)
     read_run = lru_cache(maxsize=160)(coaching.run_metrics)
     for aid, start, dist in conn.execute(
             "SELECT activity_id, start_time_local, distance_m FROM activities WHERE type LIKE "
             "'%run%' AND fit_parsed=1 AND substr(start_time_local,1,10)<=? "
             "ORDER BY julianday(start_time_local) DESC LIMIT 8", (end,)):
-        b = running.running_breakdown(conn, aid, weight, read_metrics=read_run, end=end)
+        b = running.running_breakdown(conn, aid, _weight(conn, start[:10]), read_metrics=read_run, end=end)
         if b.get("available"):
             interval = max(5, math.ceil((b["pacing"].get("recorded_elapsed_s") or 0)
                                          / TRACE_POINTS))
@@ -159,7 +158,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "shifts": health.shifts(conn, end),
         "ageing": health.pace_of_ageing(conn, end),
         "marathon": health.marathon_shape(conn, end),
-        "fitness_age": coaching.fitness_age(conn),
+        "fitness_age": coaching.fitness_age(conn, end),
         "predictions": loads.race_predictions(conn, end, 180),
         "month": health.monthly_report(conn, _prev_month(end)),
         "calendar": calendar, "workouts": workouts,
@@ -192,10 +191,13 @@ def _has(conn: sqlite3.Connection, t: str) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (t,)).fetchone() is not None
 
 
-def _weight(conn: sqlite3.Connection) -> float | None:
+def _weight(conn: sqlite3.Connection, end: str) -> float | None:
     if not _has(conn, "fit_profile"):
         return None
-    row = conn.execute("SELECT weight_kg FROM fit_profile ORDER BY rowid DESC LIMIT 1").fetchone()
+    row = conn.execute("SELECT p.weight_kg FROM fit_profile p JOIN activities a USING(activity_id) "
+                       "WHERE p.weight_kg > 0 AND substr(a.start_time_local,1,10)<=? "
+                       "ORDER BY julianday(a.start_time_local) DESC, a.activity_id DESC LIMIT 1",
+                       (end,)).fetchone()
     return row[0] if row else None
 
 
@@ -896,16 +898,18 @@ def page_sleep(d: dict[str, Any]) -> str:
     review = d.get("sleep_review", {})
     nights = review.get("nights", {})
     last = max(nights, default=None)
-    if not last:
+    plan = d.get("bedtime_experiment", {})
+    if not last and not (plan.get("current") or plan.get("previous")):
         return _page("sleep", "Sleep", "No complete night recorded yet.", "")
     detail_days = set(d["calendar"]["detail_days"])
-    night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
-                  if last in detail_days else "")
-    body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
-            f'{_night_record(nights[last])}{night_link}'
-            + _narration(d.get("narration", {}).get("sleep")) + '</section>')
+    body = ""
+    if last:
+        night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
+                      if last in detail_days else "")
+        body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
+                f'{_night_record(nights[last])}{night_link}'
+                + _narration(d.get("narration", {}).get("sleep")) + '</section>')
     anchor = review["anchor"]
-    plan = d.get("bedtime_experiment", {})
     if anchor:
         suggested = plan.get("suggestion") or anchor.get("bedtime")
         target = (f'<p>Suggested bedtime <b>{_e(suggested)}</b></p>'
@@ -929,13 +933,13 @@ def page_sleep(d: dict[str, Any]) -> str:
         )
         evidence = (f'<ul class="rows">{comparisons}</ul>' if comparisons else
                     '<p class="sub">Collecting enough nights for a comparison.</p>')
-        if nights := tracked["nights"]:
+        if tracked_nights := tracked["nights"]:
             dates = "".join(_record_link(_date_label(row["day"]),
                                          "On time" if row["on_time"] else "Later",
                                          f'#day-{row["day"]}' if row["day"] in detail_days else None)
-                            for row in reversed(nights))
+                            for row in reversed(tracked_nights))
             evidence += f'<details><summary>Recorded nights</summary><ul class="record-list">{dates}</ul></details>'
-        body += _card(label, f'<p>In bed by <b>{_e(tracked["target"])}</b> · '
+        body += _card(label, f'<p>Sleep start by <b>{_e(tracked["target"])}</b> · '
                       f'{tracked["on_time"]} of {tracked["recorded"]} timed nights</p>{evidence}',
                       f'Week of {_date_label(tracked["week_start"])}', wide=True)
     debt = d["scores"]["sleep"].get("debt_7d_h")
@@ -2011,7 +2015,8 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         body += f'<nav class="day-neighbours wide" aria-label="Adjacent recorded days">{neighbours}</nav>'
     if readings:
         body += _card("Readings", f'<ul class="rows">{readings}</ul>')
-    if night := d.get("sleep_review", {}).get("nights", {}).get(day):
+    night = d.get("sleep_review", {}).get("nights", {}).get(day)
+    if night:
         body += f'<section class="sleep-band wide"><h3>Sleep</h3>{_night_record(night)}</section>'
     elif stages:
         body += _card("Recorded sleep stages", f'<ul class="rows">{"".join(stages)}</ul>')
@@ -2022,7 +2027,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
                      y_label="Heart rate (bpm)",
                      elapsed={hour: int(hour[:2]) for hour, _ in row["hourly_hr"]})
         body += _card("Heart rate during the day", pulse, "Average of samples in each recorded hour.", wide=True)
-    if not readings and not workouts:
+    if not any((readings, workouts, night, stages, row.get("hourly_hr"))):
         body += _card("Readings", '<p class="empty">No usable readings for this date.</p>')
     return _page(f"day-{day}", _date_label(day), "Garmin records for this date",
                  body, back=f"#month-{day[:7]}")
@@ -2572,7 +2577,11 @@ def _atomic_write(path: Path, content: str) -> None:
 def _snapshot_paths(out_dir: Path | None = None) -> tuple[Path, Path | None]:
     from garmin_mcp.config import data_dir
 
-    local = (out_dir or data_dir() / "dashboard") / "index.html"
+    configured = data_dir() / "dashboard"
+    selected = out_dir or configured
+    local = selected / "index.html"
+    if selected.resolve() != configured.resolve():
+        return local, None  # a custom build must not overwrite the owner's iCloud copy
     icloud = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
     return local, icloud / "Garmin" / "dashboard.html" if icloud.is_dir() else None
 

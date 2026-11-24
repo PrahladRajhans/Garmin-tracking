@@ -267,8 +267,8 @@ def athlete_context() -> dict[str, Any]:
 @mcp.tool()
 def update_athlete_setting(key: str, value: str, note: str | None = None) -> dict[str, Any]:
     """Save a setting the user stated, e.g. hr_max_override=198, goal_race='{"distance_km":10,
-    "date":"2027-03-01","target":"50:00"}', timezone='Asia/Kolkata'. Overrides apply to all
-    calculations after the next refresh_data/rebuild. Only save what the user said."""
+    "date":"2027-03-01","target":"50:00"}', timezone='Asia/Kolkata'. Recalculate now and
+    schedule the next dashboard build. Only save what the user said."""
     import json as _json
 
     from garmin_mcp import athlete
@@ -286,6 +286,8 @@ def update_athlete_setting(key: str, value: str, note: str | None = None) -> dic
     def run(c: sqlite3.Connection) -> dict[str, Any]:
         athlete.set_value(c, key, parsed, note)
         counts = rebuild(c)
+        if not counts.get("loads_error"):
+            _mark_dashboard_stale(c)
         return {"saved": {key: parsed}, "recalculated": not bool(counts.get("loads_error")),
                 "rebuild": counts}
 

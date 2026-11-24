@@ -16,8 +16,8 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
   closing a request. Model acceptance, private archive replay and iPhone delivery have
   separate checks.
 - The [detailed execution queue](ROADMAP.md#detailed-execution-queue) sequences the next work.
-  The [file register](docs/repository-review-queue.tsv) covers the 160 tracked paths in the
-  baseline. Completing it requires manual review evidence for each path.
+  The [file register](docs/repository-review-queue.tsv) records all 160 baseline paths
+  and three additions. Each entry identifies its role, what was reviewed and any remaining checks.
 
 - **v0.26.1:** Qwen3.5 4B is the shared default for local Ollama. A one-time upgrade replaces
   the saved former default and queues a refresh. See [Ollama setup and checks](docs/OLLAMA.md).

@@ -24,10 +24,10 @@ file target.
 ## File-by-file review record
 
 The [file register](repository-review-queue.tsv) lists all 160 tracked paths at v0.26.1
-(`aa14346`). It is the scope baseline. Include added, renamed and removed paths as the audit
-moves forward. The new register is outside the captured baseline. Its starting status
-`pending` means current manual-review evidence is missing for that path. This preserves the
-earlier static inventory and targeted findings without counting them as a closed manual review.
+(`aa14346`) and the three new paths in this release. Every path now has a review record.
+Ten paths are marked `fixed and verified`. Review records describe the source, tests and
+entry points examined. The remaining runtime, private archive and device gates are listed below.
+Include added, renamed and removed paths as the audit moves forward.
 
 For text files, record the reviewed headings or line ranges, their callers and inputs, the
 settings or flags that activate them, known gaps, decisions and tests. For assets, record where
@@ -67,9 +67,9 @@ and Running paths have dedicated coverage in the release tests.
 | Queue | Completed in this pass | Next acceptance or work |
 |---|---|---|
 | 00–05 · Baseline and restore | Baseline suite passed 234 tests. Replayed 36 generated months with no broken in-page links or duplicate IDs and verified the original digest. Restored a disposable SQLite copy with both FIT revisions, then reparsed and regenerated HTML. | Run the real archive replay and restore a private copy on the Mac. Check launchd, skipped and full sync, Ollama, iCloud and the iPhone's actual snapshot, with data and build times recorded separately. |
-| 10–16 · Code and data | Recorded line ranges, entry points and keep/fix decisions in the file register. Tested per-kind sync retry, legacy detail markers, malformed official pages, FIT dates and units, historical trial cutoffs, the latest archived day in data verification and boundary fixes in sleep, health and workouts. | Finish partial/pending register rows and the dynamic Mac, optional source and publishing branches. Recheck activity end times crossing midnight and potential dashboard page-module boundaries. |
-| 20–24 · Local AI | Added a Sunday-specific prompt, inspectable evidence and a deterministic fallback. Dashboard and CLI show model state and last accepted time. The live Linux Qwen3.5 4B direct Sunday trial finished in about 67 seconds and its draft was withheld. | Extend the evidence-to-action review across all display surfaces. Run the same cases on the owner's Mac with thinking enabled, compare suitable larger models, and measure usefulness, acceptance and latency. |
-| 30–34 · Readability | Checked nine dashboard pages at four widths in both themes in Chromium. Verified keyboard focus, split guides, overlay labels and a 390 px script-disabled run view. | Check physical Safari/Files, sparse and dense histories, theme readability in the remaining contexts, and accessibility beyond the measured component checks. |
+| 10–16 · Code and data | Recorded line ranges, entry points and decisions for all 160 baseline paths. Tested missing-detail retries, malformed official pages, FIT attachment and units, historical trial boundaries, archive day coverage and changes that need a dashboard rebuild. | Exercise the live Mac, optional source and publishing branches. Recheck activity end times crossing midnight, degraded FIT inputs, sparse minutes, rollback on malformed normalization and potential dashboard page-module boundaries. |
+| 20–24 · Local AI | Added a Sunday-specific prompt, inspectable evidence and a deterministic fallback. Dashboard and CLI show model state and last accepted time. Linux Qwen3.5 4B direct Sunday trials were withheld before and after clarifying that workout count does not express training volume. | Extend the evidence-to-action review across all display surfaces. Run the same cases on the owner's Mac, compare suitable larger models, and measure usefulness, acceptance and latency. |
+| 30–34 · Readability | Checked nine dashboard pages at four widths in both themes and 348 additional route and viewport cases in Chromium. Fixed Sleep after target acceptance, intraday History's empty state and custom-directory isolation from iCloud. Verified keyboard focus, split guides, overlay labels and a 390 px script-disabled run view. | Check physical Safari/Files, reading density on the owner archive, and accessibility beyond the measured component checks. |
 | 40–45 · Running | Matched early and late form on shared pace and grade, aligned split guides to the full FIT time origin and used the prior knee check for cadence and block advice. Trial efficiency claims now require three actual comparisons. | Compare against dated Garmin/FIT runs, exercise the full cue → recorded run → comparable repeat → next action loop, and evaluate best efforts and durability on the owner's archive. |
 | 50–53 · Sleep and later ideas | Persisted the accepted weekly bedtime target, recorded follow-up outcomes by date and linked the evidence from Sleep. | Verify the sleep loop on the Mac. The tailored strength progression, evening stress/Body Battery reflection, research comparisons and optional private digest remain in the queue. |
 

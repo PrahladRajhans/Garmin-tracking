@@ -111,3 +111,22 @@ def test_historical_trial_excludes_later_runs_and_notes(conn, monkeypatch):
     assert [a["activity_id"] for a in result["attempts"]] == [1]
     assert result["attempts"][0]["your_notes"]["knee_next_morning"] == 1
     assert not trials.status(conn, through=(date(2026, 11, 23), zone))["active"]
+
+
+def test_trial_timing_uses_actual_instants_for_both_garmin_formats(conn, monkeypatch):
+    from garmin_mcp import athlete, coaching
+
+    athlete.set_value(conn, "timezone", "Asia/Kolkata")
+    rows = [(1, "2026-11-18 16:30:00", "2026-11-18T11:00:00Z"),
+            (2, "2026-11-18 18:30:00", "2026-11-18T13:00:00Z"),
+            (3, "2026-11-18 18:45:00", None),
+            (4, "2026-11-18 20:00:00", None)]
+    conn.executemany("INSERT INTO activities(activity_id,start_time_local,start_time_gmt,"
+                     "type,fit_parsed,updated_at) VALUES (?,?,?,'running',1,'x')", rows)
+    trial = {"created": "2026-11-18T12:00:00+00:00", "closed": "2026-11-18T14:00:00+00:00"}
+    metrics = {"steady": True, "avg_speed": 3.0, "moving_s": 1800}
+    monkeypatch.setenv("GARMIN_TZ", "Asia/Kolkata")
+    monkeypatch.setattr(coaching, "run_metrics", lambda *_: metrics)
+
+    assert [a[0] for a in trials._attempt_runs(conn, trial)] == [2, 3]
+    assert [a["activity_id"] for a in trials._baseline(conn, trial, 2, metrics)] == [1]

@@ -28,6 +28,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence
+from garmin_mcp.fit import cadence_units
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
@@ -427,13 +428,15 @@ def activity_stream(conn: sqlite3.Connection, aid: int, every_s: int = 10) -> di
     rows = _rows(conn, aid)
     if not rows:
         return {"error": "no FIT records"}
+    kind = conn.execute("SELECT type FROM activities WHERE activity_id=?", (aid,)).fetchone()
+    cadence_scale, cadence_unit = cadence_units(kind[0] if kind else None)
     out, last = [], None
     t0 = rows[0]["t"]
     for r in rows:
         if last is None or r["t"] - last >= every_s:
             out.append({"t_s": round(r["t"] - t0), "hr": r["heart_rate"],
                         "pace": _pace(r["speed"]) if r["speed"] and r["speed"] > 0.5 else None,
-                        "cadence_spm": r["cadence"] * 2 if r["cadence"] else None,
+                        "cadence_spm": r["cadence"] * cadence_scale if r["cadence"] is not None else None,
                         "step_length_m": _r(r["step_length"] / 1000, 3) if r["step_length"] else None,
                         "ground_contact_ms": r["stance_time"],
                         "vertical_oscillation_cm": _r(r["vertical_oscillation"] / 10, 2)
@@ -445,6 +448,7 @@ def activity_stream(conn: sqlite3.Connection, aid: int, every_s: int = 10) -> di
                         "distance_km": _r((r["distance"] or 0) / 1000, 3)})
             last = r["t"]
     return {"activity_id": aid, "every_s": every_s, "points": len(out), "stream": out,
+            "cadence_unit": cadence_unit,
             "start_utc": datetime.fromtimestamp(t0, UTC).isoformat()}
 
 
@@ -479,11 +483,11 @@ def strength_trends(conn: sqlite3.Connection, end: str, days: int = 365) -> dict
 
 
 # --------------------------------------------------------------------------- fitness age
-def fitness_age(conn: sqlite3.Connection) -> dict[str, Any]:
+def fitness_age(conn: sqlite3.Connection, end: str = "9999-12-31") -> dict[str, Any]:
     """Garmin's fitness age with the levers Garmin itself reports (target and potential age)."""
     row = conn.execute("SELECT day, payload FROM raw_daily WHERE dataset IN "
-                       "('pa_fitness_age','fitness_age') AND payload != 'null' "
-                       "ORDER BY day DESC LIMIT 1").fetchone()
+                       "('pa_fitness_age','fitness_age') AND payload != 'null' AND day<=? "
+                       "ORDER BY day DESC, dataset DESC LIMIT 1", (end,)).fetchone()
     if not row:
         return {"available": False}
     p = json.loads(row[1])
@@ -498,8 +502,8 @@ def fitness_age(conn: sqlite3.Connection) -> dict[str, Any]:
                            "target": c.get("targetValue"),
                            "fitness_age_if_reached": _r(c.get("potentialAge"), 1),
                            "priority": c.get("priority"), "unit": unit})
-    vo2 = conn.execute("SELECT vo2max_run FROM training WHERE vo2max_run IS NOT NULL "
-                       "ORDER BY day DESC LIMIT 1").fetchone()
+    vo2 = (conn.execute("SELECT vo2max_run FROM training WHERE vo2max_run IS NOT NULL AND day<=? "
+                        "ORDER BY day DESC LIMIT 1", (end,)).fetchone() if _has(conn, "training") else None)
     return {"as_of": row[0], "garmin_fitness_age": _r(p.get("fitnessAge"), 1),
             "chronological_age": p.get("chronologicalAge"),
             "achievable_age": _r(p.get("achievableFitnessAge"), 1),

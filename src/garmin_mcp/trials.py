@@ -165,20 +165,30 @@ def _trial(conn: sqlite3.Connection, trial_id: int | None = None, *,
     return t
 
 
+def _activity_start(gmt: str | None, local: str | None, zone: ZoneInfo) -> datetime | None:
+    try:
+        stamp = datetime.fromisoformat(gmt or local or "")
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC if gmt else zone)
+
+
 def _attempt_runs(conn: sqlite3.Connection, trial: dict[str, Any], *,
-                  through_day: str = "9999-12-31") -> list[tuple]:
+                  through_day: str = "9999-12-31", zone: ZoneInfo | None = None) -> list[tuple]:
+    from garmin_mcp.engine import _tz
     from garmin_mcp.loads import RUN_TYPES
 
-    # Trial timestamps are UTC; compare with Garmin's GMT start when it exists.
-    created = trial["created"][:19].replace("T", " ")
-    end = (trial["closed"] or "9999")[:19].replace("T", " ")
+    zone = zone or _tz(conn)
+    created = datetime.fromisoformat(trial["created"])
+    end = datetime.fromisoformat(trial["closed"]) if trial["closed"] else datetime.max.replace(tzinfo=UTC)
     marks = ",".join("?" * len(RUN_TYPES))
-    return conn.execute(
-        f"SELECT activity_id, start_time_local, type FROM activities WHERE type IN ({marks}) "
-        "AND fit_parsed=1 AND COALESCE(start_time_gmt, start_time_local) > ? "
-        "AND COALESCE(start_time_gmt, start_time_local) <= ? "
-        "AND substr(start_time_local,1,10) <= ? ORDER BY start_time_local",
-        (*RUN_TYPES, created, end, through_day)).fetchall()
+    rows = conn.execute(
+        f"SELECT activity_id, start_time_local, type, start_time_gmt FROM activities WHERE type IN ({marks}) "
+        "AND fit_parsed=1 AND substr(start_time_local,1,10) BETWEEN ? AND ? "
+        "ORDER BY julianday(start_time_local), activity_id",
+        (*RUN_TYPES, created.astimezone(zone).date().isoformat(), through_day))
+    return [(aid, local, kind) for aid, local, kind, gmt in rows
+            if (start := _activity_start(gmt, local, zone)) is not None and created < start <= end]
 
 
 def garmin_feel(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
@@ -224,15 +234,24 @@ def _baseline(conn: sqlite3.Connection, trial: dict[str, Any], aid: int,
     """Steady runs of the same type before the trial started, near this attempt's pace and
     duration. Most recent first, at most MAX_BASELINE."""
     from garmin_mcp.coaching import run_metrics
+    from garmin_mcp.engine import _tz
 
     typ = conn.execute("SELECT type FROM activities WHERE activity_id=?", (aid,)).fetchone()
-    created = trial["created"][:19].replace("T", " ")
+    created = datetime.fromisoformat(trial["created"])
+    zone = _tz(conn)
     pace = 1000 / m["avg_speed"]
     out = []
-    for other, start in conn.execute(
-            "SELECT activity_id, start_time_local FROM activities WHERE type=? AND fit_parsed=1 "
-            "AND COALESCE(start_time_gmt, start_time_local) < ? ORDER BY start_time_local DESC "
-            "LIMIT 60", (typ[0] if typ else None, created)):
+    checked = 0
+    for other, start, gmt in conn.execute(
+            "SELECT activity_id, start_time_local, start_time_gmt FROM activities WHERE type=? AND fit_parsed=1 "
+            "AND substr(start_time_local,1,10) <= ? ORDER BY julianday(start_time_local) DESC",
+            (typ[0] if typ else None, created.astimezone(zone).date().isoformat())):
+        at = _activity_start(gmt, start, zone)
+        if at is None or at >= created:
+            continue
+        if checked == 60:
+            break
+        checked += 1
         o = run_metrics(conn, other)
         if not o or not o.get("steady") or not o.get("avg_speed"):
             continue
@@ -374,7 +393,8 @@ def status(conn: sqlite3.Connection, trial_id: int | None = None, *,
             f"No experiment running. Suggested: cadence about {sug} steps/min in 1-minute "
             "blocks on easy runs (knee-friendly)." if sug else
             "No experiment running.")}
-    runs = _attempt_runs(conn, trial, through_day=through[0].isoformat() if through else "9999-12-31")
+    runs = _attempt_runs(conn, trial, through_day=through[0].isoformat() if through else "9999-12-31",
+                         zone=through[1] if through else None)
     attempts = [attempt_review(conn, trial, aid, before=before or "9999-12-31")
                 for aid, _, _ in runs]
     done = [a for a in attempts if a.get("available")]

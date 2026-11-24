@@ -14,12 +14,14 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import re
 import sqlite3
 import zipfile
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,14 +87,17 @@ class ExportReader:
 
 def _calendar_day(value: Any) -> str | None:
     """Export dates come as 'YYYY-MM-DD', yyyymmdd ints, or epoch milliseconds."""
-    if isinstance(value, str):
-        return value[:10] if re.match(r"\d{4}-\d{2}-\d{2}", value) else None
-    if isinstance(value, (int, float)):
-        if value > 10**11:
-            return datetime.fromtimestamp(value / 1000, tz=UTC).date().isoformat()
-        text = str(int(value))
-        if len(text) == 8:
-            return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    try:
+        if isinstance(value, str):
+            return date.fromisoformat(value[:10]).isoformat() if re.match(r"\d{4}-\d{2}-\d{2}", value) else None
+        if type(value) in {int, float} and math.isfinite(value):
+            if value > 10**11:
+                return datetime.fromtimestamp(value / 1000, tz=UTC).date().isoformat()
+            text = str(int(value))
+            if len(text) == 8 and value == int(value):
+                return date.fromisoformat(text).isoformat()
+    except (ValueError, OverflowError, OSError):
+        pass  # an invalid export timestamp has no calendar day
     return None
 
 
@@ -221,18 +226,24 @@ def _iter_fit_files(reader: ExportReader, names: list[str]) -> Iterator[tuple[st
 def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list[str],
                      tolerance_s: int = 120) -> dict:
     """Attach activity FIT files to activities by matching session start time (UTC)."""
-    starts: dict[int, int] = {}
-    for row in conn.execute(
-        "SELECT activity_id, start_time_gmt FROM activities WHERE fit_parsed=0 "
-        "AND start_time_gmt IS NOT NULL"
+    starts = defaultdict(list)
+    parsed = set()
+    for activity_id, gmt, fit_parsed in conn.execute(
+        "SELECT activity_id, start_time_gmt, fit_parsed FROM activities WHERE start_time_gmt IS NOT NULL"
     ):
         try:
-            ts = datetime.strptime(row[1][:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
-        except ValueError:
+            stamp = datetime.fromisoformat(gmt)
+        except (TypeError, ValueError):
             continue
-        starts[int(ts.timestamp())] = row[0]
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        starts[int(stamp.timestamp())].append(activity_id)
+        if fit_parsed:
+            parsed.add(activity_id)
 
-    stats = {"fit_files": 0, "activity_files": 0, "attached": 0, "unmatched": 0, "errors": 0}
+    seconds = sorted(starts)
+    stats = dict.fromkeys(("fit_files", "activity_files", "attached", "already_parsed",
+                           "ambiguous", "unmatched", "errors"), 0)
     for _, data in _iter_fit_files(reader, names):
         stats["fit_files"] += 1
         try:
@@ -246,21 +257,28 @@ def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list
             continue
         stats["activity_files"] += 1
         start = sessions[0].get("start_time")
-        if not hasattr(start, "timestamp"):
+        if not isinstance(start, datetime):
             stats["unmatched"] += 1
             continue
-        epoch = int(start.timestamp())
-        match = next(
-            (starts[t] for t in range(epoch - tolerance_s, epoch + tolerance_s + 1) if t in starts),
-            None,
-        )
-        if match is None:
+        epoch = int((start if start.tzinfo else start.replace(tzinfo=UTC)).timestamp())
+        times = seconds[bisect_left(seconds, epoch - tolerance_s):bisect_right(seconds, epoch + tolerance_s)]
+        if not times:
             stats["unmatched"] += 1
             continue
+        closest = min(abs(stamp - epoch) for stamp in times)
+        candidates = [aid for stamp in times if abs(stamp - epoch) == closest for aid in starts[stamp]]
+        if len(candidates) != 1:
+            stats["unmatched"] += 1
+            stats["ambiguous"] += 1
+            continue
+        match = candidates[0]
         path = fit.retain_file(fit_dir(), match, data)
+        if match in parsed:
+            stats["already_parsed"] += 1
+            continue
         conn.execute("UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), match))
         fit.store(conn, match, data)
-        starts = {t: a for t, a in starts.items() if a != match}
+        parsed.add(match)
         stats["attached"] += 1
         conn.commit()
     return stats

@@ -1,11 +1,12 @@
 import io
 import json
 import zipfile
+from pathlib import Path
 
 from conftest import make_fit
 
 from garmin_mcp import db
-from garmin_mcp.importer import _calendar_day, run_import
+from garmin_mcp.importer import ExportReader, _calendar_day, import_fit_files, run_import
 
 # make_fit() sessions start 2026-11-01 07:00:00 UTC
 START_MS = 1793516400000
@@ -45,6 +46,35 @@ def test_calendar_day_formats():
     assert _calendar_day(20261101) == "2026-11-01"
     assert _calendar_day(START_MS) == "2026-11-01"
     assert _calendar_day("junk") is None
+    assert _calendar_day("2026-02-30") is None
+    assert _calendar_day(20269999) is None
+    assert _calendar_day(float("inf")) is None
+
+
+def test_import_fit_prefers_closest_and_preserves_new_revisions(conn, tmp_path):
+    reader = ExportReader(tmp_path)
+    name = "run.fit"
+    (tmp_path / name).write_bytes(make_fit(n=6))
+    conn.executemany("INSERT INTO activities(activity_id,start_time_gmt,updated_at) VALUES (?,?,'x')",
+                     [(1, "2026-11-01 06:58:30"), (2, "2026-11-01T12:30:00+05:30")])
+    assert import_fit_files(conn, reader, [name])["attached"] == 1
+    path = conn.execute("SELECT fit_path FROM activities WHERE activity_id=2").fetchone()[0]
+    assert path and conn.execute("SELECT fit_parsed FROM activities WHERE activity_id=1").fetchone()[0] == 0
+
+    (tmp_path / name).write_bytes(make_fit(n=7))
+    stats = import_fit_files(conn, reader, [name])
+    assert stats["already_parsed"] == 1 and not stats["attached"]
+    assert conn.execute("SELECT fit_path FROM activities WHERE activity_id=2").fetchone()[0] == path
+    assert len(list(Path(path).parent.glob("2-*.fit"))) == 1
+
+
+def test_import_fit_keeps_equal_start_matches_unassigned(conn, tmp_path):
+    (tmp_path / "run.fit").write_bytes(make_fit(n=6))
+    conn.executemany("INSERT INTO activities(activity_id,start_time_gmt,updated_at) VALUES (?,?,'x')",
+                     [(1, "2026-11-01 07:00:00"), (2, "2026-11-01T07:00:00Z")])
+    stats = import_fit_files(conn, ExportReader(tmp_path), ["run.fit"])
+    assert stats["ambiguous"] == stats["unmatched"] == 1 and not stats["attached"]
+    assert not conn.execute("SELECT 1 FROM activities WHERE fit_path IS NOT NULL").fetchone()
 
 
 def test_import_export_folder(conn, tmp_path):

@@ -263,6 +263,10 @@ and runtime error checks. The split checkbox accepted keyboard focus and its ela
 aligned across all three charts. The overlay remained readable with splits enabled. A 390 px
 run view also rendered with JavaScript disabled.
 
+An independent pass ran 348 route and viewport checks and six offline navigation, back and
+scroll checks on a fresh Chromium fixture. A separate build checked Sleep both before and
+after accepting a target, including a linked night and the Past week chart.
+
 Split guides measured 3.28:1 in Light and 5.35:1 in Dark against their chart background.
 Overlay readout text measured 6.22:1 in Light and 8.69:1 in Dark against its surface.
 The remaining [dashboard checks](../ROADMAP.md#3039-make-both-themes-readable-across-the-whole-dashboard)
