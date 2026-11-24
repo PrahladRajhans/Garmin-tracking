@@ -197,7 +197,9 @@ the assistant to execute, rather than a terminal sequence the owner needs to cop
   then open the production URL on the phone: private browsing must require login, a different
   email must be denied, and the owner's One-time PIN must open the dashboard. Test every page
   link and a run link. Check a direct deployment URL also requires login.
-- Check the next scheduled sync publishes an update. A dashboard build retains its local and
+- Check the next scheduled sync publishes an update. When accepted Ollama summaries arrive,
+  reload the protected URL and check that its AI status advances. Later scheduled runs can
+  retry a failed upload even when Garmin downloads are skipped. A dashboard build retains its local and
   iCloud copies even when uploading is refused or fails. Keep the Access apps in place for
   **all existing deployments**; disabling publishing does not remove cloud copies.
 

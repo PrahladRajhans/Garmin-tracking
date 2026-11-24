@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.27.3] - 2026-11-25
+
+- Republish the configured private Pages dashboard after an Ollama worker enriches the local
+  snapshot. Serialize uploads, stage the latest complete local HTML, and retry failed
+  publication on scheduled runs that skip Garmin downloads. Deduplicate successful uploads.
+
 ## [0.27.2] - 2026-11-25
 
 - Separate series identity from reference bands. Rated workout traces carry Garmin band

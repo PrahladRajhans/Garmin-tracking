@@ -329,6 +329,7 @@ def _rebuild_dashboard(conn) -> dict[str, Any]:
 
 def _refresh_dashboard_if_needed() -> dict[str, Any]:
     from garmin_mcp import dashboard, narrator
+    from garmin_mcp.publish import publish_if_enabled
 
     conn = db.connect(db_path())
     try:
@@ -336,11 +337,13 @@ def _refresh_dashboard_if_needed() -> dict[str, Any]:
             "SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
         if pending or dashboard.needs_rebuild():
             return _rebuild_dashboard(conn)
-        if narrator.settings(conn)["enabled"] and not narrator._sync_in_progress(conn):
-            path, _ = dashboard._snapshot_paths()
-            if snapshot := dashboard._snapshot_id(path):
-                narrator.start_worker(conn, path, snapshot)
-        return {}
+        if narrator._sync_in_progress(conn):
+            return {}
+        path, _ = dashboard._snapshot_paths()
+        if narrator.settings(conn)["enabled"] and (snapshot := dashboard._snapshot_id(path)):
+            narrator.start_worker(conn, path, snapshot)
+        result = publish_if_enabled(path)
+        return {"dashboard_publish": result} if result["status"] in {"published", "error"} else {}
     finally:
         conn.close()
 

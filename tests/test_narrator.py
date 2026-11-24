@@ -225,8 +225,15 @@ def test_total_budget_cuts_off_slow_response(conn, collected, http_fake):
     assert len(calls) == 4
 
 
-def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tmp_path, monkeypatch):
+@pytest.mark.parametrize("canonical", [True, False])
+def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tmp_path, monkeypatch, canonical):
+    from garmin_mcp import publish
+
     calls, answers = http_fake
+    published = []
+    monkeypatch.setattr(publish, "publish_if_enabled", lambda path: published.append(path.read_text()))
+    monkeypatch.setenv("GARMIN_DB_PATH", str(tmp_path / "test.db"))
+    out_dir = None if canonical else tmp_path
     monkeypatch.setattr(dashboard, "collect", lambda _: collected.copy())
     queued = []
 
@@ -238,11 +245,12 @@ def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tm
 
     monkeypatch.setattr(narrator, "start_worker", queue)
     narrator.configure(conn, enable=True)
-    path = dashboard.build(conn, tmp_path)
+    path = dashboard.build(conn, out_dir)
     assert len(queued) == 1
     answers.extend([(200, {"cloud": {"disabled": True}}), *(_answer(i) for i in (2, 3, 1, 3, 2))])
     narrator._worker(*queued[0])
     html = path.read_text()
+    assert published == ([html] if canonical else [])
     assert html.count("AI summary · facts checked") == html.count("Show the facts") == 6
     assert html.index("Next seven days") < html.index("Recovery is 46%.")
     assert "Recovery percent: 46" in html
@@ -250,11 +258,12 @@ def test_snapshot_first_and_background_enrichment(conn, collected, http_fake, tm
     assert "What to try next" in html
     assert "last accepted" in html
     before = len(calls)
-    dashboard.build(conn, tmp_path, queue_narration=True)
+    dashboard.build(conn, out_dir, queue_narration=True)
     assert len(queued) == 1 and len(calls) == before
     # The old worker can't overwrite a newly rendered snapshot.
     narrator._worker(*queued[0])
     assert len(calls) == before
+    assert published == ([html] if canonical else [])
 
 
 def test_render_status_changes_when_cloud_gate_blocks_worker(conn, collected, http_fake, tmp_path, monkeypatch):
@@ -388,3 +397,20 @@ def test_thinking_setup_requests_final_answer_only(monkeypatch):
     assert narrator._infer(model, profile, item, deadline) == ("You slept 6 hours.", "accepted")
     assert requests[-1][1]["think"] is False
     assert requests[-1][1]["options"]["num_ctx"] == 1024
+
+
+def test_worker_stops_if_newer_snapshot_arrives_during_inference(conn, collected, tmp_path, monkeypatch):
+    from garmin_mcp import publish
+
+    monkeypatch.setenv("GARMIN_DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(dashboard, "collect", lambda _: collected.copy())
+    narrator.configure(conn, enable=True)
+    local = dashboard.build(conn, queue_narration=False)
+    snapshot = dashboard._snapshot_id(local)
+    replacement = '<meta name="garmin-dashboard" content="newer">'
+    monkeypatch.setattr(narrator, "generate", lambda *a, **kw: dashboard._atomic_write(local, replacement))
+    monkeypatch.setattr(publish, "publish_if_enabled", lambda *a: pytest.fail("stale worker tried to publish"))
+
+    narrator._worker(tmp_path / "test.db", local.parent, snapshot)
+
+    assert local.read_text() == replacement
