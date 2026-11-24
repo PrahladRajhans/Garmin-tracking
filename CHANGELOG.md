@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   outcomes in `--eval-insight` and the last worker attempts per surface in `--check`.
 - Use recorded directions in Running prose and retain a valid observation when only the
   question needs replacement. The replacement asks about repeating a cited measurement.
+  Keep Running-specific wording in its own prompt so it does not change Sunday and daily reviews.
 - Reduce plotted marker size across scatter charts and make marker dots especially small
   on Running timelines and the pace-versus-pulse plot. Keep the selected-point indicator,
   nearest-point touch and keyboard interaction, split guides, and existing measurements.
