@@ -75,19 +75,17 @@ background against the existing archive after enabling, dashboard builds, and sc
 
    If this endpoint is unavailable, update Ollama. The narrator requires this confirmation
    before it sends any facts. See [Ollama's local-only settings](https://docs.ollama.com/faq#how-do-i-disable-ollama-cloud-features).
-3. Pull a local model. From the updated repo, reinstall the package and enable the narrator:
+3. Pull the default local model. From the updated repo, reinstall the package and enable the narrator:
 
    ```bash
-   ollama pull qwen2.5:3b-instruct
+   ollama pull qwen3.5:4b
    .venv/bin/pip install -e .
-   .venv/bin/garmin-mcp-narrator --enable --model qwen2.5:3b-instruct
+   .venv/bin/garmin-mcp-narrator --enable --model qwen3.5:4b
    ```
 
-   Start with a 3–4B model on an 8 GB Mac. The default 3B tag is about 1.9 GB to download.
-   On 16 GB or more you can try a 7–8B model, such as `qwen2.5:7b-instruct` (about 4.7 GB).
-   Allow memory for macOS and the model's working context. The
-   [3B tag](https://ollama.com/library/qwen2.5:3b-instruct) uses the Qwen license and the
-   [7B tag](https://ollama.com/library/qwen2.5:7b-instruct) uses Apache 2.0.
+   Existing installs using the former default switch on their next database open. If the tag
+   is already downloaded, use `.venv/bin/garmin-mcp-narrator --check` to confirm the switch.
+   Allow memory for macOS and the model's working context. [Qwen3.5 4B tag](https://ollama.com/library/qwen3.5:4b)
 4. Reload the local or iCloud dashboard after the worker has had time to run. Eligible
    pages show **AI summary · facts checked** and **Show the facts**. Today can also show
    an **AI-prioritized follow-up**. If results are missing, check the service and the local cache:

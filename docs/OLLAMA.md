@@ -5,6 +5,13 @@ Python calculates the numbers and training guidance, qualifies findings for the 
 checks the model's response. The saved dashboard can be read on a phone. Ollama runs on the
 computer that builds the file.
 
+The shared default model is `qwen3.5:4b`. On upgrade, saved settings using the previous
+`qwen2.5:3b-instruct` default move to Qwen3.5 once. Other model tags and the existing
+enabled and thinking settings are preserved. A separate `--model` selection made after
+the upgrade is saved normally. If Qwen3.5 has not been installed, download it with
+`ollama pull qwen3.5:4b`. The dashboard can still render its calculated guidance while the
+local model is unavailable.
+
 ## Coverage
 
 ### Thinking insights

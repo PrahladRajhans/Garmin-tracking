@@ -1,5 +1,6 @@
 import json
 import time
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -145,7 +146,7 @@ def test_opt_in_cache_and_input_boundaries(conn, collected, http_fake, monkeypat
     inputs = [json.loads(body["prompt"]) for _, _, body in calls[3:]]
     assert [item["item"] for item in inputs] == ["today", "last night's sleep", "seven-day training review",
                                                  "active experiment", "run"]
-    assert all(body["model"] == "qwen2.5:3b-instruct:local" and body["stream"] is False
+    assert all(body["model"] == "qwen3.5:4b:local" and body["stream"] is False
                for _, _, body in calls[3:])
     assert "The run was 5.7 km." in calls[-1][2]["system"]
     assert 2 in calls[-1][2]["format"]["properties"]["selection"]["items"]["enum"]
@@ -187,6 +188,27 @@ def test_settings_reject_cloud_or_external_model(conn, model):
     with pytest.raises(ValueError, match="downloaded local"):
         narrator.configure(conn, enable=True, model=model)
     assert not narrator.settings(conn)["enabled"]
+
+
+@pytest.mark.parametrize(("legacy", "expected", "rebuild_needed"), [
+    ("qwen2.5:3b-instruct", "qwen3.5:4b", True),
+    ("qwen3.5:9b", "qwen3.5:9b", False),
+])
+def test_default_model_upgrade_only_changes_the_former_default(conn, legacy, expected, rebuild_needed):
+    path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    state = {"enabled": True, "thinking": True, "thinking_minutes": 5, "model": legacy}
+    with conn:
+        conn.execute("DELETE FROM meta WHERE key='narrator_qwen35_default'")
+        conn.execute("INSERT INTO meta VALUES ('ai_narrator', ?)", (json.dumps(state),))
+
+    with closing(db.connect(path)) as upgraded:
+        assert narrator.settings(upgraded) == {**state, "model": expected}
+        pending = upgraded.execute("SELECT 1 FROM meta WHERE key='dashboard_rebuild_pending'").fetchone()
+        assert bool(pending) is rebuild_needed
+        narrator.configure(upgraded, model="qwen2.5:3b-instruct")
+
+    with closing(db.connect(path)) as reopened:
+        assert narrator.settings(reopened)["model"] == "qwen2.5:3b-instruct"
 
 
 def test_total_budget_cuts_off_slow_response(conn, collected, http_fake):

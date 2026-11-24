@@ -1,10 +1,13 @@
-# Handover: Garmin-tracking (state at v0.26.0, 2026-11-24)
+# Handover: Garmin-tracking (state at v0.26.1, 2026-11-24)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.26.1:** Qwen3.5 4B is the shared default for local Ollama. A one-time upgrade replaces
+  the saved former default and queues a refresh. See [Ollama setup and checks](docs/OLLAMA.md).
 
 - **v0.26.0 Running:** calendar blocks, pace and pulse plot, linked matched form, elapsed
   kilometre guides, and a separate local running review. See the [roadmap](ROADMAP.md#running-performance-review)

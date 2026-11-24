@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-11-24
+
+- Use local Qwen3.5 4B by default for every Ollama review and summary. Move saved installs
+  using the former Qwen2.5 default on first open and refresh their dashboard.
+
 ## [0.26.0] - 2026-11-24
 
 - Rebuild Running with a next-run recommendation, completed four-week comparisons, weekly

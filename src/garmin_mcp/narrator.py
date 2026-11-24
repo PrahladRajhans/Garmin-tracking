@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from garmin_mcp import coach_review, deep_insight
+from garmin_mcp.config import DEFAULT_NARRATOR_MODEL as DEFAULT_MODEL
 
-DEFAULT_MODEL = "qwen2.5:3b-instruct"
 ITEM_SECONDS = 20
 SYNC_SECONDS = 120
 DEFAULT_THINKING_MINUTES = 10
