@@ -271,7 +271,7 @@ def _point(x: float, y: float, label: str, value: str, cls: str = "hit",
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
            x_label: str, y_label: str, controls: str = "",
            *, condition_labels: list[str] | None = None,
-           compact: bool = False) -> str:
+           compact: bool = False, dense: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
@@ -279,7 +279,7 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
                '<circle r="3.3"/></g>')
     caption = '<figcaption class="chart-readout"><strong></strong><span></span></figcaption>'
     lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
-    layout = " chart-compact" if compact else ""
+    layout = (" chart-compact" if compact else "") + (" chart-dense" if dense else "")
     return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}>'
             f'{controls}<span class="sr-only" role="status"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
@@ -466,7 +466,7 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
             w: int = W, h: int = 238, x_unit: str = "", y_unit: str = "", lag: int = 0,
-            *, absolute_x: bool = False, absolute_y: bool = False, x_format=None) -> str:
+            *, absolute_x: bool = False, absolute_y: bool = False, x_format=None, dense: bool = False) -> str:
     """Signed axes show how each measurement differs from its own recent average."""
     points = [(d, a, b) for d, a, b in points if math.isfinite(a) and math.isfinite(b)]
     if len(points) < 3:
@@ -514,7 +514,7 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
         y_value = f"{b:g}" if absolute_y else f"{b:+.2f}"
         value = f"{xl}: {x_value} · {yl}: {y_value} {y_unit}"
         g.append(_point(x(a), y(b), when, value, "pt"))
-    return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label)
+    return _chart("scatter", g, w, h, (left, right, top, bottom), x_label, y_label, dense=dense)
 
 
 def gauge(value: float | None, bands: list[tuple[float | None, str, str]], lo: float,
@@ -1301,7 +1301,7 @@ def _running_block(d: dict[str, Any]) -> str:
     efforts = block["efforts"]
     points = [(row["day"], row["pace_s_per_km"], row["pulse"]) for row in efforts]
     chart = both(scatter, points, "Pace", "Moving heart rate", None, x_unit="/km", y_unit="bpm",
-                 absolute_x=True, absolute_y=True, x_format=_run_pace)
+                 absolute_x=True, absolute_y=True, x_format=_run_pace, dense=True)
     run_ids = {r["activity_id"] for r in d["runs"]}
     evidence = []
     for row in efforts:
@@ -1780,7 +1780,7 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     controls = (f'<div class="overlay-options" role="group" aria-label="Compare with">'
                 f'<span>Compare with</span>{"".join(buttons)}</div>') if buttons else ""
     return _chart("line", g, w, h, (left, right, top, bottom), "Elapsed time", axis_a,
-                  controls=controls,
+                  controls=controls, dense=True,
                   condition_labels=list(context_labels))
 
 
@@ -2323,7 +2323,8 @@ font-size:14px;font-weight:650;width:max-content}
 .zone-dot{stroke:var(--surface);stroke-width:.7;r:3px}
 .zone-red{fill:var(--bad)}.zone-orange{fill:var(--serious)}.zone-green{fill:var(--good)}
 .zone-blue{fill:var(--s1)}.zone-purple{fill:var(--purple)}
-.hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.8;r:4px}
+.hit{fill:transparent}.pt{fill:var(--s1);fill-opacity:.85;r:1.6px}
+.chart-dense :is(.pt,.zone-dot,.context-dot){r:.95px;stroke:none}
 .fit{stroke:var(--s2);stroke-width:2;stroke-linecap:round}.band{fill:var(--band)}
 .moving-average{fill:none;stroke:var(--s2);stroke-width:1.8;stroke-dasharray:5 3}
 .overlay-secondary{display:none}

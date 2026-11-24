@@ -29,10 +29,15 @@ ITEM_SECONDS = 20
 SYNC_SECONDS = 120
 DEFAULT_THINKING_MINUTES = 10
 INSIGHT_WARM_SECONDS = 90
-INSIGHT_OVERHEAD_SECONDS = 240
+INSIGHT_DIRECT_SECONDS = 75
+INSIGHT_REVIEW_SECONDS = 40
+# Maximum overhead for review of a thinking draft plus two direct draft/review attempts.
+INSIGHT_OVERHEAD_SECONDS = 2 * (INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS) + INSIGHT_REVIEW_SECONDS
 PORT = 11434
 _RESPONSE_LIMIT = 16 * 1024
 _SETTING = "ai_narrator"
+_REVIEW_SCHEMA = {"type": "object", "required": ["verdict"], "additionalProperties": False,
+                  "properties": {"verdict": {"type": "string", "enum": deep_insight.REVIEW_REASONS}}}
 _MODEL = re.compile(r"[a-zA-Z0-9][\w.-]*(?::[a-zA-Z0-9][\w.-]*)?", flags=re.ASCII)
 _NUMBER = re.compile(r"[+\-−]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
                      r"(?:(?::|/)\d+(?:\.\d+)?)*|[+\-−]?\.\d+")
@@ -403,9 +408,11 @@ def _worker_status(conn, model):
     return json.loads(row[0]) if row else {}
 
 
-def _record_worker(conn, model, outcome, accepted=False):
+def _record_worker(conn, model, outcome, accepted=False, *, insights=None):
     state = _worker_status(conn, model)
     state["outcome"] = outcome
+    if insights:
+        state.setdefault("insights", {}).update(insights)
     if accepted:
         state["last_accepted"] = datetime.now(UTC).isoformat(timespec="seconds")
     with conn:
@@ -538,7 +545,7 @@ def _deep_items(conn, state, data):
 
 def _deep_key(item, state):
     content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
-                     item.system, deep_insight.REVIEW, item.prompt])
+                     item.system, item.prompt, item.schema, deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -557,61 +564,83 @@ def _think_value(profile):
     return True
 
 
-def _deep_request(model, profile, item, deadline, *, still_current=None, think_first=True,
-                  thinking_seconds=DEFAULT_THINKING_MINUTES * 60):
-    """A thinking draft followed by a separate review of its final answer and cited readings."""
-    common = {"model": model + ":local", "stream": False, "keep_alive": "5m"}
-    options = {"num_ctx": profile["num_ctx"], "temperature": 0}
-    def draft_response(thinking):
-        # Let the reasoning model use its default sampling and emit final JSON without an
-        # Ollama grammar. Python checks the complete final answer in both modes.
-        return _request("POST", "/api/generate",
-                        min(deadline, time.monotonic() + (thinking_seconds if thinking else 75)), {
-            **common, "system": item.system, "prompt": item.prompt,
-            **({} if thinking else {"format": item.schema}),
-            **({"think": _think_value(profile) if thinking else False} if profile.get("thinking", True) else {}),
-            "options": ({"num_ctx": profile["num_ctx"], "num_predict": 2450} if thinking
-                        else {**options, "num_predict": 260}),
-        })
+_CORRECTIONS = {
+    "invalid_response": "Return only the requested JSON object.",
+    "missing_citations": "Cite two current domains and every reading your observation refers to.",
+    "unsupported_wording": "Describe an observed contrast and ask a short neutral question.",
+    "uncited_number": "Use no figures in the observation or question.",
+    "wrong_comparison": "Keep the direction, metric and time period exactly as recorded.",
+    "unsupported_claim": "Use only the measurements in the cited readings. Describe what stands out.",
+    "advice_or_prediction": "Ask what to measure again. Avoid targets, recommendations and forecasts.",
+}
 
-    def final(response):
-        text = response.get("response")
-        if (response.get("done") is not True or response.get("done_reason") == "length"
-                or not isinstance(text, str) or not text.strip()):
+
+def _deep_request(model, profile, item, deadline, *, still_current=None, think_first=True,
+                  thinking_seconds=DEFAULT_THINKING_MINUTES * 60, attempts=None):
+    """Draft, review the cited claims, and allow one corrected draft within the same job."""
+    common = {"model": model + ":local", "stream": False, "keep_alive": "5m"}
+    options = {"num_ctx": profile["num_ctx"], "temperature": 0, "presence_penalty": 0}
+
+    def current():
+        if time.monotonic() >= deadline or (still_current is not None and not still_current()):
             raise OllamaUnavailable
-        return item.response(text)
+
+    def complete(system, prompt, schema, thinking, budget, tokens):
+        current()
+        reply = _request("POST", "/api/generate", min(deadline, time.monotonic() + budget), {
+            **common, "system": system, "prompt": prompt, "format": schema,
+            **({"think": _think_value(profile) if thinking else False} if profile.get("thinking", True) else {}),
+            "options": {**options, "num_predict": tokens},
+        })
+        if reply.get("done") is not True or reply.get("done_reason") == "length":
+            raise OllamaUnavailable
+        return reply.get("response")
+
+    def try_draft(mode, correction=None):
+        thinking = mode == "thinking"
+        system = item.system
+        stage = "draft"
+        if correction:
+            system += " Revise the approach. " + _CORRECTIONS[correction]
+        try:
+            raw = complete(system, item.prompt, item.schema, thinking,
+                           thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS, 2450 if thinking else 180)
+            draft, reason = item.assess(raw)
+            if draft:
+                stage = "review"
+                readings = [{"id": i, "domain": item.rows[i - 1].domain, "reading": item.rows[i - 1].text,
+                             "earlier_context": item.rows[i - 1].previous} for i in draft["evidence"]]
+                raw_verdict = complete(deep_insight.REVIEW, _json({"draft": draft, "readings": readings}),
+                                       _REVIEW_SCHEMA, False, INSIGHT_REVIEW_SECONDS, 48)
+                try:
+                    verdict = json.loads(raw_verdict)
+                except (TypeError, ValueError) as exc:
+                    raise OllamaUnavailable from exc
+                if (not isinstance(verdict, dict) or verdict.keys() != {"verdict"}
+                        or verdict["verdict"] not in deep_insight.REVIEW_REASONS):
+                    raise OllamaUnavailable
+                reason = verdict["verdict"]
+                if reason == "supported":
+                    current()
+        except (OllamaUnavailable, TimeoutError):
+            if attempts is not None:
+                attempts.append({"mode": mode, "stage": stage, "outcome": "incomplete"})
+            raise
+        if attempts is not None:
+            attempts.append({"mode": mode, "stage": stage, "outcome": reason})
+        return ({**draft, "mode": mode} if reason == "supported" else None), reason
 
     mode = "thinking" if think_first else "direct"
     try:
-        draft = final(draft_response(think_first))
+        draft, reason = try_draft(mode)
     except (OllamaUnavailable, TimeoutError):
-        if not think_first or (still_current is not None and not still_current()):
+        if not think_first:
             raise
         mode = "direct_retry"
-        draft = final(draft_response(False))
-    if still_current is not None and not still_current():
-        raise OllamaUnavailable
-    if not draft:
-        return None
-    readings = [{"id": i, "domain": item.rows[i - 1].domain, "reading": item.rows[i - 1].text}
-                for i in draft["evidence"]]
-    review = _request("POST", "/api/generate", min(deadline, time.monotonic() + 60), {
-        **common, "system": deep_insight.REVIEW,
-        **({"think": False} if profile.get("thinking", True) else {}),
-        "prompt": _json({"proposed": draft, "readings": readings}),
-        "format": {"type": "object", "required": ["publish"], "additionalProperties": False,
-                   "properties": {"publish": {"type": "boolean"}}},
-        "options": {**options, "num_predict": 80},
-    })
-    if review.get("done") is not True or review.get("done_reason") == "length":
-        raise OllamaUnavailable
-    try:
-        verdict = json.loads(review.get("response"))
-    except (TypeError, ValueError):
-        return None
-    if isinstance(verdict, dict) and verdict.keys() == {"publish"} and verdict["publish"] is True:
-        return {**draft, "mode": mode}
-    return None
+        draft, reason = try_draft(mode)
+    if draft is None and reason in _CORRECTIONS:
+        return try_draft("direct_revision", reason)[0]
+    return draft
 
 
 def _cloud_disabled(deadline):
@@ -643,19 +672,18 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
         return _record_worker(conn, model, "unavailable")
     accepted = False
     incomplete = False
-    unsupported = False
+    insight_attempts = {}
     for name, insight in insights.items():
         if settings(conn) != state or (still_current is not None and not still_current()):
             return accepted
         use_thinking = bool(state.get("thinking") and profile["thinking"])
-        if name == "deep-insight" and not use_thinking:
-            unsupported = True
-            continue
         seconds = _thinking_seconds(state)
-        item_budget = (seconds if use_thinking else 0) + 135
+        item_budget = (seconds if use_thinking else 0) + INSIGHT_OVERHEAD_SECONDS
+        attempts = insight_attempts.setdefault(name, [])
         try:
             draft = _deep_request(model, profile, insight, min(deadline, time.monotonic() + item_budget),
-                                  still_current=still_current, think_first=use_thinking, thinking_seconds=seconds)
+                                  still_current=still_current, think_first=use_thinking,
+                                  thinking_seconds=seconds, attempts=attempts)
         except (OllamaUnavailable, TimeoutError):
             incomplete = True
         else:
@@ -686,8 +714,8 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
             conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)",
                          ("narrator:" + item.key(model), _json(text)))
         accepted |= text is not None
-    result = "incomplete" if incomplete else "unsupported" if unsupported else "ready" if accepted else "withheld"
-    return _record_worker(conn, model, result, accepted)
+    result = "incomplete" if incomplete else "ready" if accepted else "withheld"
+    return _record_worker(conn, model, result, accepted, insights=insight_attempts)
 
 
 def _sync_in_progress(conn: sqlite3.Connection) -> bool:
@@ -739,11 +767,12 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
     if profile and not profile["text_generation"]:
         service = "model_does_not_support_text_generation"
     elif profile and state.get("thinking") and not profile["thinking"]:
-        service = "model_does_not_support_thinking"
+        service = "ready_direct_only"
     report = conn.execute("SELECT value FROM meta WHERE key=?",
                           ("narrator_eval:" + state["model"],)).fetchone()
     return {**state, "ollama": service, "coverage": coverage, "model_profile": profile, "snapshot_status": status,
             "last_eval": json.loads(report[0]) if report else None,
+            "last_insight_attempts": _worker_status(conn, state["model"]).get("insights", {}),
             "thinking_minutes": _thinking_seconds(state) // 60,
             "prompt_profile": deep_insight.writing_style(conn, "daily")[2],
             "cache_matches_dashboard": applied, "sync_incomplete": _sync_in_progress(conn)}
@@ -791,8 +820,8 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
                 state = settings(conn)
                 before_status = _worker_status(conn, state["model"])
                 count = len(_deep_items(conn, state, data))
-                budget = SYNC_SECONDS + count * (
-                    _thinking_seconds(state) + INSIGHT_OVERHEAD_SECONDS if state.get("thinking") else 135)
+                thinking_budget = _thinking_seconds(state) if state.get("thinking") else 0
+                budget = SYNC_SECONDS + count * (thinking_budget + INSIGHT_OVERHEAD_SECONDS)
                 generate(conn, data, time.monotonic() + budget,
                          still_current=lambda: dashboard._snapshot_id(path) == snapshot
                          and not _sync_in_progress(conn))
@@ -892,7 +921,6 @@ def main() -> None:
                            else _thinking_seconds(settings(conn)) // 60)
                 if not 1 <= minutes <= 30:
                     raise ValueError("Choose 1 to 30 minutes of thinking time.")
-                deadline = time.monotonic() + minutes * 60 + INSIGHT_OVERHEAD_SECONDS
                 if not _cloud_disabled(time.monotonic() + 5):
                     raise ValueError("Ollama must confirm cloud access is disabled.")
                 model_profile = _model_profile(chosen, time.monotonic() + 5)
@@ -905,16 +933,19 @@ def main() -> None:
                 voice, focus, _ = deep_insight.writing_style(conn, lens)
                 fixture = deep_insight.Insight(rows, lens, voice, focus)
                 start = time.monotonic()
+                remaining = (minutes * 60 if args.thinking is not False else 0) + INSIGHT_OVERHEAD_SECONDS
+                attempts = []
                 try:
-                    insight = _deep_request(chosen, model_profile, fixture, deadline,
-                                            think_first=args.thinking is not False, thinking_seconds=minutes * 60)
+                    insight = _deep_request(chosen, model_profile, fixture, start + remaining,
+                                            think_first=args.thinking is not False, thinking_seconds=minutes * 60,
+                                            attempts=attempts)
                 except (OllamaUnavailable, TimeoutError):
-                    print(_json({"model": chosen, "status": "incomplete_or_timed_out",
-                                 "seconds": round(time.monotonic() - start, 2)}))
+                    print(_json({"model": chosen, "case": args.insight_case, "status": "incomplete_or_timed_out",
+                                 "attempts": attempts, "seconds": round(time.monotonic() - start, 2)}))
                     return
                 print(_json({"model": chosen, "case": args.insight_case, "insight": insight,
                              "status": "accepted" if insight else "withheld",
-                             "seconds": round(time.monotonic() - start, 2)}))
+                             "attempts": attempts, "seconds": round(time.monotonic() - start, 2)}))
                 return
             if args.eval:
                 print(json.dumps(evaluate(conn, [tag.strip() for tag in args.models.split(",")] if args.models else [])))

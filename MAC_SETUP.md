@@ -118,7 +118,9 @@ Before changing model tags, run a fictional benchmark on the Mac:
 ```
 
 The benchmark uses fictional inputs. The diagnostics report the active model, thinking support
-and its last benchmark. Evaluate the model before making it active.
+and its last benchmark. `last_insight_attempts` shows which open-ended reviews reached the model
+reviewer, needed a correction or could be retried. Use `--eval-insight --insight-case sunday-review`
+to diagnose the weekly review with fictional data. Evaluate the model before making it active.
 
 ### Try a larger thinking model
 

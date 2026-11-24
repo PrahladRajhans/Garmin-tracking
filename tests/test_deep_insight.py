@@ -25,6 +25,7 @@ def test_qualitative_draft_must_cite_distinct_domains(packet):
         {"observation": "Your pulse increased because you slept less than you needed."},
         {"observation": "Your pulse went up by 4 bpm after shorter nights."},
         {"question": "Start taking a supplement to improve readings."},
+        {"question": "Is the extra session the reason you're feeling more tired?"},
     ):
         assert packet.response(json.dumps({**draft, **change})) is None
 
@@ -33,7 +34,7 @@ def test_thinking_and_review_only_use_final_response(packet, monkeypatch):
     requests = []
     draft = {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
              "question": "Does resting pulse settle after a longer night?", "evidence": [1, 2, 3]}
-    verdict = {"publish": False}
+    verdict = {"verdict": "unsupported_claim"}
 
     def response(method, path, deadline, body):
         requests.append(body)
@@ -42,10 +43,14 @@ def test_thinking_and_review_only_use_final_response(packet, monkeypatch):
 
     monkeypatch.setattr(narrator, "_request", response)
     profile = {"thinking": True, "controls": ["low", "medium"], "num_ctx": 4096}
-    assert narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240) is None
-    verdict["publish"] = True
+    attempts = []
+    assert narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240, attempts=attempts) is None
+    assert attempts == [{"mode": "thinking", "stage": "review", "outcome": "unsupported_claim"},
+                        {"mode": "direct_revision", "stage": "review", "outcome": "unsupported_claim"}]
+    verdict["verdict"] = "supported"
     assert narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240) == {**draft, "mode": "thinking"}
     assert requests[0]["think"] == "low" and requests[1]["think"] is False
+    assert requests[0]["format"] == packet.schema
     assert all(request["model"] == "test:9b:local" for request in requests)
     assert "never parsed" not in requests[1]["prompt"]
 
@@ -58,6 +63,16 @@ def test_missing_cross_signal_data_hides_interpretation():
     assert not deep_insight.evidence({**d, "sync_retry_required": True})
 
 
+def test_running_evidence_keeps_pace_direction_and_matched_cadence_context():
+    data = {"running_block": {"latest_detail_id": 1}, "runs": [{"activity_id": 1,
+        "pacing": {"effort_halves": [{"pace_s_per_km": 335, "hr": 140}, {"pace_s_per_km": 347, "hr": 147}]},
+        "late_form": {"cadence_spm": {"early": 172, "late": 168, "matched_s": 400}}}]}
+    pace, cadence = deep_insight.running_review(data)
+    assert "slower in the second moving half" in pace.text and "335 to 347" in pace.text
+    assert "similar pace and grade" in cadence.text and "400 matched seconds" in cadence.text
+    assert cadence.page == "run-1-form"
+
+
 def test_sunday_review_keeps_plan_and_links_checked_evidence(conn):
     data = {"end": "2026-11-22",
             "weekly_review": {"week": {"sessions": 3}},
@@ -66,6 +81,8 @@ def test_sunday_review_keeps_plan_and_links_checked_evidence(conn):
     facts = deep_insight.sunday_review(data)
     assert {row.domain for row in facts} == {"sleep", "training"}
     assert "21 min less" in dashboard._sunday_story(data)
+    data["weekly_review"]["previous_4wk_weekly_avg"] = {"sessions": 2}
+    assert "3 this week versus 2" in deep_insight.sunday_review(data)[0].text
     assert "sunday-insight" in narrator._deep_items(conn, {"thinking": False}, data)
     data["narration"] = {"sunday-insight": {
         "observation": "The log shows several workouts alongside shorter nights.",
@@ -97,6 +114,29 @@ def test_opt_in_result_is_cached_with_python_readings(conn, monkeypatch, packet)
     assert narrator.cached(conn, {}) == ({}, False)
 
 
+def test_completion_only_model_resolves_pending_daily_review(conn, monkeypatch, packet):
+    narrator.configure(conn, True, "test:7b", True)
+    monkeypatch.setattr(deep_insight, "evidence", lambda _: packet.rows)
+    monkeypatch.setattr(narrator, "items", lambda _: {})
+    monkeypatch.setattr(narrator, "_cloud_disabled", lambda _: True)
+    monkeypatch.setattr(narrator, "_model_profile", lambda *_: {"thinking": False, "text_generation": True})
+    monkeypatch.setattr(narrator, "_warm", lambda *_: None)
+
+    def review(*_, think_first, attempts, **__):
+        assert think_first is False
+        attempts.append({"mode": "direct", "stage": "review", "outcome": "supported"})
+        return {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
+                "question": "Does that pattern recur after another shorter night?", "evidence": [1, 2],
+                "mode": "direct"}
+
+    monkeypatch.setattr(narrator, "_deep_request", review)
+    assert narrator.generate(conn, {}, time.monotonic() + 10)
+    saved, pending = narrator.cached(conn, {})
+    assert saved["deep-insight"]["mode"] == "direct" and not pending
+    attempts = narrator._worker_status(conn, "test:7b")["insights"]
+    assert attempts["deep-insight"][0]["outcome"] == "supported"
+
+
 def test_timed_out_thinking_can_retry_original_prose_without_skipping_review(packet, monkeypatch):
     calls = []
     answer = {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
@@ -106,12 +146,33 @@ def test_timed_out_thinking_can_retry_original_prose_without_skipping_review(pac
         calls.append(body)
         if len(calls) == 1:
             raise narrator.OllamaUnavailable
-        return {"done": True, "response": json.dumps(answer if len(calls) == 2 else {"publish": True})}
+        return {"done": True, "response": json.dumps(answer if len(calls) == 2 else {"verdict": "supported"})}
 
     monkeypatch.setattr(narrator, "_request", request)
     result = narrator._deep_request("test:9b", {"num_ctx": 4096}, packet, time.monotonic() + 420)
     assert result == {**answer, "mode": "direct_retry"}
     assert [c["think"] for c in calls] == [True, False, False]
+
+
+def test_invalid_draft_gets_one_correction_and_full_review(packet, monkeypatch):
+    calls = []
+    answer = {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
+              "question": "Do those readings change direction after longer nights?", "evidence": [1, 2, 3]}
+    replies = iter([{**answer, "evidence": [2, 3]}, answer, {"verdict": "supported"}])
+
+    def request(method, path, deadline, body):
+        calls.append(body)
+        return {"done": True, "response": json.dumps(next(replies))}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    attempts = []
+    result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 240,
+                                    think_first=False, attempts=attempts)
+    assert result == {**answer, "mode": "direct_revision"}
+    assert [stage["outcome"] for stage in attempts] == ["missing_citations", "supported"]
+    assert [stage["stage"] for stage in attempts] == ["draft", "review"]
+    assert "Cite two current domains" in calls[1]["system"]
+    assert json.loads(calls[2]["prompt"])["draft"] == answer
 
 
 def test_specific_numbers_can_be_used_with_their_cited_readings():

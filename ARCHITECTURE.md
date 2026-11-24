@@ -125,6 +125,12 @@ Ollama returns short IDs for one to three approved sentences or one eligible dai
 The worker checks the IDs, resolves the text from the original evidence and caches it.
 [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs.md)
 
+Open-ended reviews of Today, Running and Sunday group each comparison with its baseline.
+The worker checks the draft against cited values and runs a separate claims review on final
+text. One bounded revision can address a failed check. The worker records mode, stage and
+verdict locally and applies the same snapshot checks to revised output. See the
+[local-model pipeline](docs/OLLAMA.md#thinking-insights) for budgets and diagnostics.
+
 Settings and content-addressed results are in local SQLite `meta`. The renderer only reads
 accepted cache entries for the current facts and model. The worker checks the snapshot ID
 before replacing the Mac and iCloud files and serializes the replacement with other builds.

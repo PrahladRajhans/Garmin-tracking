@@ -32,6 +32,14 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+**Ollama repair after v0.27.0 (20–24).** First reproduce the rejected Sunday output on
+fictional data and distinguish a draft failure from review rejection. Next supply each
+comparison and its baseline together, and give the model a bounded correction when the
+draft or review fails. Keep exact metrics, dated links, local-only transport, deterministic
+guidance and snapshot guards. Then verify direct and thinking mode on the fictional Sunday,
+recovery and Running cases, including invalid output and outage behavior. Record separately
+what needs the owner's Mac. Release only after both Python checks pass.
+
 The [request audit](docs/PROGRESS_AUDIT.md#claude-suggestion-checklist) records the outstanding
 Claude suggestions. The [repository review](docs/REPOSITORY_REVIEW.md#dependency-and-failure-paths)
 records what changes affect downstream. The [file register](docs/repository-review-queue.tsv)
@@ -184,6 +192,7 @@ compute: activity recaps, daily brief, weekly review.
 | 0.26.0 | Running dashboard, matched dynamics, split guides, local running review, archive replay and revision retention | Merged and published. Browser, synthetic archive and local checks recorded in [PR #31](https://github.com/PrahladRajhans/Garmin-tracking/pull/31). |
 | 0.26.1 | Qwen3.5 4B default and one-time upgrade of the former default | Merged and published. 234 tests, CI, and five fictional routine summaries accepted on local Ollama. Mac acceptance open. [PR #32](https://github.com/PrahladRajhans/Garmin-tracking/pull/32). |
 | 0.27.0 | Running form by comparable halves, weekly bedtime trial, Sunday AI and status, source/archive repairs and file audit | See the [execution log](docs/REPOSITORY_REVIEW.md#execution-log) and [PR #33](https://github.com/PrahladRajhans/Garmin-tracking/pull/33). Mac and private archive acceptance remain open. |
+| 0.27.1 | Citation repair, reviewed draft correction, Ollama attempt diagnostics and smaller dense chart markers | See [model evaluation](docs/OLLAMA.md#verification) and [PR #34](https://github.com/PrahladRajhans/Garmin-tracking/pull/34). Mac reasoning latency and real-data acceptance remain open. |
 | 1.0.0 | All of the above running on your Mac with scheduled sync | |
 
 ## Done (traceable to the backlog)

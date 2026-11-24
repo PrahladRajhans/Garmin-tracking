@@ -271,3 +271,8 @@ Split guides measured 3.28:1 in Light and 5.35:1 in Dark against their chart bac
 Overlay readout text measured 6.22:1 in Light and 8.69:1 in Dark against its surface.
 The remaining [dashboard checks](../ROADMAP.md#3039-make-both-themes-readable-across-the-whole-dashboard)
 include physical iPhone Safari and Files, sparse-data states and other chart/label combinations.
+
+For v0.27.1, the running timeline and pace-versus-pulse markers have a 0.95 SVG-unit radius.
+Other scatter plots use 1.6. The selected point has a 3.3 radius. Chromium verified these
+sizes, nearest-point touch selection and keyboard navigation at 320, 390 and 1200 px in both
+themes. The plotted sample count is unchanged. The physical Safari check remains open.

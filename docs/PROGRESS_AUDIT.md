@@ -72,6 +72,15 @@ evidence per step. Best efforts and durability claims remain separate evaluation
 The [execution log](REPOSITORY_REVIEW.md#execution-log) records the order, evidence and
 remaining verification by workstream.
 
+### v0.27.1 repair
+
+The live Sunday reproduction separated a missing citation from a model review that accepted an
+unmeasured feeling. The repair groups the comparison, checks question premises before review and
+records both stages. Live Qwen3.5 4B produced an accepted Sunday result after the five-minute
+Linux thinking call fell back to direct drafting. The private Mac archive remains the acceptance
+gate for usefulness and thinking speed. Running and ordinary scatter plots have smaller dots,
+with touch and keyboard selection tested in both themes. [Model and UI verification](OLLAMA.md#verification)
+
 ## Earlier follow-up audit, 23 November 2026
 
 | Request | Evidence in this pass | What remains |

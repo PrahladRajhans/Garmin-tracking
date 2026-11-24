@@ -293,6 +293,8 @@ Individual steady outdoor runs can also show early and late mechanics at compara
 and grade. The panel lists actual matched time and hides metrics with too little evidence.
 Split guides use a thin dashed line and a keyboard-focusable native control. See the
 [theme and viewport checks](docs/UI_REVIEW.md#current-light-and-dark-acceptance-work).
+Dense plots use tiny background dots. Selection highlights one reading at the existing size
+and locates the nearest reading across the full plot.
 
 ### Sleep follow-up
 

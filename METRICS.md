@@ -216,6 +216,12 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 - Valid and rejected results are cached locally by a hash of model, prompt rules and input facts.
   Unavailable Ollama, a timeout or an unfinished response leaves the existing dashboard text
   available and can be retried by a manual rebuild or scheduled sync check.
+- Open-ended Today, Sunday and Running reviews group the measured value and baseline in one
+  citation and require evidence from at least two current categories. Running pace evidence states
+  the direction of the seconds-per-kilometre change explicitly. Matched late-run cadence retains
+  the measured comparison time and pace/grade qualification. A Python check filters unsupported
+  premises in the model's follow-up question. A separate review checks the observation and question,
+  including after a single correction. Training decisions and source values stay in Python.
 
 ## Outdoor conditions and following recovery
 

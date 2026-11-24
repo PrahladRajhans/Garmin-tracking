@@ -17,11 +17,11 @@ Qwen3.5 4B (median generation 13.36 seconds). The open-ended running test in v0.
 was withheld. The [current priorities](../ROADMAP.md#current-priorities) track the Mac
 rollout, per-surface checks, reviewed weekly story and dashboard status detail.
 
-The v0.27 footer reports the last accepted result for the selected model and whether the
+The footer reports the last accepted result for the selected model and whether the
 current snapshot is waiting, blocked by the local-only check, missing evidence, or withheld.
 The optional Sunday review uses recorded training and sleep facts. Its next focus and
 fallback remain deterministic. Run `--eval-insight --insight-case sunday-review --no-thinking`
-on fictional evidence. The Linux Qwen3.5 4B test completed and withheld the wording.
+on fictional evidence. The output distinguishes format and citation failures from the review verdict.
 
 ## Coverage
 
@@ -35,22 +35,24 @@ configuration without the flag keeps its current behavior. The same setting is a
 
 The daily interpretation uses recent and previous sleep and resting-heart-rate windows,
 seven-day HRV, and the current day's qualifying matched run when available. It requires at
-least two domains. Python supplies exact readings and links. The model writes the
-interpretation and a question to test it. A separate completion reviews the cited evidence
-for unsupported claims. This review reduces error, and model-authored interpretations can
-still be mistaken. The renderer labels them separately from deterministic guidance.
+least two domains. Python supplies exact readings, comparable baselines and links. The model
+chooses the comparison and writes an interpretation and a question about the next comparable
+measurement. Python checks the citation coverage, number references and question wording.
+A separate completion checks claims and the question's premises. The renderer labels accepted
+output separately from deterministic guidance.
 Reasoning traces do not appear in the snapshot or local response cache.
 
 Thinking work runs first in a bounded background batch. The thinking draft defaults to ten
-minutes. Set `--thinking-minutes 5` (1–30 minutes supported) to change it. Warm-up, a direct
-retry, and review share a separate four-minute allowance. Routine
-summaries keep their faster path. If the reasoning call cannot finish, the worker can make one
-direct drafting attempt. That draft still receives the same review, and the evidence panel and
-fictional benchmark identify the mode. Incomplete work can be retried by later builds.
+minutes. Set `--thinking-minutes 5` (1–30 minutes supported) to change it. Routine summaries
+keep their faster path. A thinking call that cannot finish can fall back to a direct draft.
+The worker can also make one direct revision after a draft fails a content or review check.
+Each draft passes the same checks. Review and direct work share an extra allowance of up to
+four and a half minutes per interpretation, with warm-up budgeted separately. A text model
+without thinking support can use the direct path. Later builds can retry unfinished work.
 Changing the draft budget gives the same evidence a fresh attempt.
 [Ollama thinking controls](https://docs.ollama.com/capabilities/thinking)
 
-Linux CPU smoke checks have yet to produce a reviewed interpretation. Qwen3.5 4B spent
+Before v0.27.1, Qwen3.5 4B on Linux spent
 five minutes on the fictional matched-run case without completing its reasoning; its direct
 retry was withheld after review. A direct mixed-recovery run was also withheld. Unit and
 browser tests covered publication, review rejection, timeouts, and evidence links.
@@ -86,6 +88,7 @@ A number-only filter would still accept fabricated causes or advice with valid n
 - Use `garmin-mcp-narrator --check` for loopback availability, cloud-off confirmation,
   installed model, sync state and cache coverage by surface. The check sends no health facts.
   `cache_matches_dashboard` indicates whether the accepted cache is reflected in the local HTML.
+  `last_insight_attempts` records mode and outcome labels by surface, without draft text or reasoning.
   Invalid selections are cached as rejected for that prompt and model. New evidence, prompt
   rules or a different model get a fresh attempt. Service failures and timeouts remain pending.
 
@@ -159,10 +162,16 @@ covered the experiment summary and verified that Today's chooser favored several
 direct sleep evidence over an association. These runs used Linux. The owner's Mac, launchd
 job and iCloud and iPhone path remain in the [roadmap](../ROADMAP.md).
 
-On the v0.27.0 fictional Sunday case, the live Qwen3.5 4B direct draft first got the
-training evidence wrong by treating workout count as a jump in volume. The reviewer withheld
-it. After clarifying the distinction in the prompt, a second direct attempt took about 58 s
-and was also withheld. The weekly display still has its rule-written summary and dated links.
+On the v0.27.0 fictional Sunday case, Qwen3.5 4B first treated workout count as training volume.
+A later draft compared the correct quantities and omitted the citation for the previous four
+weeks. During the v0.27.1 repair, an intermediate model review also accepted a question about
+unrecorded tiredness. The wording gate now checks for that premise before the model reviewer.
+The weekly display retains its rule-written summary and dated links when no draft passes.
+
+On the v0.27.1 candidate with Ollama 0.40.17 and local Qwen3.5 4B, the mixed-recovery and
+matched-run exception direct drafts passed. The Sunday launch with a five-minute thinking
+budget completed with an accepted direct fallback after 341 seconds end to end. The initial
+thinking draft hit its time budget. These checks used fictional readings on Linux CPU.
 
 ## Changes to review
 
