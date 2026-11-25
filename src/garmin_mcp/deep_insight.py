@@ -12,8 +12,9 @@ from pathlib import Path
 from garmin_mcp import clauses
 from garmin_mcp.config import data_dir
 
-INSIGHT_CONTRACT = 5
-POST_RUN_CONTRACT = 1
+INSIGHT_CONTRACT = 6
+POST_RUN_CONTRACT = 2
+POST_RUN_MAX_AGE_DAYS = 14  # design choice: older runs are history, not a follow-up
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,15 @@ class Evidence:
     page: str
     previous: bool = False
     claim: clauses.Claim | None = field(default=None, compare=False)
+    notable: bool = field(default=False, compare=False)  # unusual without having a clause claim
+
+
+def changed(row):
+    return row.notable or bool(row.claim and row.claim.changed)
+
+
+def _weekly(metric, subject, change, noise):
+    return clauses.Claim(metric, subject, clauses.trend_of(change, noise), "week")
 
 
 def _number(value):
@@ -33,23 +43,28 @@ def evidence(data):
     if data.get("available") is False or data.get("older_snapshot") or data.get("sync_retry_required"):
         return ()
     result = []
-    for key, label, unit, domain, page in (
-        ("sleep_h", "Sleep duration", "h", "sleep", "sleep"),
-        ("resting_hr", "Resting heart rate", "bpm", "recovery", "recovery"),
+    for key, label, unit, domain, page, metric, subject, noise in (
+        ("sleep_h", "Sleep duration", "h", "sleep", "sleep", "sleep", r"\bsle(?:ep|pt)", "sleep_h"),
+        ("resting_hr", "Resting heart rate", "bpm", "recovery", "recovery", "resting", r"\bresting\b",
+         "resting_bpm"),
     ):
         signal = data.get("signals", {}).get(key, {})
         a, b = signal.get("recent"), signal.get("previous")
         if all(_number(v) for v in (a, b)):
             result.append(Evidence(domain, f"{label} averaged {a:.1f} {unit} "
                                    f"over {signal['recent_count']} readings this week versus "
-                                   f"{b:.1f} {unit} over {signal['previous_count']} the previous week.", page))
+                                   f"{b:.1f} {unit} over {signal['previous_count']} the previous week.", page,
+                                   claim=_weekly(metric, subject, a - b, clauses.NOISE[noise])))
     shortfall = data.get("sleep_shortfall") or {}
     if (prior := shortfall.get("previous_min")) is not None:
         current = shortfall["current"]["valid_nights_7d"]
         previous = shortfall["previous"]["valid_nights_7d"]
         result.append(Evidence("sleep", f'Garmin or fallback sleep targets were missed by '
                                f'{shortfall["per_night_min"]} min per usable night across {current} nights '
-                               f'versus {prior} min across {previous} the prior week.', "sleep"))
+                               f'versus {prior} min across {previous} the prior week.', "sleep",
+                               claim=_weekly("shortfall", r"\bshortfall\b|\btargets?\b",
+                                             shortfall["per_night_min"] - prior,
+                                             clauses.NOISE["shortfall_min"])))
     pulse = data.get("calendar", {}).get("days", {}).get(data.get("end"), {}).get("resting_pulse_check")
     if pulse and pulse["verify"] and pulse["median"] is not None:
         relation = {"lower": "below", "higher": "above", "near": "within"}[pulse["direction"]]
@@ -59,15 +74,17 @@ def evidence(data):
             if typical := window.get("typical"):
                 history.append(f'{typical[0]:g} bpm over {window["count"]} readings from {scope}')
         context = f' Other medians: {"; ".join(history)}.' if history else ""
-        result.append(Evidence("recovery", f'The latest Garmin daily resting estimate was '
+        result.append(Evidence("recovery", f'The Garmin daily resting estimate for this snapshot’s day was '
                                f'{pulse["value"]:g} bpm, {relation} the personal review range '
                                f'with a median of {pulse["median"]:g} bpm over {pulse["count"]} readings '
-                               'in the prior 28 days. Garmin’s estimate can include sleep.' + context, "recovery"))
+                               'in the prior 28 days. Garmin’s estimate can include sleep.' + context, "recovery",
+                               notable=pulse["direction"] != "near"))
     hrv = data.get("hrv_context", {})
     a, b = hrv.get("rolling_7d_ms"), hrv.get("previous_average")
     if all(_number(v) for v in (a, b)):
         result.append(Evidence("recovery", f"Seven-day HRV averaged {a:g} ms versus {b:g} ms "
-                               "one week earlier.", "recovery"))
+                               "one week earlier.", "recovery",
+                               claim=_weekly("hrv", r"\bhrv\b|\bvariability\b", a - b, clauses.NOISE["hrv_ms"])))
     run = next(iter(data.get("runs", [])), {})
     match = run.get("comparable_effort", {})
     if run.get("date") == data.get("end") and match.get("available"):
@@ -78,7 +95,10 @@ def evidence(data):
             result.append(Evidence("running", f"The latest run's moving heart rate was "
                                    f"{comparison} the median across "
                                    f"{len(match['matches'])} similar runs.",
-                                   f"run-{run['activity_id']}-compare"))
+                                   f"run-{run['activity_id']}-compare",
+                                   claim=clauses.Claim("pulse", r"\b(?:heart rate|pulse)\b",
+                                                       clauses.trend_of(delta, clauses.NOISE["run_pulse_bpm"]),
+                                                       "runs")))
     return tuple(result) if len({row.domain for row in result}) >= 2 else ()
 
 
@@ -123,7 +143,7 @@ def sunday_review(data):
     trend = window = None
     if _number(average):
         training += f" versus {average:g} per week on average over the previous four weeks"
-        trend, window = clauses.trend_of(count - average), "blocks"
+        trend, window = clauses.trend_of(count - average, 1), "blocks"
     workouts = clauses.Claim("workouts", r"\b(?:workouts?|sessions?|training frequency)\b", trend, window)
     sleep_text = f'Sleep averaged {sleep["hours"]:.1f} hours across {sleep["nights"]} nights'
     change = sleep_review.get("week_change_min")
@@ -135,7 +155,7 @@ def sunday_review(data):
     anchor = sleep_review.get("anchor") or {}
     if not (_number(average) or _number(change) or anchor):
         return ()
-    slept = clauses.Claim("sleep", r"\bsle(?:ep|pt)", None if change is None else clauses.trend_of(change),
+    slept = clauses.Claim("sleep", r"\bsle(?:ep|pt)", None if change is None else clauses.trend_of(change, clauses.NOISE["sleep_min"]),
                           None if change is None else "week")
     rows = [Evidence("training", training + ".", "training", claim=workouts),
             Evidence("sleep", sleep_text + ".", "sleep", claim=slept)]
@@ -160,7 +180,8 @@ def running_review(data):
         rows.append(Evidence("endurance", f'Median second-half change in grade-adjusted speed per heartbeat '
                              f'was {block["median_decoupling"]:+g}% decoupling across '
                              f'{block["decoupling_count"]} steady outdoor recordings. Positive means a decline.',
-                             "running-efforts"))
+                             "running-efforts",
+                             notable=abs(block["median_decoupling"]) >= clauses.NOISE["decoupling_pct"]))
     run = next((run for run in data.get("runs", []) if run["activity_id"] == block.get("latest_detail_id")), {})
     match = run.get("comparable_effort", {})
     if match.get("available"):
@@ -182,7 +203,8 @@ def running_review(data):
                              f'{a["hr"]:g} to {b["hr"]:g} bpm.',
                              f'run-{run["activity_id"]}-pacing',
                              claim=clauses.Claim("pace", r"\b(?:faster|slower|quicker|slowed|sped|speed\w*|pace)\b",
-                                                 clauses.trend_of(b["hr"] - a["hr"]), "halves",
+                                                 clauses.trend_of(b["hr"] - a["hr"], clauses.NOISE["run_pulse_bpm"]),
+                                                 "halves",
                                                  change if change != "the same" else "same")))
     if measured := run.get("late_form", {}).get("cadence_spm"):
         rows.append(Evidence("matched mechanics", f'At similar pace and grade within the latest run, cadence '
@@ -190,7 +212,8 @@ def running_review(data):
                              f'with {measured["matched_s"]} matched seconds in each half.',
                              f'run-{run["activity_id"]}-form',
                              claim=clauses.Claim("cadence", r"\bcadence\b",
-                                                 clauses.trend_of(measured["late"] - measured["early"]), "halves")))
+                                                 clauses.trend_of(measured["late"] - measured["early"],
+                                                                  clauses.NOISE["cadence_spm"]), "halves")))
     cadence = run.get("form", {}).get("cadence_spm", {})
     if span := cadence.get("matched_range"):
         measured = cadence["value"]
@@ -297,6 +320,12 @@ def post_run_review(data):
     run = next(iter(data.get("runs", ())), None)
     if not run:
         return None
+    try:
+        age = (date.fromisoformat(data["end"][:10]) - date.fromisoformat(run["date"][:10])).days
+    except (KeyError, TypeError, ValueError):
+        age = 0  # undated inputs keep the previous behaviour
+    if age > POST_RUN_MAX_AGE_DAYS:
+        return None
     aid = run["activity_id"]
     checks = []
     cadence = (run.get("late_form") or {}).get("cadence_spm") or {}
@@ -305,13 +334,15 @@ def post_run_review(data):
         reading = Evidence("late cadence", f"At similar pace and grade, cadence averaged {early:g} steps/min "
                            f"early and {late:g} late across {matched:g} matched seconds in each half.",
                            f"run-{aid}-form")
-        changed = abs(late - early) >= 3
+        moved = abs(late - early) >= clauses.NOISE["cadence_spm"]
         checks.append(RunCheck(reading, {"steps_per_min": {"early": early, "late": late},
                                         "matched_seconds_per_half": matched, "match": "pace and grade",
-                                        "changed": changed},
+                                        "changed": moved},
                                "Surface and wind can still differ between the matched sections.",
-                               "Does the early-to-late cadence difference repeat at matching pace and grade?",
-                               2 if changed else 0))
+                               "Does the early-to-late cadence difference repeat at matching pace and grade?"
+                               if moved else "Does cadence stay about this steady on another run at matching "
+                               "pace and grade?",
+                               2 if moved else 0))
     match = run.get("comparable_effort") or {}
     if match.get("available"):
         low, high = match["observed_hr_range_bpm"]
@@ -635,10 +666,13 @@ class Insight:
         return self.assess(raw)[0]
 
     def comparison_options(self):
-        """Offer only pairs of current, distinct evidence categories."""
-        return tuple((i, j) for i, j in combinations(range(1, len(self.rows) + 1), 2)
-                     if not self.rows[i - 1].previous and not self.rows[j - 1].previous
-                     and self.rows[i - 1].domain != self.rows[j - 1].domain)
+        """Offer pairs of current, distinct categories that carry the most recorded changes."""
+        pairs = [(i, j) for i, j in combinations(range(1, len(self.rows) + 1), 2)
+                 if not self.rows[i - 1].previous and not self.rows[j - 1].previous
+                 and self.rows[i - 1].domain != self.rows[j - 1].domain]
+        scores = {pair: sum(changed(self.rows[i - 1]) for i in pair) for pair in pairs}
+        best = max(scores.values(), default=0)
+        return tuple(pair for pair in pairs if scores[pair] == best)
 
     def selected_comparison(self, raw, options):
         try:
@@ -732,6 +766,9 @@ class Insight:
         if (not all(type(i) is int and i in self.checkable for i in ids)
                 or len({self.rows[i - 1].domain for i in ids}) < 2):
             return None, "missing_citations"
+        if (any(changed(self.rows[i - 1]) for i in self.checkable)
+                and not any(changed(self.rows[i - 1]) for i in ids)):
+            return None, "low_signal_choice"
         written = []
         for number, part in zip(ids, parts, strict=True):
             text = _plain(part["text"], 4, 24)

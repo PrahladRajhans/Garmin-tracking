@@ -17,6 +17,15 @@ class Claim:
     window: str | None = None  # key of PERIODS
     pace: str | None = None  # "faster", "slower" or "same", for the two-measure pacing reading
 
+    @property
+    def changed(self):
+        return self.trend in {"up", "down"} or self.pace in {"faster", "slower"}
+
+
+# Movements smaller than these read as "about the same". Design choices, listed in METRICS.md.
+NOISE = {"sleep_h": 0.25, "sleep_min": 15, "resting_bpm": 2, "hrv_ms": 3, "shortfall_min": 15,
+         "run_pulse_bpm": 3, "cadence_spm": 3, "decoupling_pct": 5}
+
 
 # Plain wording for the drafter: measure, up/down direction words, the period the reading describes
 # and the period it is compared with.
@@ -25,6 +34,9 @@ _WORDING = {
                          "in the previous four weeks"),
     ("workouts", "blocks"): ("workout count", "higher", "lower", "this week", "the previous four weeks' average"),
     ("sleep", "week"): ("sleep per night", "longer", "shorter", "this week", "last week"),
+    ("resting", "week"): ("resting heart rate", "higher", "lower", "this week", "last week"),
+    ("hrv", "week"): ("heart rate variability", "higher", "lower", "this week", "last week"),
+    ("shortfall", "week"): ("sleep shortfall", "larger", "smaller", "this week", "last week"),
     ("pulse", "runs"): ("moving heart rate", "higher", "lower", "on the latest run", "on earlier comparable runs"),
     ("cadence", "runs"): ("cadence", "higher", "lower", "on the latest run", "on earlier comparable runs"),
     ("cadence", "halves"): ("cadence", "higher", "lower", "late in the latest run", "early in that run"),
@@ -51,8 +63,8 @@ _WINDOWS = (
                r"\bhalf\b|\bhalves\b")),
 )
 _WORDS = {
-    "up": r"higher|more|rose|rises?|risen|rising|increas\w*|above|up|climbed|longer|greater|gain\w*|improv\w*",
-    "down": r"lower|fewer|less|fell|falls?|fallen|falling|decreas\w*|below|down|drop\w*|shorter|declin\w*|"
+    "up": r"higher|larger|bigger|more|rose|rises?|risen|rising|increas\w*|above|up|climbed|longer|greater|gain\w*|improv\w*",
+    "down": r"lower|smaller|fewer|less|fell|falls?|fallen|falling|decreas\w*|below|down|drop\w*|shorter|declin\w*|"
             r"reduc\w*|dipp?\w*|worse\w*",
     "same": r"same|similar|steady|unchanged|stable|within|held|level|consistent|remain\w*|stay\w*|flat|equal|match\w*",
 }
@@ -65,13 +77,17 @@ _METRICS = {
     "cadence": r"\bcadence\b|\bsteps?\b",
     "sleep": r"\bsle(?:ep|pt)\w*\b",
     "wake": r"\bw[ao]k(?:e|ing)\b",
+    "resting": r"\bresting\b",
+    "hrv": r"\bhrv\b|\bvariability\b",
+    "shortfall": r"\bshortfall\b|\bmissed\b|\btargets?\b",
     "workouts": r"\b(?:workouts?|sessions?|training)\b",
     "runs": r"\b(?:run|running)\s+(?:days?|frequency|count)\b|\bruns?\b.*\b(?:days?|often)\b|"
             r"\bdays?\b.*\brun\w*\b|\bran\b|\bfrequency\b",
     "pace": r"\b(?:pace|faster|slower|quicker|speed\w*)\b",
 }
 # A clause may mention these beside its own metric.
-_ALSO = {"pace": {"pulse"}, "wake": {"sleep"}}
+_ALSO = {"pace": {"pulse"}, "wake": {"sleep"}, "resting": {"pulse"}, "hrv": {"pulse"},
+         "shortfall": {"sleep"}}
 _QUANTITY = re.compile(
     r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|"
     r"fifty|sixty|ninety|hundred|half|halves|quarters?|third|dozen|couple|an\s+hour|a\s+minute)\b", re.IGNORECASE)
@@ -79,8 +95,10 @@ _FRACTION = re.compile(r"\b(?:half|an)\s+an?\s+hour\b|\ban\s+hour\b|\bquarters?\
                        r"\bhalf\s+(?:an?\s+)?(?:minute|day|week)\b", re.IGNORECASE)
 
 
-def trend_of(change):
-    return "up" if change > 0 else "down" if change < 0 else "same"
+def trend_of(change, noise=0):
+    if change == 0 or abs(change) < noise:
+        return "same"
+    return "up" if change > 0 else "down"
 
 
 def loose_amount(text: str, sources: str) -> bool:
@@ -104,7 +122,8 @@ def guide(claim: Claim) -> dict:
     if claim.pace:
         word = f"pace {'the same' if claim.pace == 'same' else claim.pace}, pulse {word}"
     joiner = "as" if claim.trend == "same" and not claim.pace else "than"
-    return {"measure": measure, "direction": word, "period": period, "ending": f"{joiner} {against}"}
+    return {"measure": measure, "direction": word, "period": period, "ending": f"{joiner} {against}",
+            "changed": claim.changed}
 
 
 def check(text: str, claim: Claim) -> str | None:
