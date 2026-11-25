@@ -119,3 +119,18 @@ Why they were not useful:
 - **Selection fallback:** it can pick two near-unchanged readings and skip the largest change.
 - **Today and Sleep:** small week-to-week changes are written up as findings.
 - **Wording:** "occupied 1 days"; the latest resting-pulse sentence gives no date.
+
+## After v0.33.0
+
+The same dated cases, re-run and judged again by Claude, who also wrote the changes, so treat the
+usefulness count with caution.
+
+| Measure | Before | After |
+|---|---|---|
+| Results shown | 10 | 7 (old runs are no longer reviewed) |
+| Numbers and direction right | 10 of 10 | 7 of 7 |
+| Unsupported claim | 1 | 0 |
+| Useful / partly / not | 2 / 1 / 7 | 4 / 3 / 0 |
+
+On the quiet latest day, Today and Sleep still fall back to quoting readings after the model
+review rejects accurate drafts (roadmap item 12).

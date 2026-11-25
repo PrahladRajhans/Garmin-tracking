@@ -4,7 +4,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from statistics import fmean, median, pstdev
 
-from garmin_mcp import recovery
+from garmin_mcp import recovery, wellness_timeline
 
 
 def _timestamp(value):
@@ -107,13 +107,15 @@ def collect(conn, end, zone, need_h):
     end_date = date.fromisoformat(end)
     start = (end_date - timedelta(days=364)).isoformat()
     nights = {}
+    zones = wellness_timeline.day_zones(conn, zone, start, end)
     for day, seconds, score, start_at, wake_at, deep, light, rem, awake in conn.execute(
             "SELECT day,sleep_s,score,sleep_start,sleep_end,deep_s,light_s,rem_s,awake_s "
             "FROM sleep WHERE day BETWEEN ? AND ? AND sleep_s>=10800 ORDER BY day", (start, end)):
         if not recovery._positive(seconds):
             continue
         nights[day] = {"hours": seconds / 3600, "score": recovery.garmin_score(score),
-                       "bed": _clock_minutes(start_at, zone), "wake": _clock_minutes(wake_at, zone),
+                       "bed": _clock_minutes(start_at, zones.get(day, zone)),
+                       "wake": _clock_minutes(wake_at, zones.get(day, zone)),
                        "window": (start_at, wake_at),
                        "stages": {"Deep": deep, "Light": light, "REM": rem, "Awake": awake}}
     # Detail is useful on recent nights only. Older periods show aggregates.

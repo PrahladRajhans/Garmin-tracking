@@ -737,6 +737,23 @@ averages are descriptive. A comparison for a metric needs three readings in each
   windows include the missing date ranges and do not display a numeric baseline. See
   [Garmin sources and independent research](docs/GARMIN_DATA_REVIEW.md).
 
+## Changes the AI reviews treat as real
+
+Design choices (not published thresholds). A movement smaller than these reads as "about the same":
+nightly sleep average 0.25 h; weekly review sleep 15 min; resting heart rate 2 bpm; seven-day HRV
+3 ms; sleep shortfall 15 min per night; matched-run moving pulse 3 bpm; late-run cadence 3 spm;
+workout count 1 against the four-week average. Median decoupling counts as notable from 5 %.
+A flagged resting estimate counts as notable when it is outside the 28-day range.
+
+The exact-reading fallback offers only the pairs with the most real changes. The post-run review
+skips a run more than 14 days older than the snapshot.
+
+## Clock times on travel days
+
+Bedtime, wake time and intraday charts use the offset stored for that day (the Personal API pulse
+payload, else the export's wellness day). Training finish time uses the activity's own local and GMT
+start. Days without a recorded offset use the configured timezone.
+
 ## Daily distance
 
 `daily.distance_m` is walking and running distance in metres. The Personal API reports it as step

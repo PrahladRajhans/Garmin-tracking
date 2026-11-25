@@ -6,11 +6,15 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
 
 ## Latest changes for reviewers
 
+- **v0.33.0:** clock times on travel days use the watch's recorded offset. AI reviews treat small
+  movements as unchanged, keep the largest changes, and skip old runs. Open: model-review false
+  rejections, dashboard size and the owner items in the [roadmap](ROADMAP.md#open-after-the-mac-acceptance-run-v0321).
+
 - **v0.32.1:** first acceptance run on the owner's Mac. Fixed the missing intraday stress
   download, cadence precision, watch-timezone dating, daily distance, weekly Garmin load, bedtime
   validation and a test suite that could overwrite the iCloud dashboard. The real launchd job, a
   timeline backfill and the owner's iPhone checks passed after the merge. Open: the 44 bpm source,
-  the watch workout check, hosting. An AI judge found most dated AI results not useful. Details: [owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md) and
+  the watch workout check, hosting. An AI judge first found most dated AI results not useful; v0.33.0 addresses that. Details: [owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md) and
   [roadmap](ROADMAP.md#open-after-the-mac-acceptance-run-v0321).
 
 - **v0.32.0:** sample-rate-independent grade estimates, pulse coverage gates, missing-load

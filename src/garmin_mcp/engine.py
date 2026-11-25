@@ -17,9 +17,11 @@ import math
 import random
 import sqlite3
 import statistics
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from garmin_mcp import wellness_timeline
 
 MIN_PAIRS = 30
 BASELINE_DAYS = 28
@@ -29,6 +31,17 @@ SEED = 7
 
 
 # --------------------------------------------------------------------------- daily features
+def _activity_zone(start_utc: datetime, start_local: str | None, home):
+    """The offset recorded with an activity, or `home` when it is absent or agrees with it."""
+    try:
+        offset = datetime.fromisoformat(start_local).replace(tzinfo=None) - start_utc.replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return home
+    if start_utc.astimezone(home).utcoffset() == offset or abs(offset) > timedelta(hours=14):
+        return home
+    return timezone(offset)
+
+
 def _tz(conn: sqlite3.Connection) -> ZoneInfo:
     import os
 
@@ -71,19 +84,23 @@ def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[s
             {"trimp": 1, "ctl": 2, "atl": 3, "tsb": 4})
     except sqlite3.OperationalError:
         pass
-    # Bedtime (local hours after noon) and latest training end (local hour).
+    # Bedtime (local hours after noon) and latest training end (local hour), on the watch's clock.
+    zones = wellness_timeline.day_zones(conn, tz, start, end)
     for day, ts in conn.execute("SELECT day, sleep_start FROM sleep WHERE day BETWEEN ? AND ? "
                                 "AND sleep_start IS NOT NULL AND sleep_s >= 3*3600",
                                 (start, end)):
         stamp = _timestamp_utc(ts)
         if stamp is None:
             continue
-        local = stamp.astimezone(tz)
+        local = stamp.astimezone(zones.get(day, tz))
         out.setdefault(day, {})["bedtime_h"] = ((local.hour - 12) % 24) + local.minute / 60 + 12
-    first = datetime.combine(date.fromisoformat(start), time.min, tz).astimezone(UTC)
+    # An activity carries its own offset. Search a day wider, then keep finishes inside the dates.
+    first = datetime.combine(date.fromisoformat(start), time.min, tz).astimezone(UTC) - timedelta(days=1)
     stop = datetime.combine(date.fromisoformat(end) + timedelta(days=1), time.min, tz).astimezone(UTC)
-    for start_gmt, dur in conn.execute(
-            "SELECT start_time_gmt, duration_s FROM activities WHERE julianday(start_time_gmt) < julianday(?) "
+    stop += timedelta(days=1)
+    for start_gmt, start_local, dur in conn.execute(
+            "SELECT start_time_gmt, start_time_local, duration_s FROM activities "
+            "WHERE julianday(start_time_gmt) < julianday(?) "
             "AND typeof(duration_s) IN ('real','integer') AND duration_s > 0", (stop.isoformat(),)):
         stamp = _timestamp_utc(start_gmt)
         if stamp is None or not math.isfinite(dur):
@@ -94,8 +111,10 @@ def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[s
             continue
         if not first <= finish < stop:
             continue
-        end_local = finish.astimezone(tz)
+        end_local = finish.astimezone(_activity_zone(stamp, start_local, tz))
         d = end_local.date().isoformat()
+        if not start <= d <= end:
+            continue
         hour = end_local.hour + end_local.minute / 60
         row = out.setdefault(d, {})
         row["last_training_end_h"] = max(row.get("last_training_end_h", 0), hour)

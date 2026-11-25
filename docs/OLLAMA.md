@@ -139,6 +139,18 @@ a regression test, not an accuracy estimate.
 The fictional `sleep-written` case falls back to exact readings (3 of 3 runs, and the same on the
 unchanged code).
 
+### Today and Sleep clause checks (v0.33.0)
+
+Today and Sleep readings carry the same checkable claim as Running: measure, direction after the
+noise band in [METRICS](../METRICS.md#changes-the-ai-reviews-treat-as-real), and period. A draft
+must include a changed reading when one exists. On the Mac, fictional `today-written`,
+`sleep-written`, `running-block` and `sunday-review` gave reviewed prose; `mixed-recovery` and
+`dated-health` carry no claims and fall back as before.
+
+Known limit: with only one real change in a week, the model review tends to reject the accurate pair
+"X was larger" and "Y was the same". Neither a reviewer note nor per-clause review fixed that, and
+both were dropped. The fallback then quotes the changed readings.
+
 ### Post-run evidence check
 
 The latest detailed run has a separate review when qualified measurements are available.
