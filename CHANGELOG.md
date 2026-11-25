@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - Record the post-merge Mac checks: the real scheduled job, a 180-day timeline backfill and the
   AI update ([results](docs/OWNER_ACCEPTANCE_RESULTS.md#after-the-merge-pr-46-commit-157a11c)).
+- Record the owner's iPhone checks in Files, including VoiceOver and offline reopen
+  ([details](docs/OWNER_ACCEPTANCE_RESULTS.md#physical-iphone)).
 
 ## [0.32.1] - 2026-11-25
 

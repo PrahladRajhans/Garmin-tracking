@@ -302,7 +302,8 @@ The first run against the owner's archive and Mac is recorded in
 [owner acceptance results](OWNER_ACCEPTANCE_RESULTS.md). It found seven defects that fixtures had
 not: missing source data in the default mode, a dropped FIT fraction, single-timezone dating, a
 source-dependent distance definition, a partial Garmin load total, lenient time parsing on newer
-Python and tests writing into the home folder. This was targeted acceptance, not the remaining
+Python and tests writing into the home folder. The scheduled job and physical iPhone checks in
+Files passed after the merge. This was targeted acceptance, not the remaining
 file-by-file audit.
 
 ## v0.31.0 release check
