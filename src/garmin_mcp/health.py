@@ -43,14 +43,36 @@ def status_days(conn: sqlite3.Connection) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------- sleep
+def _sleep_payloads(conn, day):
+    rows = conn.execute("SELECT dataset, payload FROM raw_daily WHERE dataset IN "
+                        "('pa_sleep','sleep','ex_sleep') AND day=? ORDER BY CASE dataset "
+                        "WHEN 'pa_sleep' THEN 0 WHEN 'sleep' THEN 1 ELSE 2 END", (day,))
+    for dataset, payload in rows:
+        try:
+            value = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+        if dataset == "ex_sleep" and isinstance(value, list):
+            value = next((record for record in value if isinstance(record, dict)), None)
+        if isinstance(value, dict):
+            value = value.get("dailySleepDTO", value)
+            if isinstance(value, dict) and value:
+                yield dataset, value
+
+
 def sleep_breakdown(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
-    row = conn.execute("SELECT payload FROM raw_daily WHERE dataset IN ('pa_sleep','sleep') AND "
-                       "day=? AND payload!='null' ORDER BY dataset LIMIT 1", (day,)).fetchone()
     out: dict[str, Any] = {"day": day}
-    if row:
-        p = json.loads(row[0])
-        p = p.get("dailySleepDTO", p)
-        sc = p.get("sleepScores") or {}
+    for dataset, p in _sleep_payloads(conn, day):
+        sc = p.get("sleepScores")
+        if sc is not None and not isinstance(sc, dict):
+            continue
+        sc = sc or {}
+        if dataset == "ex_sleep":
+            out.update(source="Garmin export", overall=sc.get("overallScore"),
+                       parts={k.replace("Score", ""): {"score": v} for k, v in sc.items()
+                              if k.endswith("Score") and k != "overallScore"},
+                       feedback=sc.get("feedback"))
+            break
         parts = {}
         for key, label in (("totalDuration", "Duration"), ("deepPercentage", "Deep sleep"),
                            ("remPercentage", "REM sleep"), ("lightPercentage", "Light sleep"),
@@ -58,24 +80,18 @@ def sleep_breakdown(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
                            ("stress", "Stress during sleep")):
             c = sc.get(key)
             if isinstance(c, dict):
-                parts[label] = {"rating": (c.get("qualifierKey") or "").title() or None,
+                qualifier = c.get("qualifierKey")
+                parts[label] = {"rating": qualifier.title() if isinstance(qualifier, str) and qualifier else None,
                                 "value": c.get("value"),
                                 "optimal": [c.get("optimalStart"), c.get("optimalEnd")]}
-        out.update(source="Garmin", overall=(sc.get("overall") or {}).get("value"),
-                   rating=((sc.get("overall") or {}).get("qualifierKey") or "").title() or None,
+        overall = sc.get("overall")
+        overall = overall if isinstance(overall, dict) else {}
+        qualifier = overall.get("qualifierKey")
+        out.update(source="Garmin", overall=overall.get("value"),
+                   rating=qualifier.title() if isinstance(qualifier, str) and qualifier else None,
                    parts=parts, feedback=p.get("sleepScoreFeedback"),
                    avg_sleep_hr=p.get("avgHeartRate"))
-    else:
-        row = conn.execute("SELECT payload FROM raw_daily WHERE dataset='ex_sleep' AND day=?",
-                           (day,)).fetchone()
-        if row:
-            p = json.loads(row[0])
-            p = p if isinstance(p, dict) else p[0]
-            sc = p.get("sleepScores") or {}
-            out.update(source="Garmin export", overall=sc.get("overallScore"),
-                       parts={k.replace("Score", ""): {"score": v} for k, v in sc.items()
-                              if k.endswith("Score") and k != "overallScore"},
-                       feedback=sc.get("feedback"))
+        break
     dip = heart_rate_dip(conn, day)
     if dip:
         out["heart_rate_dip"] = dip
@@ -84,26 +100,48 @@ def sleep_breakdown(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
 
 def heart_rate_dip(conn: sqlite3.Connection, day: str) -> dict[str, Any] | None:
     sl = conn.execute("SELECT sleep_start, sleep_end, avg_hr FROM sleep WHERE day=? AND "
-                      "sleep_s >= 3*3600", (day,)).fetchone()
-    if not sl or not sl[0] or not sl[1] or not sl[2] or sl[2] <= 0:
+                      "sleep_s BETWEEN 3*3600 AND 24*3600", (day,)).fetchone()
+    if not sl or not isinstance(sl[2], (int, float)) or not 0 < sl[2] <= 300:
         return None
     # awake HR from the previous day's all-day timeline (the day before this night)
     prev = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
-    row = conn.execute("SELECT payload FROM raw_daily WHERE dataset IN ('pa_heart_rate',"
-                       "'heart_rate') AND day=? AND payload!='null' LIMIT 1", (prev,)).fetchone()
-    if not row:
-        return None
-    values = (json.loads(row[0]) or {}).get("heartRateValues") or []
-    def ms(value: str) -> float:
-        parsed = datetime.fromisoformat(value)
-        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp() * 1000
+    def ms(value: str) -> float | None:
+        try:
+            parsed = datetime.fromisoformat(value)
+            return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp() * 1000
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
 
-    start = ms(sl[0])
-    windows = [(ms(a), ms(b)) for a, b in conn.execute(
-        "SELECT sleep_start,sleep_end FROM sleep WHERE day BETWEEN ? AND ? AND sleep_s>=3*3600 "
-        "AND sleep_start IS NOT NULL AND sleep_end IS NOT NULL", (prev, day))]
-    awake = [hr for ts, hr in values if isinstance(hr, (int, float)) and hr > 0
-             and ts < start - 30 * 60 * 1000 and not any(a <= ts <= b for a, b in windows)]
+    start, finish = ms(sl[0]), ms(sl[1])
+    if start is None or finish is None or start >= finish:
+        return None
+    windows = [(a, b) for left, right in conn.execute(
+        "SELECT sleep_start,sleep_end FROM sleep WHERE day BETWEEN ? AND ? "
+        "AND sleep_s BETWEEN 3*3600 AND 24*3600 "
+        "AND sleep_start IS NOT NULL AND sleep_end IS NOT NULL", (prev, day))
+        if (a := ms(left)) is not None and (b := ms(right)) is not None and a < b]
+    awake = []
+    for (payload,) in conn.execute("SELECT payload FROM raw_daily WHERE dataset IN ('pa_heart_rate',"
+                                   "'heart_rate') AND day=? ORDER BY dataset DESC", (prev,)):
+        try:
+            record = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+        values = record.get("heartRateValues") if isinstance(record, dict) else None
+        if not isinstance(values, list):
+            continue
+        usable = {}
+        for entry in values:
+            if not isinstance(entry, list) or len(entry) < 2:
+                continue
+            ts, hr = entry[:2]
+            if (type(ts) in (int, float) and 0 < ts < start - 30 * 60 * 1000
+                    and type(hr) in (int, float) and 0 < hr <= 300
+                    and not any(a <= ts <= b for a, b in windows)):
+                usable.setdefault(ts, hr)
+        if len(usable) >= 60:
+            awake = list(usable.values())
+            break
     if len(awake) < 60:
         return None
     day_mean = statistics.fmean(awake)

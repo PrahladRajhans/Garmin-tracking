@@ -4,6 +4,13 @@ from garmin_mcp import bedtime_experiment, dashboard
 from garmin_mcp.normalize import rebuild
 
 
+def test_saved_target_rejects_nonstandard_and_missing_clock_values(conn):
+    for target in (None, "T1234", "24:00", "5:15"):
+        with pytest.raises(ValueError):
+            bedtime_experiment.accept(conn, "2026-11-17", target)
+    assert conn.execute("SELECT COUNT(*) FROM bedtime_targets").fetchone()[0] == 0
+
+
 def test_saved_week_keeps_target_and_steps_back_after_most_misses(conn):
     rebuild(conn)
     bedtime_experiment.accept(conn, "2026-11-17", "00:30")

@@ -17,7 +17,7 @@ from hashlib import file_digest, sha256
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 HEADERS = """/*
@@ -122,16 +122,23 @@ def check_access(api: Cloudflare, project: str, email: str) -> tuple[str, str]:
     return host, branch
 
 
-def _check_login(host: str) -> None:
-    req = Request(f"https://{host}/", headers={"User-Agent": "garmin-mcp-privacy-check"})
+def _check_login(host: str, path: str = "/") -> None:
+    origin = f"https://{host}/"
+    req = Request(urljoin(origin, path), headers={"User-Agent": "garmin-mcp-privacy-check"})
     try:
         with build_opener(_NoRedirect()).open(req, timeout=20):
             pass
     except HTTPError as exc:
-        target = urlsplit(exc.headers.get("Location", ""))
+        location = exc.headers.get("Location", "")
+        target = urlsplit(location)
         if (exc.code in (302, 303, 307) and target.scheme == "https"
                 and (target.hostname or "").endswith(".cloudflareaccess.com")
                 and target.path.startswith("/cdn-cgi/access/login")):
+            return
+        if (path == "/index.html" and exc.code in (301, 302, 303, 307, 308)
+                and urljoin(req.full_url, location) == origin):
+            # Pages can canonicalize the file URL to the root before authentication.
+            _check_login(host)
             return
     except OSError:
         pass
@@ -163,8 +170,9 @@ def publish_if_enabled(path: Path | None, *, check_only: bool = False) -> dict[s
             raise PublishError("Publishing configuration is incomplete; see MAC_SETUP.md.")
         def authorize() -> tuple[str, str]:
             host, branch = check_access(Cloudflare(account, token), project, email)
-            _check_login(host)
-            _check_login("privacy-check." + host)
+            for hostname in (host, "privacy-check." + host):
+                _check_login(hostname)
+                _check_login(hostname, "/index.html")
             return host, branch
 
         if check_only:

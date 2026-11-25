@@ -361,9 +361,21 @@ def create(conn: sqlite3.Connection, spec: dict[str, Any], upload: bool = False,
             client = get_client()
         res = client.upload_workout(payload)
         wid = res.get("workoutId") if isinstance(res, dict) else None
+        if isinstance(wid, str) and len(wid) <= 20 and wid.isascii() and wid.isdecimal():
+            wid = int(wid)
+        if type(wid) is not int or wid <= 0:
+            out.update(upload_status="unverified",
+                       upload_error="Garmin returned no usable workout ID.",
+                       next="Check your saved workouts in Garmin Connect before retrying.")
+            return out
         out.update(uploaded=True, workout_id=wid)
-        if wid and schedule_date:
-            client.schedule_workout(wid, schedule_date)
+        if schedule_date:
+            try:
+                client.schedule_workout(wid, schedule_date)
+            except Exception as exc:  # noqa: BLE001 - upload already succeeded
+                out.update(schedule_status="unverified", schedule_error=type(exc).__name__,
+                           next="The workout was saved. Check the Garmin Connect calendar before scheduling it again.")
+                return out
             out["scheduled_for"] = schedule_date
         out["next"] = "sync the watch (Garmin Connect app) to receive the workout"
     except Exception as exc:  # noqa: BLE001 - report, don't crash the tool

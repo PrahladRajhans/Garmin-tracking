@@ -1,5 +1,5 @@
 import math
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 
 from garmin_mcp import recovery
 from garmin_mcp.normalize import TABLES
@@ -62,6 +62,36 @@ def test_incomplete_night_excluded(conn):
     conn.execute("UPDATE sleep SET sleep_s=840 WHERE day=?", (END.isoformat(),))
     s = recovery.readiness(conn, END.isoformat())["sleep"]
     assert s["last_night_h"] is None and END.isoformat() in s["incomplete_records_7d"]
+
+
+def test_readiness_picks_usable_fallbacks_and_preserves_zero_recovery_time(conn):
+    _make(conn)
+    day = END.isoformat()
+    conn.execute("UPDATE sleep SET avg_respiration=-1 WHERE day=?", (day,))
+    conn.execute("UPDATE daily SET resting_hr=0 WHERE day=?", (day,))
+    conn.execute("UPDATE hrv SET last_night_avg=? WHERE day=?", (float("inf"), day))
+    conn.execute("INSERT INTO health_status(day,respiration,hrv) VALUES (?,16,50)", (day,))
+    conn.execute("INSERT INTO readiness(day,score,recovery_time_min) VALUES (?,0,0)", (day,))
+    values = recovery.load_series(conn, day, 14)
+    assert values["resp"][day] == 16 and values["hrv"][day] == 50
+    assert day not in values["rhr"]
+    result = recovery.readiness(conn, day)
+    assert result["garmin"]["score"] == result["garmin"]["recovery_time_h"] == 0
+    assert result["ours"]["signals_used"] == 3
+
+
+def test_bedtime_consistency_uses_circular_local_time_and_ignores_invalid_start(conn, monkeypatch):
+    from garmin_mcp import engine
+
+    _make(conn)
+    monkeypatch.setattr(engine, "_tz", lambda _: UTC)
+    clocks = ("11:55:00Z", "11:56:00+00:00", "12:04:00Z", "12:06:00Z", "17:30:00+05:30", "?")
+    for i, clock in enumerate(clocks):
+        day = (END - timedelta(days=i)).isoformat()
+        conn.execute("UPDATE sleep SET sleep_start=?, sleep_s=10800 WHERE day=?", (f"{day}T{clock}", day))
+    without_time = (END - timedelta(days=len(clocks))).isoformat()
+    conn.execute("UPDATE sleep SET sleep_start=?, sleep_s=10800 WHERE day=?", (without_time, without_time))
+    assert recovery.bedtime_consistency(conn, END.isoformat()) == 5
 
 
 def test_sleep_fallback_is_shared_and_debt_inputs_are_traceable(conn):

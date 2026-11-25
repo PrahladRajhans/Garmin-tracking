@@ -37,6 +37,18 @@ def test_recorded_stages_leave_unrecorded_time_blank():
     rem = {"startGMT": "2026-11-01T03:00:00", "endGMT": "2026-11-01T04:00:00", "activityLevel": 2}
     assert sleep_review._timeline([rem, light], start, end) == [(0, 0.25, "light"), (0.5, 0.25, "rem")]
     assert sleep_review._timeline([light, {**light, "activityLevel": 2}], start, end) == []
+    assert sleep_review._timeline([{**light, "activityLevel": True}], start, end) == []
+
+
+def test_invalid_raw_sleep_timeline_does_not_hide_usable_nightly_summary(conn):
+    rebuild(conn)
+    conn.executemany("INSERT INTO sleep(day,sleep_s,score) VALUES (?,25200,80)",
+                     [("2026-11-06",), ("2026-11-07",)])
+    conn.executemany("INSERT INTO raw_daily(dataset,day,source,payload,fetched_at) VALUES ('sleep',?,'garminconnect',?,'x')",
+                     [("2026-11-06", None), ("2026-11-07", "broken JSON")])
+    review = sleep_review.collect(conn, "2026-11-07", UTC, 8)
+    assert review["windows"][7]["nights"] == 2
+    assert all("timeline" not in night for night in review["nights"].values())
 
 
 def test_post_run_investigation_is_gated_by_actual_matched_span():
@@ -71,3 +83,14 @@ def test_bedtime_plan_holds_after_most_nights_missed_the_prior_step(conn):
                  "WHERE day >= '2026-11-16'")
     anchor = sleep_review.collect(conn, "2026-11-23", UTC, 8)["anchor"]
     assert anchor["bedtime"] == "02:00" and not anchor["held"]
+
+
+def test_fixed_wake_anchor_reports_spread_and_count_from_same_window(conn):
+    rebuild(conn)
+    for index in range(9, 28):
+        day = f"2026-11-{index:02d}"
+        end = "09:30" if index <= 22 else "12:00"
+        conn.execute("INSERT INTO sleep(day,sleep_s,sleep_start,sleep_end) VALUES (?,25200,?,?)",
+                     (day, f"{day}T02:30:00Z", f"{day}T{end}:00Z"))
+    anchor = sleep_review.collect(conn, "2026-11-27", UTC, 8)["anchor"]
+    assert (anchor["wake"], anchor["spread"], anchor["nights"]) == ("09:30", 0, 14)

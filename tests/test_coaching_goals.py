@@ -42,6 +42,37 @@ def test_run_analysis_matched_pace_and_glossary(conn):
     assert set(coaching.GLOSSARY) >= {"cadence", "vertical_ratio", "aerobic_decoupling", "swolf"}
 
 
+def test_running_views_reject_cycling_and_keep_treadmill_fit(conn):
+    _seed_runs(conn, 2)
+    # A cycling activity can have the same FIT channels as a run. Its metrics are still cycling.
+    conn.execute("UPDATE activities SET type='cycling' WHERE activity_id=500")
+    conn.execute("UPDATE activities SET type='treadmill_running' WHERE activity_id=501")
+    assert coaching.run_analysis(conn, 500) == {"error": "This activity is not a run."}
+    assert running.running_breakdown(conn, 500) == {
+        "available": False, "reason": "This activity is not a run.",
+    }
+    stream = coaching.activity_stream(conn, 500)
+    assert stream["cadence_unit"] == "rev/min" and stream["stream"][0]["cadence_spm"] == 82
+    assert coaching.run_analysis(conn, 501)["metrics"]["cadence_spm"] == 164
+    assert running.running_breakdown(conn, 501)["available"]
+
+
+def test_running_timing_accepts_single_session_object_and_ignores_invalid_shape(conn):
+    from garmin_mcp.verify import run_timing
+
+    _seed_runs(conn, 1)
+    conn.execute("INSERT INTO fit_sessions VALUES (500,'running','generic',?)",
+                 ('{"total_timer_time":1800}',))
+    assert running.running_breakdown(conn, 500)["pacing"]["garmin_timer_s"] == 1800
+    assert run_timing(conn)["years"]["2026"]["pairs"]["recorded_moving_minus_watch_timer_s"][
+        "paired_runs"] == 1
+    for payload in ("null", "[null]", "invalid JSON"):
+        conn.execute("UPDATE fit_sessions SET payload=?", (payload,))
+        assert running.running_breakdown(conn, 500)["pacing"]["garmin_timer_s"] is None
+        assert coaching.session_unit_check(conn) == {}
+        assert "recorded_moving_minus_watch_timer_s" not in run_timing(conn)["years"]["2026"]["pairs"]
+
+
 def test_smart_recording_and_pause_use_timestamp_intervals(conn):
     _seed_runs(conn, 1)
     conn.execute("DELETE FROM fit_records WHERE activity_id=500")
@@ -124,6 +155,9 @@ def test_week_plan_uses_recent_run_volume_and_pauses_for_status(conn):
         prior = (day - timedelta(days=i)).isoformat()
         db.upsert_activity(conn, {"activityId": i, "activityType": {"typeKey": "running"},
                                  "startTimeLocal": f"{prior} 08:00:00", "duration": 1800})
+    db.upsert_activity(conn, {"activityId": 2, "activityType": {"typeKey": "running"},
+                             "startTimeLocal": "2026-11-21 08:00:00", "duration": 1800})
+    conn.execute("UPDATE activities SET duration_s='bad' WHERE activity_id=2")
     week = training_plan.week(conn, day.isoformat(), readiness)
     assert (week["sessions"], week["minutes"], week["history_run_days_by_week"]) == (2, 30, [2]*4)
     readiness["ours"]["state"] = "calibrating"

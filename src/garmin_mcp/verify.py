@@ -89,13 +89,13 @@ PAIRS = [
 def _collect(conn: sqlite3.Connection, dataset: str) -> dict[str, dict[str, Any]]:
     _, fn = N.EXTRACTORS[dataset]
     out: dict[str, dict[str, Any]] = {}
-    for table in ("raw_daily", "raw_range"):
-        for (payload,) in conn.execute(
-            f"SELECT payload FROM {table} WHERE dataset=? AND payload IS NOT NULL "
-            "AND payload!='null'", (dataset,)
-        ):
-            for day, values in fn(json.loads(payload)):
-                out.setdefault(day, {}).update({k: v for k, v in values.items() if v is not None})
+    rows = sorted(N.stored_payloads(conn, (dataset,)), key=lambda row: N.PRIORITY.get(row[1], 9))
+    for _, _, payload, _ in rows:
+        for day, values in fn(json.loads(payload)):
+            recorded = out.setdefault(day, {})
+            for key, value in values.items():
+                if value is not None:
+                    recorded.setdefault(key, value)
     return out
 
 
@@ -167,6 +167,7 @@ def run(conn: sqlite3.Connection) -> dict[str, Any]:
 def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Per-year paired watch/stream residuals from stored outdoor runs."""
     from garmin_mcp.coaching import run_metrics
+    from garmin_mcp.fit import session_messages
     from garmin_mcp.loads import RUN_TYPES
 
     groups: dict[str, dict[str, Any]] = {}
@@ -181,7 +182,7 @@ def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
         if metrics is None:
             continue
         year["runs_usable"] += 1
-        sessions = json.loads(payload) if payload else []
+        sessions = session_messages(payload)
         session = sessions[0] if len(sessions) == 1 else {}
         for name, measured, watch in (
             ("record_span_minus_watch_elapsed_s", metrics["recorded_elapsed_s"],
@@ -262,7 +263,7 @@ def replay_dashboard(path, months=36) -> dict[str, Any]:
 
 def main() -> None:
     from garmin_mcp import db
-    from garmin_mcp.config import db_path
+    from garmin_mcp.config import data_dir, db_path
 
     parser = argparse.ArgumentParser(description="Check stored Garmin data.")
     modes = parser.add_mutually_exclusive_group()
@@ -281,9 +282,11 @@ def main() -> None:
     parser.add_argument("--output", type=Path, help="New private CSV file (default: standard output).")
     parser.add_argument("--include-dates", action="store_true",
                         help="Show local dates for wellness FIT preview counts.")
+    parser.add_argument("--retain", action="store_true",
+                        help="Also save the validated monitoring FIT in the private data directory.")
     args = parser.parse_args()
-    if args.include_dates and args.preview_wellness_fit is None:
-        parser.error("--include-dates requires --preview-wellness-fit.")
+    if (args.include_dates or args.retain) and args.preview_wellness_fit is None:
+        parser.error("--include-dates and --retain require --preview-wellness-fit.")
     if args.export_csv:
         from garmin_mcp.archive_export import export_file, write_csv
 
@@ -313,7 +316,8 @@ def main() -> None:
         if not path.is_file():
             parser.error("No stored Garmin database. Run this where your archive is stored.")
         try:
-            report = preview(path, args.preview_wellness_fit, include_dates=args.include_dates)
+            report = preview(path, args.preview_wellness_fit, include_dates=args.include_dates,
+                             retain_directory=data_dir() / "monitoring-fit" if args.retain else None)
         except sqlite3.Error:
             parser.error("Could not read the expected Garmin archive tables.")
         except (ValueError, OSError) as error:
@@ -344,7 +348,10 @@ def main() -> None:
             print(json.dumps(run_timing(read_only), indent=2))
         return
 
-    conn = db.connect(db_path())
+    path = db_path()
+    if not path.is_file():
+        parser.error("No stored Garmin database. Run this where your archive is stored.")
+    conn = db.connect(path)
     N.rebuild(conn)
     result = run(conn)
     print(json.dumps({k: result[k] for k in ("ok", "problems", "known_upstream_differences")},

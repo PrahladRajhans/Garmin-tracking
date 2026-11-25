@@ -65,15 +65,18 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     sleep_row = conn.execute("SELECT sleep_s, sleep_need_min, score FROM sleep WHERE day=?",
                              (day,)).fetchone()
     sleep_pct = need_h = hours = None
-    if sleep_row and sleep_row[0] and sleep_row[0] >= 3 * 3600:
+    has_sleep_duration = bool(sleep_row and recovery._positive(sleep_row[0]))
+    has_garmin_need = bool(sleep_row and recovery._positive(sleep_row[1]))
+    if has_sleep_duration and sleep_row[0] >= recovery.MIN_VALID_NIGHT_H * 3600:
         hours = sleep_row[0] / 3600
-        need_h = (sleep_row[1] / 60) if sleep_row[1] and sleep_row[1] > 0 else DEFAULT_NEED_H
+        need_h = (sleep_row[1] / 60) if has_garmin_need else DEFAULT_NEED_H
         sleep_pct = round(hours / need_h * 100)
     try:
         trimp = conn.execute("SELECT load FROM fitness WHERE day=?", (day,)).fetchone()
     except sqlite3.OperationalError:
         trimp = None
-    strain = strain_from_trimp(trimp[0]) if trimp and trimp[0] is not None else 0.0
+    load = trimp[0] if trimp and recovery._positive(trimp[0]) else 0.0
+    strain = strain_from_trimp(load)
     target = TARGETS.get(color) if color else None
     garmin = r["garmin"] or {}
     return {
@@ -88,12 +91,11 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
                      "garmin_level": garmin.get("level")},
         "sleep": {"pct": sleep_pct, "hours": round(hours, 2) if hours else None,
                   "need_h": round(need_h, 2) if need_h else None,
-                  "need_source": "Garmin sleep need" if sleep_row and sleep_row[1]
-                  and sleep_row[1] > 0 else f"{DEFAULT_NEED_H:.0f} h planning fallback",
-                  "garmin_sleep_score": sleep_row[2] if sleep_row else None,
+                  "need_source": "Garmin sleep need" if has_garmin_need else f"{DEFAULT_NEED_H:.0f} h planning fallback",
+                  "garmin_sleep_score": recovery.garmin_score(sleep_row[2]) if sleep_row else None,
                   "debt_7d_h": r["sleep"]["debt_7d_h"],
-                  "incomplete": bool(sleep_row and sleep_row[0] and sleep_row[0] < 3 * 3600)},
-        "strain": {"value": strain, "trimp": round(trimp[0], 1) if trimp and trimp[0] else 0.0,
+                  "incomplete": has_sleep_duration and sleep_row[0] < recovery.MIN_VALID_NIGHT_H * 3600},
+        "strain": {"value": strain, "trimp": round(load, 1),
                    "target_range": target},
     }
 
@@ -106,20 +108,20 @@ def bedtime_suggestion(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
     tz = engine._tz(conn)
     lo = (date.fromisoformat(day) - timedelta(days=13)).isoformat()
     wakes = []
-    for (ts,) in conn.execute("SELECT sleep_end FROM sleep WHERE day BETWEEN ? AND ? AND "
-                              "sleep_end IS NOT NULL AND sleep_s >= 3*3600", (lo, day)):
-        if (wake := sleep_review._clock_minutes(ts, tz)) is not None:
+    for ts, seconds in conn.execute("SELECT sleep_end,sleep_s FROM sleep WHERE day BETWEEN ? AND ? "
+                                    "AND sleep_end IS NOT NULL", (lo, day)):
+        if (recovery._positive(seconds) and seconds >= recovery.MIN_VALID_NIGHT_H * 3600
+                and (wake := sleep_review._clock_minutes(ts, tz)) is not None):
             wakes.append(wake)
     if len(wakes) < 5:
         return {"available": False, "reason": "needs 5 valid nights in 14 days"}
-    wakes.sort()
-    wake = wakes[len(wakes) // 2]
+    wake = statistics.median(sleep_review._unwrap(wakes))
     s = daily_scores(conn, day)["sleep"]
     need = (s["need_h"] or DEFAULT_NEED_H) * 60
     extra = min(60, (s["debt_7d_h"] or 0) * 60 / 7)
     bed = (wake - need - extra) % 1440
-    return {"available": True, "usual_wake": f"{wake // 60:02d}:{wake % 60:02d}",
-            "suggested_bedtime": f"{int(bed) // 60:02d}:{int(bed) % 60:02d}",
+    return {"available": True, "usual_wake": sleep_review.clock(wake),
+            "suggested_bedtime": sleep_review.clock(bed),
             "includes_debt_repayment_min": round(extra), "timezone": str(tz)}
 
 
@@ -152,7 +154,7 @@ def sense_checks(conn: sqlite3.Connection, end: str, days: int = 180) -> list[di
                         ((date.fromisoformat(end) - timedelta(days=days)).isoformat(), end)
                         ).fetchall()
     sp = {x["day"]: x["sleep_pct"] for x in h}
-    pairs = [(sp[d], s) for d, s in rows if sp.get(d) is not None]
+    pairs = [(sp[d], s) for d, s in rows if sp.get(d) is not None and recovery.garmin_score(s) is not None]
     r = _pearson([p[0] for p in pairs], [p[1] for p in pairs])
     checks.append({"check": "Sleep % vs Garmin sleep score", "ok": None if r is None else r > 0.3,
                    "detail": f"r = {r:.2f} over {len(pairs)} nights" if r is not None
@@ -185,10 +187,10 @@ def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[st
     from garmin_mcp.engine import _pearson
 
     e = date.fromisoformat(end)
-    hrv = dict(conn.execute("SELECT day, hrv FROM health_status WHERE day<=? AND hrv>0", (end,)))
-    hrv.update(conn.execute("SELECT day,last_night_avg FROM hrv WHERE day<=? AND last_night_avg>0",
-                            (end,)))
-    garmin = dict(conn.execute("SELECT day, score FROM readiness WHERE day <= ?", (end,)))
+    first = (e - timedelta(days=days + recovery.BASELINE_DAYS)).isoformat()
+    hrv = recovery.nightly_hrv(conn, first, end)
+    garmin = {d: recovery.garmin_score(score) for d, score in conn.execute(
+        "SELECT day, score FROM readiness WHERE day BETWEEN ? AND ?", (first, end))}
 
     def hrv_z(d: str) -> float | None:
         v = hrv.get(d)
@@ -219,28 +221,29 @@ def weight_study(conn: sqlite3.Connection, end: str, days: int = 180) -> dict[st
         r = _pearson([a for a, _ in pts], [b for _, b in pts]) if len(pts) >= 30 else None
         return {"r": round(r, 3) if r is not None else None, "n": len(pts)}
 
-    def mean_of(keys: list[str]) -> Any:
+    def mean_of(keys: list[str], minimum: int) -> Any:
         def f(c: dict[str, float | None]) -> float | None:
             v = [c[k] for k in keys if c.get(k) is not None]
-            return statistics.fmean(v) if v else None
+            return statistics.fmean(v) if len(v) >= minimum else None
         return f
 
     signals = {n: {"next_night_hrv": corr(lambda c, n=n: c.get(n), 1),
                    "garmin_readiness": corr(lambda c, n=n: c.get(n), 2)} for n in names}
-    variants = {"equal weights (current)": names, "without breathing": names[:3],
-                "HRV + resting HR": names[:2]}
+    variants = {"equal weights (current)": mean_of(names, recovery.MIN_READINESS_SIGNALS),
+                "without breathing": mean_of(names[:3], 3), "HRV + resting HR": mean_of(names[:2], 2)}
     common = {idx: {i for i, (c, *o) in enumerate(rows) if o[idx - 1] is not None and all(
-        mean_of(keys)(c) is not None for keys in variants.values())} for idx in (1, 2)}
-    comp = {v: {"next_night_hrv": corr(mean_of(k), 1, common[1]),
-                "garmin_readiness": corr(mean_of(k), 2, common[2])}
-            for v, k in variants.items()}
+        composite(c) is not None for composite in variants.values())} for idx in (1, 2)}
+    comp = {name: {"next_night_hrv": corr(composite, 1, common[1]),
+                   "garmin_readiness": corr(composite, 2, common[2])}
+            for name, composite in variants.items()}
     base = comp["equal weights (current)"]
     better = [v for v, c in comp.items() if v != "equal weights (current)" and _beats_on_both(c, base)]
     return {"window_days": days, "signals": signals, "composites": comp,
             "decision": f"switch to: {better[0]}" if better else
                         "keep equal weights (no variant better on both outcomes by > 0.05 r)",
             "method": weight_study.__doc__.strip().splitlines()[0],
-            "comparison_pairing": "same days across composite variants for each outcome"}
+            "comparison_pairing": "same eligible days across variants for each outcome; "
+                                  "three signals for current and all named signals for alternatives"}
 
 
 def _beats_on_both(candidate: dict, baseline: dict) -> bool:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from garmin_mcp.config import data_dir
 
-INSIGHT_CONTRACT = 3
+INSIGHT_CONTRACT = 4
 POST_RUN_CONTRACT = 1
 
 
@@ -71,18 +71,30 @@ def evidence(data):
     if run.get("date") == data.get("end") and match.get("available"):
         delta = match["difference_hr_bpm"]
         if _number(delta):
-            result.append(Evidence("running", f"The latest run's moving heart rate differed by "
-                                   f"{delta:+g} bpm from the median across "
+            comparison = (f"{abs(delta):g} bpm {'higher' if delta > 0 else 'lower'} than"
+                          if delta else "the same as")
+            result.append(Evidence("running", f"The latest run's moving heart rate was "
+                                   f"{comparison} the median across "
                                    f"{len(match['matches'])} similar runs.",
                                    f"run-{run['activity_id']}-compare"))
     return tuple(result) if len({row.domain for row in result}) >= 2 else ()
+
+
+def sleep_review(data):
+    """Use the fresh night as the eligibility gate and allow only sleep/recovery facts."""
+    end = data.get("end")
+    if not end or (data.get("night") or {}).get("day") != end:
+        return ()
+    rows = tuple(row for row in evidence(data) if row.domain in {"sleep", "recovery"})
+    return rows if {row.domain for row in rows} == {"sleep", "recovery"} else ()
 
 
 DEFAULT_VOICE = ("Be a curious, plainspoken coach. Lead with the most interesting contrast. "
                  "Name the uncertainty and ask a useful question in everyday language.")
 LENSES = {
     "daily": "Look for readings that disagree. Separate a one-day wearable reading from the longer trend.",
-    "sleep": "Contrast time below a sleep target with the recovery readings. Avoid causal or repayment claims.",
+    "sleep": "Compare the supplied sleep measurement with a named recovery measure such as HRV or resting pulse. "
+             "Keep the time windows separate.",
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
     "running_review": "Look for a contrast between running frequency and a measured response on the latest run. "
                       "Describe pulse, pace or cadence as up, down or similar in the recording. "
@@ -397,6 +409,22 @@ def remember(conn, day, rows):
 
 
 FICTIONAL_CASES = {
+    "today-written": (
+        "running", evidence({
+            "end": "2026-11-25",
+            "signals": {"resting_hr": {"recent": 53, "previous": 53, "recent_count": 7, "previous_count": 7}},
+            "runs": [{"activity_id": 101, "date": "2026-11-25", "comparable_effort": {
+                "available": True, "difference_hr_bpm": 7, "matches": [{}, {}, {}, {}]},
+            }],
+        }),
+    ),
+    "sleep-written": (
+        "sleep", sleep_review({
+            "end": "2026-11-25", "night": {"day": "2026-11-25"},
+            "signals": {"sleep_h": {"recent": 7.8, "previous": 6.6, "recent_count": 6, "previous_count": 7}},
+            "hrv_context": {"rolling_7d_ms": 45, "previous_average": 48},
+        }),
+    ),
     "dated-health": (
         "sleep", evidence({
             "end": "2026-11-25",
@@ -464,13 +492,21 @@ SYSTEM = (
     "Avoid causes, diagnoses, how the athlete felt, calculated ratios, advice and forecasts. "
     "Use at least two current domains. If nothing useful stands out, return empty strings and an empty list."
 )
+CONCISE_SYSTEM = (
+    "Write one short observation using two different current evidence domains. "
+    "Use the measured names, such as moving heart rate or HRV, rather than a broad fitness or recovery label. "
+    "Give the direction and comparison window for each measurement. "
+    "Use plain language and omit numbers unless useful. Avoid causes, advice and forecasts. "
+    "Return only the observation and the two cited evidence IDs."
+)
 REVIEW_REASONS = ("supported", "wrong_comparison", "unsupported_claim", "advice_or_prediction")
 REVIEW = (
     "Compare each factual statement in the proposed observation and any premise in its question "
     "with the cited readings. Choose one verdict. Use supported for an accurate observation and "
     "a neutral question about checking or repeating measured signals. Allow everyday paraphrases. "
     "Use wrong_comparison if a direction, metric, value or time window changed. Use unsupported_claim "
-    "for a new fact, feeling, cause or ratio. Use advice_or_prediction for a target, prescription, "
+    "for a new fact, feeling, cause, ratio or broad recovery claim inferred from one reading. "
+    "Use advice_or_prediction for a target, prescription, "
     "diagnosis or forecast. Check questions too. 'Did shorter sleep make you feel tired?' invents "
     "a cause and a feeling. 'Does sleep stay shorter in another week with more recorded workouts?' checks a repeat."
 )
@@ -484,6 +520,8 @@ _EXCLUDED = re.compile(
     r"correlat\w*|prescri\w*|diagnos\w*|diseases?|medicat\w*|symptoms?|treat\w*|injur\w*)\b", re.IGNORECASE)
 _UNMEASURED = re.compile(r"\b(?:feel(?:s|ing)?|felt|tired(?:ness)?|fatigu\w*|"
                          r"reason\s+(?:for|why|you)|explain(?:s|ed)?\s+why|"
+                         r"recovery\s+(?:metrics?|markers?|status|scores?|improved|worsened)|"
+                         r"fitness\s+(?:improved|worsened)|"
                          r"twice|doubl(?:e[ds]?|ing)|tripl(?:e[ds]?|ing)|halv(?:e[ds]?|ing))\b", re.IGNORECASE)
 
 
@@ -509,6 +547,11 @@ class Insight:
         return f"{SYSTEM} Voice: {self.voice} Focus: {self.focus}"
 
     @property
+    def concise_system(self):
+        voice = f" Voice: {self.voice}" if self.voice != DEFAULT_VOICE else ""
+        return f"{CONCISE_SYSTEM}{voice} Focus: {self.focus}"
+
+    @property
     def prompt(self):
         return json.dumps(self.prompt_readings(), ensure_ascii=False, separators=(",", ":"))
 
@@ -524,6 +567,14 @@ class Insight:
                     "observation": {"type": "string"}, "question": {"type": "string"},
                     "evidence": {"type": "array", "maxItems": 3, "items": {
                         "type": "integer", "enum": list(range(1, len(self.rows) + 1))}}}}
+
+    @property
+    def concise_schema(self):
+        schema = self.schema
+        schema["required"].remove("question")
+        del schema["properties"]["question"]
+        schema["properties"]["evidence"].update(minItems=2, maxItems=2)
+        return schema
 
     def response(self, raw):
         return self.assess(raw)[0]
@@ -569,7 +620,7 @@ class Insight:
             return "Do another matched run and its surrounding readings show the same pattern?"
         return "Does this pattern repeat in the next comparable set of readings?"
 
-    def assess(self, raw, *, repair_question=False):
+    def assess(self, raw, *, repair_question=False, concise=False):
         if isinstance(raw, str):
             fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", raw.strip(), re.DOTALL)
             if fenced:
@@ -578,12 +629,14 @@ class Insight:
             data = json.loads(raw)
         except (TypeError, ValueError):
             return None, "invalid_response"
-        if not isinstance(data, dict) or data.keys() != {"observation", "question", "evidence"}:
+        keys = {"observation", "evidence"} if concise else {"observation", "question", "evidence"}
+        if not isinstance(data, dict) or data.keys() != keys:
             return None, "invalid_response"
-        if data == {"observation": "", "question": "", "evidence": []}:
+        empty = {"observation": "", "evidence": [], **({"question": ""} if not concise else {})}
+        if data == empty:
             return None, "abstained"
         ids = data["evidence"]
-        if (not isinstance(ids, list) or not 2 <= len(ids) <= 3
+        if (not isinstance(ids, list) or not 2 <= len(ids) <= (2 if concise else 3)
                 or not all(type(i) is int and 1 <= i <= len(self.rows) for i in ids)
                 or len(set(ids)) != len(ids)
                 or len({self.rows[i - 1].domain for i in ids if not self.rows[i - 1].previous}) < 2):
@@ -597,6 +650,9 @@ class Insight:
         allowed = {n for i in ids for n in re.findall(pattern, self.rows[i - 1].text)}
         if not set(re.findall(pattern, observation)) <= allowed:
             return None, "uncited_number"
+        if concise:
+            return {"observation": observation, "question": self._repeat_question(ids),
+                    "evidence": ids}, "valid"
         question = _plain(data["question"], 5, 24)
         if (not question or question.count("?") != 1 or not question.endswith("?")
                 or _UNMEASURED.search(question) or re.search(pattern, question)):

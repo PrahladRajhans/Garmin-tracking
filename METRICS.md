@@ -124,6 +124,9 @@ Repeatable peak = highest activity max HR that another activity matched within 3
 - One treadmill peak of 193 (10 Dec 2025) rose 41 bpm in about 60 s at easy pace and fell 25 bpm in 20 s, so it is flagged as an optical spike.
 - Repeatable peak 177; Tanaka 188; so HRmax = 188.
 
+The Garmin comparison uses the most recent FIT zone maximum-HR setting on or before the
+selected day, within the field's 1–254 bpm range. With no usable record, the setting is unavailable.
+
 Calibrating from other sports:
 - HRmax already uses every activity.
 - LTHR comes from runs, because thresholds are sport-specific and run HR is typically higher than swim HR.
@@ -185,7 +188,7 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Item | Rule |
 |---|---|
 | Consent | Off unless `meta.weather_opt_in = 1` (tool `weather_retrieval(enable=True)` or `garmin-mcp-weather --enable`) |
-| Sent | First recorded GPS point rounded to 2 decimals (~1.1 km) and the run's UTC date(s). Nothing else |
+| Sent | First recorded GPS point rounded to 2 decimals (~1.1 km) and the run's UTC date range. Weather may include the following UTC date for the midnight rain reading |
 | Endpoint | Run within 60 days: Open-Meteo forecast API (recent past); older: archive API. Air quality: Open-Meteo air-quality API (`us_aqi`) |
 | Stored | One window per UTC hour that overlaps the FIT timeline; kind `model`; values outside `conditions.FIELDS` limits are dropped; AQI rounded to an integer, US-EPA scale |
 | Scope | Outdoor runs from the last 14 days without existing condition windows, at most 10 per sync |
@@ -665,6 +668,12 @@ averages are descriptive. A comparison for a metric needs three readings in each
 
 ## Day readings, sleep shortfall and archive baselines
 
+- **Dated availability.** Malformed and non-finite measurements do not count as readings.
+  A missing trend half has no average. Wake times are compared on a circular clock. The
+  fixed wake target, sample count, and spread use the same set of complete nights from
+  the previous two weeks. Identical readings have zero spread.
+- **Awake versus sleep pulse.** Require a valid sleep window and 60 unique, usable awake
+  pulse samples from one source. Try Garmin Connect when the Personal API data falls short.
 - **Garmin resting estimate.** Personal API `heartRate.restingValue` takes precedence, then
   Connect summary, then the export's `currentDayRestingHeartRate`. The rolling export field
   `restingHeartRate` is excluded from daily RHR during normalization. An older tidy database

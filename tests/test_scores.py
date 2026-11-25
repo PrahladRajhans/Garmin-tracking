@@ -40,6 +40,35 @@ def test_bedtime_uses_14_calendar_dates_and_keeps_explicit_offset(conn, monkeypa
     assert scores.bedtime_suggestion(conn, "2026-11-15")["usual_wake"] == "03:00"
 
 
+def test_bedtime_median_of_wakes_around_midnight_stays_at_midnight(conn, monkeypatch):
+    from garmin_mcp import engine
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    monkeypatch.setattr(engine, "_tz", lambda _: UTC)
+    monkeypatch.setattr(scores, "daily_scores", lambda *_: {"sleep": {"need_h": 8, "debt_7d_h": 0}})
+    times = ("23:50", "23:58", "23:59", "00:00", "00:06", "00:09")
+    for day, clock in enumerate(times, 1):
+        stamp = f"2026-11-{day:02d}"
+        conn.execute("INSERT INTO sleep(day,sleep_end,sleep_s) VALUES (?,?,25200)", (stamp, f"{stamp}T{clock}"))
+    result = scores.bedtime_suggestion(conn, "2026-11-07")
+    assert result["usual_wake"] == "00:00"
+    assert result["suggested_bedtime"] == "16:00"
+
+
+def test_scores_treat_bad_sleep_need_and_nonfinite_measurements_as_missing(conn):
+    from garmin_mcp.normalize import rebuild
+
+    rebuild(conn)
+    day = "2026-11-25"
+    conn.execute("INSERT INTO sleep(day,sleep_s,sleep_need_min,score) VALUES (?,25200,'bad',101)", (day,))
+    result = scores.daily_scores(conn, day)
+    assert (result["sleep"]["pct"], result["sleep"]["need_h"], result["sleep"]["garmin_sleep_score"]) == (88, 8, None)
+    conn.execute("UPDATE sleep SET sleep_s=? WHERE day=?", (float("inf"), day))
+    result = scores.daily_scores(conn, day)["sleep"]
+    assert result["hours"] is None and result["incomplete"] is False
+
+
 def test_zero_correlation_is_not_treated_as_missing():
     base = {"hrv": {"r": 0.0}, "garmin": {"r": 0.0}}
     assert not scores._beats_on_both({"hrv": {"r": -0.1}, "garmin": {"r": -0.1}}, base)
@@ -65,7 +94,7 @@ def test_weight_study_keeps_hrv_only_days_and_matches_comparison_days(conn, monk
     def readiness(c, day):
         i = (date.fromisoformat(day) - start).days
         return {"ours": {"components": [{"name": n, "contribution": None if i % 5 == 0
-                                           and j < 2 else float((i + j) % 7)}
+                                           and j == 0 else float((i + j) % 7)}
                                           for j, n in enumerate(names)]}}
 
     monkeypatch.setattr(recovery, "readiness", readiness)
@@ -73,4 +102,4 @@ def test_weight_study_keeps_hrv_only_days_and_matches_comparison_days(conn, monk
     comp = report["composites"]
     assert comp["equal weights (current)"]["next_night_hrv"]["n"] >= 30
     for outcome in ("next_night_hrv", "garmin_readiness"):
-        assert len({v[outcome]["n"] for v in comp.values()}) == 1
+        assert {v[outcome]["n"] for v in comp.values()} == {48}

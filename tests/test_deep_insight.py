@@ -69,6 +69,64 @@ def test_missing_cross_signal_data_hides_interpretation():
     assert not deep_insight.evidence({**d, "sync_retry_required": True})
 
 
+def test_sleep_prose_has_its_own_fresh_snapshot_and_qualified_readings(conn):
+    data, _ = deep_insight.FICTIONAL_POST_RUN_CASES["post-run-cue"]
+    data = {**data, "night": {"day": data["end"]},
+            "signals": {"sleep_h": {"recent": 7.8, "previous": 6.6, "recent_count": 6, "previous_count": 7}},
+            "hrv_context": {"rolling_7d_ms": 45, "previous_average": 48}}
+    views = narrator._deep_items(conn, {"thinking": True}, data)
+    assert views["deep-insight"].lens == "running"
+    assert views["sleep-insight"].lens == "sleep"
+    assert [row.page for row in views["sleep-insight"].rows] == ["sleep", "recovery"]
+    assert data["end"] not in views["sleep-insight"].prompt
+    assert "sleep-insight" not in narrator._deep_items(conn, {"thinking": True}, {**data, "night": None})
+    assert not deep_insight.sleep_review({**data, "older_snapshot": True})
+
+
+def test_concise_sleep_draft_names_hrv_instead_of_claiming_broader_recovery():
+    lens, rows = deep_insight.FICTIONAL_CASES["sleep-written"]
+    item = deep_insight.Insight(rows, lens)
+    draft = {"evidence": [1, 2],
+             "observation": "Sleep duration increased over the recent week, while recovery metrics declined."}
+    assert item.assess(json.dumps(draft), concise=True) == (None, "unsupported_claim")
+    draft["observation"] = "Sleep duration increased over the recent week, while average HRV fell."
+    result, reason = item.assess(json.dumps(draft), concise=True)
+    assert reason == "valid" and result["observation"] == draft["observation"]
+
+
+def test_diagnostics_accept_sleep_and_post_run_surface_keys(conn, monkeypatch):
+    data, _ = deep_insight.FICTIONAL_POST_RUN_CASES["post-run-cue"]
+    data = {**data, "night": {"day": data["end"]},
+            "signals": {"sleep_h": {"recent": 7, "previous": 6, "recent_count": 6, "previous_count": 7}},
+            "hrv_context": {"rolling_7d_ms": 45, "previous_average": 48}}
+    narrator.configure(conn, True)
+    monkeypatch.setattr(dashboard, "collect", lambda _: data)
+    monkeypatch.setattr(narrator, "items", lambda _: {})
+    monkeypatch.setattr(narrator, "_request", lambda *args: {"cloud": {"disabled": True}})
+    coverage = narrator.check(conn)["coverage"]
+    for name in ("sleep_review", "post_run_review"):
+        assert coverage[name] == {"ready": 0, "pending": 1, "rejected": 0}
+
+
+def test_sleep_worker_respects_thinking_minutes(conn, monkeypatch):
+    lens, rows = deep_insight.FICTIONAL_CASES["sleep-written"]
+    narrator.configure(conn, True, "test:4b", True, thinking_minutes=3)
+    monkeypatch.setattr(narrator, "items", lambda _: {})
+    monkeypatch.setattr(narrator, "_deep_items", lambda *_: {"sleep-insight": deep_insight.Insight(rows, lens)})
+    monkeypatch.setattr(narrator, "_cloud_disabled", lambda _: True)
+    monkeypatch.setattr(narrator, "_warm", lambda *_: None)
+    monkeypatch.setattr(narrator, "_model_profile",
+                        lambda *_: {"thinking": True, "text_generation": True, "num_ctx": 4096})
+    calls = []
+
+    def attempt(*_args, think_first, thinking_seconds, **_kwargs):
+        calls.append((think_first, thinking_seconds))
+
+    monkeypatch.setattr(narrator, "_deep_request", attempt)
+    narrator.generate(conn, {}, time.monotonic() + 500)
+    assert calls == [(True, 180)]
+
+
 def test_running_evidence_keeps_pace_direction_and_matched_cadence_context():
     data = {"running_block": {"latest_detail_id": 1}, "runs": [{"activity_id": 1,
         "pacing": {"effort_halves": [{"pace_s_per_km": 335, "hr": 140}, {"pace_s_per_km": 347, "hr": 147}]},
@@ -296,8 +354,8 @@ def test_worker_caches_selected_readings_after_a_truncated_thinking_draft(conn, 
 
 def test_invalid_draft_gets_one_correction_and_full_review(packet, monkeypatch):
     calls = []
-    answer = {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
-              "question": "Do those readings change direction after longer nights?", "evidence": [1, 2, 3]}
+    answer = {"observation": "Sleep duration dropped in the same review where resting pulse was higher.",
+              "evidence": [1, 2]}
     replies = iter([{**answer, "evidence": [2, 3]}, answer, {"verdict": "supported"}])
 
     def request(method, path, deadline, body):
@@ -308,11 +366,12 @@ def test_invalid_draft_gets_one_correction_and_full_review(packet, monkeypatch):
     attempts = []
     result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 240,
                                     think_first=False, attempts=attempts)
-    assert result == {**answer, "mode": "direct_revision"}
+    assert result == {**answer, "question": packet._repeat_question([1, 2]), "mode": "direct_revision"}
     assert [stage["outcome"] for stage in attempts] == ["missing_citations", "supported"]
     assert [stage["stage"] for stage in attempts] == ["draft", "review"]
     assert "Cite two current domains" in calls[1]["system"]
-    assert json.loads(calls[2]["prompt"])["draft"] == answer
+    assert json.loads(calls[2]["prompt"])["draft"]["question"] == result["question"]
+    assert calls[0]["format"]["required"] == ["observation", "evidence"]
 
 
 def test_review_can_keep_a_supported_observation_with_a_grounded_question(monkeypatch):
@@ -331,13 +390,34 @@ def test_review_can_keep_a_supported_observation_with_a_grounded_question(monkey
     monkeypatch.setattr(narrator, "_request", request)
     attempts = []
     result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 240,
-                                    think_first=False, attempts=attempts)
+                                    attempts=attempts)
     assert result["observation"] == observation
     assert result["question"] == "Does moving pulse stay in the same range on another run at a similar pace?"
     assert json.loads(reviewed[1]["prompt"])["draft"]["question"] == result["question"]
     assert attempts[0]["question_reframed"] and attempts[0]["outcome"] == "supported"
     unsafe = {**draft, "observation": "You ran on more days, so you felt tired in your latest run."}
     assert packet.assess(json.dumps(unsafe), repair_question=True) == (None, "unsupported_claim")
+
+
+def test_full_thinking_timeout_can_salvage_a_concise_checked_draft(packet, monkeypatch):
+    answer = {"observation": "Sleep duration was lower while resting pulse ran higher in the latest review.",
+              "evidence": [1, 2]}
+    requests = []
+
+    def request(method, path, deadline, body):
+        requests.append(body)
+        if body["think"]:
+            raise TimeoutError
+        reply = {"verdict": "supported"} if body["format"]["required"] == ["verdict"] else answer
+        return {"done": True, "response": json.dumps(reply)}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    attempts = []
+    result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 300, attempts=attempts)
+    assert result["mode"] == "direct_retry" and result["observation"] == answer["observation"]
+    assert [call["mode"] for call in attempts] == ["thinking", "direct_retry"]
+    assert "Use no figures" in requests[1]["system"]
+    assert attempts[-1]["outcome"] == "supported" and requests[-1]["format"]["required"] == ["verdict"]
 
 
 def test_specific_numbers_can_be_used_with_their_cited_readings():

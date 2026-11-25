@@ -5,8 +5,8 @@
 recent outdoor runs that don't already have any.
 
 What leaves your Mac, per run: the run's start position **rounded to 2 decimals (~1 km)**
-and its date, sent to Open-Meteo's public weather and air-quality services. No account,
-key, name, heart rate or other health data is sent. Turning it off stops all requests;
+and its UTC date range. A final-hour weather query includes the next UTC date for rain.
+Only Open-Meteo's public weather and air-quality services are contacted. Turning it off stops all requests;
 `--clear` removes what was fetched.
 
 What comes back, per hour that overlaps the run (modelled, not a station measurement):
@@ -55,7 +55,7 @@ def set_enabled(conn: sqlite3.Connection, on: bool) -> dict[str, Any]:
                  (OPT_IN_KEY, "1" if on else "0"))
     conn.commit()
     return {"weather_retrieval": "on" if on else "off",
-            "sends": "rounded start position (~1 km) and date of each outdoor run, to Open-Meteo"
+            "sends": "rounded start position (~1 km) and requested UTC dates, to Open-Meteo"
             if on else "nothing"}
 
 
@@ -104,8 +104,11 @@ def fetch_for_run(conn: sqlite3.Connection, aid: int, *, today: date | None = No
     common = {"latitude": lat, "longitude": lon, "start_date": day0, "end_date": day1,
               "timezone": "UTC"}
     recent = (today - first.date()).days <= RECENT_DAYS
+    # A run in the final UTC hour needs the following midnight's rain reading.
+    weather_end = (last + timedelta(hours=1)).date().isoformat()
     weather = get(FORECAST if recent else ARCHIVE,
-                  {**common, "hourly": ",".join(WEATHER_VARS), "wind_speed_unit": "ms"})
+                  {**common, "end_date": weather_end, "hourly": ",".join(WEATHER_VARS),
+                   "wind_speed_unit": "ms"})
     rows = _hourly(weather, {name: field for name, field in WEATHER_VARS.items()
                              if name != "precipitation"})
     # The API stamps the preceding hour's accumulation with its end time.

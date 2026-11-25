@@ -19,10 +19,76 @@ def test_dashboard_builds_on_small_database(conn, tmp_path):
     text = path.read_text()
     assert "<title>Garmin Health</title>" in text
     assert text.count("<script>") == 1 and "<script src" not in text
-    assert "View values" not in text and "Today’s readings" in text
+    assert "View values" not in text and "Health &amp; activity" in text
     for page in ("today", "sleep", "recovery", "training", "running", "body", "patterns"):
         assert f'id="{page}"' in text and f'href="#{page}"' in text
     assert "#today:not(:target)" in text  # home hides only when another page is targeted
+
+
+def test_sleep_only_archive_has_a_dashboard(conn):
+    day = "2026-11-20"
+    db.put_daily(conn, "ex_sleep", day, "export", {
+        "calendarDate": day, "deepSleepSeconds": 3600, "lightSleepSeconds": 14400,
+        "remSleepSeconds": 7200, "sleepScores": {"overallScore": 82},
+    })
+    rebuild(conn)
+    db.put_daily(conn, "pa_sleep", day, "personal_api", {"dailySleepDTO": None})
+
+    data = dashboard.collect(conn)
+    assert data["end"] == day
+    assert data["night"]["source"] == "Garmin export"
+    assert "Night ending" in dashboard.page_sleep(data)
+    data["narration"] = {"sleep-insight": {
+        "mode": "direct", "observation": "A <quiet> night", "question": "Check recovery after waking.",
+        "readings": [{"page": "recovery", "text": "Overnight reading", "previous": False}],
+    }}
+    data["older_snapshot"] = False
+    review = dashboard.page_sleep(data)
+    assert "AI sleep review" in review and "A &lt;quiet&gt; night" in review
+    assert 'class="source-link" href="#recovery"' in review
+    data["narration"]["sleep-insight"]["mode"] = "selected_comparison"
+    review = dashboard.page_sleep(data)
+    assert "Sleep readings selected by local AI" in review and "AI sleep review" not in review
+    data["sync_retry_required"] = True
+    assert "Sleep readings selected by local AI" not in dashboard.page_sleep(data)
+
+
+def test_newer_workout_advances_snapshot_without_carrying_over_readings(conn):
+    db.put_daily(conn, "ex_daily_summary", "2026-11-19", "export",
+                 {"calendarDate": "2026-11-19", "currentDayRestingHeartRate": 44})
+    db.upsert_activity(conn, {"activityId": 1, "activityType": {"typeKey": "running"},
+                              "startTimeLocal": "2026-11-20 07:00:00", "duration": 1800.0,
+                              "distance": 5000.0})
+    rebuild(conn)
+
+    data = dashboard.collect(conn)
+    assert data["end"] == "2026-11-20"
+    assert data["calendar"]["days"][data["end"]]["activities"][0]["id"] == 1
+    assert data["reading_availability"]["rows"]["pulse"]["latest"] == "2026-11-19"
+    assert data["reading_availability"]["rows"]["pulse"]["state"] != "recorded"
+    earlier = dashboard.collect(conn, "2026-11-19")
+    assert "2026-11-20" not in earlier["calendar"]["days"]
+
+
+def test_today_defers_cadence_trial_when_running_should_pause(conn):
+    day = "2026-11-20"
+    db.put_daily(conn, "ex_daily_summary", day, "export", {"calendarDate": day, "totalSteps": 1000})
+    db.upsert_activity(conn, {"activityId": 1, "activityType": {"typeKey": "running"},
+                              "startTimeLocal": f"{day} 07:00:00", "duration": 1800.0})
+    rebuild(conn)
+    data = dashboard.collect(conn, day)
+    data["older_snapshot"] = False
+    data["brief"]["focus"]["title"] = "Skip running today."
+    data["runs"] = [{"activity_id": 1, "cadence_experiment": {"suggestion": "Shorter steps", "check": "Check cadence"}}]
+    assert "Try shorter steps on an easy run" not in dashboard.page_today(data)
+
+    data["trial"] = {"active": True, "trial": {"title": "Cadence test", "kind": "cadence"},
+                     "attempts": [], "next": "Try on the next run.", "verdict": "No attempts."}
+    text = dashboard.page_today(data)
+    assert "Pause the experiment" in text and "Try on the next run." not in text
+    assert "Skip running today." in dashboard._running_block(data)
+    data["older_snapshot"] = True
+    assert "Finish syncing before planning another attempt." in dashboard.page_today(data)
 
 
 def test_gauge_and_charts_render():
@@ -99,6 +165,18 @@ def test_failed_atomic_write_preserves_previous_file_and_cleans_temp(tmp_path, m
         dashboard._atomic_write(path, "new dashboard")
     assert path.read_text() == "previous complete dashboard"
     assert not list(tmp_path.glob(".dashboard-*"))
+
+
+def test_stale_worker_skips_dashboard_collection(conn, tmp_path, monkeypatch):
+    path = tmp_path / "index.html"
+    path.write_text("fresh dashboard")
+
+    def unexpected_collection(conn):
+        raise AssertionError("A superseded worker should not collect dashboard data")
+
+    monkeypatch.setattr(dashboard, "collect", unexpected_collection)
+    assert dashboard.build(conn, tmp_path, only_if_snapshot=b"previous") == path
+    assert path.read_text() == "fresh dashboard"
 
 
 def test_icloud_failure_keeps_local_build(conn, tmp_path, monkeypatch):

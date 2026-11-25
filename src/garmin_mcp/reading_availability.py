@@ -2,17 +2,26 @@
 
 import sqlite3
 from datetime import UTC, datetime
+from sys import float_info
 
 from garmin_mcp import recovery
 
+
+def _readings(table, column, *, minimum=0, maximum=float_info.max, include_min=False):
+    comparison = ">=" if include_min else ">"
+    return (f"SELECT day FROM {table} WHERE typeof({column}) IN ('integer','real') "
+            f"AND {column} {comparison} {minimum} AND {column} <= {maximum}")
+
+
 METRICS = (
-    ("sleep", "Sleep duration", "SELECT day FROM sleep WHERE sleep_s >= 10800"),
-    ("hrv", "Overnight HRV", ("SELECT day FROM hrv WHERE last_night_avg > 0 "
-     "UNION ALL SELECT day FROM health_status WHERE hrv > 0")),
-    ("pulse", "Resting heart rate", "SELECT day FROM daily WHERE resting_hr > 0"),
-    ("respiration", "Breathing rate", ("SELECT day FROM sleep WHERE avg_respiration > 0 "
-     "UNION ALL SELECT day FROM health_status WHERE respiration > 0")),
-    ("garmin", "Garmin readiness", "SELECT day FROM readiness WHERE score IS NOT NULL OR level IS NOT NULL"),
+    ("sleep", "Sleep duration", _readings("sleep", "sleep_s", minimum=recovery.MIN_VALID_NIGHT_H * 3600,
+                                          include_min=True)),
+    ("hrv", "Overnight HRV", f'{_readings("hrv", "last_night_avg")} UNION ALL {_readings("health_status", "hrv")}'),
+    ("pulse", "Resting heart rate", _readings("daily", "resting_hr")),
+    ("respiration", "Breathing rate", (f'{_readings("sleep", "avg_respiration")} UNION ALL '
+                                      f'{_readings("health_status", "respiration")}')),
+    ("garmin", "Garmin readiness", (_readings("readiness", "score", maximum=100, include_min=True)
+                                    + " OR (typeof(level)='text' AND trim(level)!='')")),
 )
 COMPONENTS = (
     ("hrv", "HRV over the last 7 days"),
@@ -39,8 +48,8 @@ def collect(conn, day, zone, *, brief, retry=False, now=None):
     awaiting = day == actual_day and (retry or sync_day != day)
     rows = {}
     matching_brief = brief.get("day", day) == day
-    incomplete = conn.execute("SELECT 1 FROM sleep WHERE day=? AND sleep_s>0 AND sleep_s<10800",
-                              (day,)).fetchone() is not None
+    incomplete = conn.execute(_readings("sleep", "sleep_s") + " AND day=? AND sleep_s<?",
+                              (day, recovery.MIN_VALID_NIGHT_H * 3600)).fetchone() is not None
     for key, name, source in METRICS:
         latest = conn.execute(f"SELECT MAX(day) FROM ({source}) WHERE day<=?", (day,)).fetchone()[0]
         if latest == day:

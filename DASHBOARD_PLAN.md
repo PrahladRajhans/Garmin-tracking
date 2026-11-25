@@ -340,6 +340,11 @@ beside the values and timeline tools, with examples, comparisons and colour boun
 
 ## Dated inputs and review decisions
 
+Sleep gives the current complete night a dedicated AI interpretation when recovery evidence is
+available. The card links to the readings and labels evidence selection separately. Today,
+Sleep and Running share that presentation. Archived snapshots keep their recorded dates and
+defer cadence experiment next steps until a current sync and suitable guidance are available.
+
 Today shows a compact availability disclosure when recent inputs are incomplete. Recovery
 shows the last observed dates by signal and separates usable score inputs from availability.
 Current guidance links its rule inputs and displays the previous decision's evidence where

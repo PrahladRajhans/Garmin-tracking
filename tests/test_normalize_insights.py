@@ -117,8 +117,12 @@ def test_snapshot_and_flags(conn):
 def test_trend_and_unknown_metric(conn):
     _seed(conn)
     rebuild(conn)
+    invalid_day = (date.fromisoformat(DAY) - timedelta(days=1)).isoformat()
+    conn.execute("INSERT INTO daily(day, resting_hr) VALUES (?, ?)", (invalid_day, "unavailable"))
     t = insights.trend(conn, "daily.resting_hr", 7, DAY)
     assert t["points"] == 1 and t["avg"] == 46
+    assert t["first_half_avg"] == 46 and t["second_half_avg"] is None
+    assert t["series"] == [(DAY, 46)]
     assert "valid_metrics" in insights.trend(conn, "nope.x")
 
 
@@ -251,3 +255,56 @@ def test_snapshot_hrv_combines_deduplicated_nights_from_both_sources(conn):
     assert snapshot["last_night_ms"] == 60
     assert snapshot["avg_7d_ms"] == 60 and snapshot["days_in_7d"] == 3
     assert snapshot["avg_60d_ms"] == 50 and snapshot["days_in_60d"] == 4
+
+
+
+def test_verifier_and_normalizer_choose_same_overlapping_range_and_daily_revision(conn):
+    from garmin_mcp import verify
+
+    def payload(night, weekly=None, status=None):
+        return {"hrvSummaries": [{"calendarDate": DAY, "lastNightAvg": night,
+                                  "weeklyAvg": weekly, "status": status}]}
+
+    dataset = "pa_hrv_summaries"
+    db.put_range(conn, dataset, "2026-11-01", "2026-11-25", "personal_api", payload(51, 40))
+    db.put_range(conn, dataset, "2026-11-10", "2026-11-25", "personal_api", payload(56, status="balanced"))
+    conn.execute("UPDATE raw_range SET fetched_at='2026-11-26T12:00:00+00:00' WHERE start_day='2026-11-10'")
+    conn.execute("UPDATE raw_range SET fetched_at='2026-11-26T11:00:00+00:00' WHERE start_day='2026-11-01'")
+    rebuild(conn)
+    assert tuple(conn.execute("SELECT last_night_avg,weekly_avg,status FROM hrv").fetchone()) == (56, 40, "balanced")
+    assert verify._collect(conn, dataset)[DAY]["last_night_avg"] == 56
+
+    db.put_daily(conn, dataset, DAY, "personal_api", payload(57))
+    conn.execute("UPDATE raw_daily SET fetched_at='2026-11-26T10:00:00+00:00'")
+    rebuild(conn)
+    assert tuple(conn.execute("SELECT last_night_avg,weekly_avg,status FROM hrv").fetchone()) == (57, 40, "balanced")
+    assert verify._collect(conn, dataset)[DAY]["last_night_avg"] == 57
+
+
+
+def test_null_health_status_metrics_do_not_block_rebuild(conn):
+    second = "2026-11-21"
+    db.put_daily(conn, "ex_daily_summary", DAY, "export", {"calendarDate": DAY, "totalSteps": 30})
+    db.put_daily(conn, "ex_health_status", DAY, "export", {"calendarDate": DAY, "metrics": None})
+    db.put_daily(conn, "ex_health_status", second, "export",
+                 {"calendarDate": second, "metrics": [{"type": "HRV", "value": 42}]})
+    assert rebuild(conn)["health_status"] == 1
+    assert conn.execute("SELECT steps FROM daily WHERE day=?", (DAY,)).fetchone()[0] == 30
+    assert tuple(conn.execute("SELECT day, hrv FROM health_status").fetchone()) == (second, 42)
+    payload = conn.execute(
+        "SELECT payload FROM raw_daily WHERE dataset='ex_health_status' AND day=?", (DAY,)
+    ).fetchone()[0]
+    assert json.loads(payload)["metrics"] is None
+
+
+def test_default_verifier_rejects_missing_archive(tmp_path, monkeypatch, capsys):
+    from garmin_mcp import verify
+
+    archive = tmp_path / "missing.db"
+    monkeypatch.setenv("GARMIN_DB_PATH", str(archive))
+    monkeypatch.setattr("sys.argv", ["garmin-mcp-verify"])
+    with pytest.raises(SystemExit) as exc:
+        verify.main()
+    assert exc.value.code == 2
+    assert "No stored Garmin database" in capsys.readouterr().err
+    assert not archive.exists()

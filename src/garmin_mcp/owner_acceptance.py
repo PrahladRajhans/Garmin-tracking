@@ -34,11 +34,11 @@ def _pulse_check(conn, day, expected):
                     sources.setdefault(dataset, set()).add(reading)
         except (TypeError, ValueError):
             continue
-    return {"normalized_matches_expected": value == expected,
+    return {"normalized_available": value is not None,
+            "normalized_matches_expected": value == expected,
             "dated_sources_checked": sorted(sources),
             "dated_sources_matching": sorted(source for source, readings in sources.items() if readings == {expected}),
             "dated_sources_disagree": len(set().union(*sources.values())) > 1}
-
 
 
 def _archive_coverage(conn):
@@ -99,7 +99,10 @@ def report(path, day, expected=44, *, replay=False):
             if isinstance(stats, dict)
         }
     if replay:
-        result["dashboard_replay"] = replay_dashboard(path)
+        try:
+            result["dashboard_replay"] = replay_dashboard(path)
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError):
+            result["dashboard_replay"] = {"ok": False, "reason": "Could not replay the local archive."}
     return result
 
 

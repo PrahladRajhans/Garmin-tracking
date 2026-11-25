@@ -21,6 +21,10 @@ METRICS = {
 MIN_READINGS = 14
 
 
+def _within(value, low, high):
+    return isinstance(value, (int, float)) and math.isfinite(value) and low <= value <= high
+
+
 def _window(values, first, last):
     bounds = [(day, value) for day, value in values if first <= day <= last]
     missing = [(a + 1, b - 1) for a, b in pairwise(
@@ -60,17 +64,17 @@ def collect(conn, end):
         for key, low, high in (("resting_hr", 1, 300), ("steps", 0, math.inf),
                                ("stress_avg", 0, 100), ("body_battery_max", 0, 100), ("spo2_avg", 1, 100)):
             value = row[key]
-            if value is not None and math.isfinite(value) and low <= value <= high:
+            if _within(value, low, high):
                 series[key][row["day"]] = value
     for day, seconds, score, breaths in conn.execute(
             "SELECT day, sleep_s, score, avg_respiration FROM sleep WHERE day <= ?", (end,)):
         archive_start = min(archive_start or day, day)
-        if seconds is None or not MIN_VALID_NIGHT_H * 3600 <= seconds <= 24 * 3600:
+        if not _within(seconds, MIN_VALID_NIGHT_H * 3600, 24 * 3600):
             continue
         series["sleep_h"][day] = seconds / 3600
-        if score is not None and 0 <= score <= 100:
+        if _within(score, 0, 100):
             series["score"][day] = score
-        if breaths is not None and math.isfinite(breaths) and breaths > 0:
+        if _within(breaths, 0, math.inf) and breaths > 0:
             series["avg_respiration"][day] = breaths
     hrv_start = conn.execute(
         "SELECT MIN(day) FROM (SELECT MIN(day) AS day FROM hrv WHERE day <= ? "

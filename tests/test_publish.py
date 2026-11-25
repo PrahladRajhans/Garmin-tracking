@@ -106,7 +106,7 @@ def configured(monkeypatch, tmp_path):
     api = FakeAPI()
     monkeypatch.setattr(publish, "Cloudflare", lambda *args: api)
     logins = []
-    monkeypatch.setattr(publish, "_check_login", logins.append)
+    monkeypatch.setattr(publish, "_check_login", lambda host, path="/": logins.append((host, path)))
     path = tmp_path / "index.html"
     path.write_text("synthetic dashboard")
     (tmp_path / "garmin.db").write_text("must stay local")
@@ -132,7 +132,10 @@ def test_upload_stages_only_dashboard_and_privacy_headers(configured, monkeypatc
     monkeypatch.setattr(publish.subprocess, "run", run)
     result = publish.publish_if_enabled(path)
     assert result == {"status": "published", "url": "https://" + HOST}
-    assert len(calls) == 1 and logins == [HOST, "privacy-check." + HOST]
+    assert len(calls) == 1 and logins == [
+        (HOST, "/"), (HOST, "/index.html"),
+        ("privacy-check." + HOST, "/"), ("privacy-check." + HOST, "/index.html"),
+    ]
     assert path.read_text() == "synthetic dashboard"
 
 
@@ -147,6 +150,21 @@ def test_unsafe_setup_never_uploads(configured, monkeypatch):
 def test_check_only_never_uploads(configured, monkeypatch):
     monkeypatch.setattr(publish.subprocess, "run", lambda *a, **kw: pytest.fail("upload attempted"))
     assert publish.publish_if_enabled(None, check_only=True)["status"] == "checked"
+
+
+def test_refuses_open_preview_file_even_when_both_roots_require_login(configured, monkeypatch):
+    _, path, _ = configured
+    checked = []
+
+    def check(host, route="/"):
+        checked.append((host, route))
+        if host != HOST and route == "/index.html":
+            raise publish.PublishError("Anonymous preview file access.")
+
+    monkeypatch.setattr(publish, "_check_login", check)
+    monkeypatch.setattr(publish.subprocess, "run", lambda *a, **kw: pytest.fail("upload attempted"))
+    assert publish.publish_if_enabled(path)["status"] == "error"
+    assert checked[-1] == ("privacy-check." + HOST, "/index.html")
 
 
 def test_upload_failure_does_not_leak_output_or_remove_local_file(configured, monkeypatch):
@@ -176,6 +194,26 @@ def test_login_probe_requires_an_https_access_redirect(monkeypatch, location, co
     else:
         with pytest.raises(publish.PublishError):
             publish._check_login(HOST)
+
+
+@pytest.mark.parametrize("root_redirect,allowed", [
+    ("/", True),
+    ("https://other.pages.dev/", False),
+    ("/index.html", False),
+])
+def test_file_probe_accepts_only_same_origin_canonicalization(monkeypatch, root_redirect, allowed):
+    class Opener:
+        def open(self, req, timeout):
+            location = (root_redirect if req.selector == "/index.html"
+                        else "https://team.cloudflareaccess.com/cdn-cgi/access/login/site")
+            raise HTTPError(req.full_url, 302, "redirect", {"Location": location}, None)
+
+    monkeypatch.setattr(publish, "build_opener", lambda *a: Opener())
+    if allowed:
+        publish._check_login(HOST, "/index.html")
+    else:
+        with pytest.raises(publish.PublishError):
+            publish._check_login(HOST, "/index.html")
 
 
 def test_all_application_pages_are_checked(monkeypatch):

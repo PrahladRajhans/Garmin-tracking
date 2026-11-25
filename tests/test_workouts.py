@@ -72,6 +72,29 @@ def test_upload_schedule_list_delete_with_fake_client(conn):
     assert workouts.delete_on_garmin(7, f) == {"deleted": 7}
 
 
+def test_workout_upload_without_valid_id_is_unverified_and_never_schedules(conn):
+    for reply in (None, {}, {"workoutId": 0}, {"workoutId": True}, {"workoutId": "unknown"}):
+        fake = FakeClient()
+        fake.upload_workout = lambda payload, reply=reply: reply
+        result = workouts.create(conn, SPEC, upload=True, schedule_date="2026-11-25", client=fake)
+        assert not result["uploaded"] and result["upload_status"] == "unverified"
+        assert "Check your saved workouts" in result["next"]
+        assert fake.scheduled is None
+
+
+def test_workout_calendar_error_preserves_acknowledged_upload(conn):
+    fake = FakeClient()
+
+    def fail_schedule(*args):
+        raise TimeoutError("private API response")
+
+    fake.schedule_workout = fail_schedule
+    result = workouts.create(conn, SPEC, upload=True, schedule_date="2026-11-25", client=fake)
+    assert result["uploaded"] and result["workout_id"] == 7
+    assert result["schedule_status"] == "unverified" and result["schedule_error"] == "TimeoutError"
+    assert "scheduled_for" not in result and "private API response" not in repr(result)
+
+
 def test_malformed_workouts_return_problems_instead_of_crashing():
     from garmin_mcp import workouts
 
@@ -167,3 +190,19 @@ def test_repeat_limits_and_nonfinite_workout_totals(conn):
         assert workouts.validate({"steps": [{"type": "repeat", "times": times, "steps": [step]}]}, 188)
     huge = {"steps": [{"type": "repeat", "times": 3, "steps": [{"type": "interval", "duration": 1e308}]}]}
     assert workouts.create(conn, huge)["problems"] == ["combined workout duration must be finite"]
+
+
+def test_workout_router_dispatches_only_supported_actions(monkeypatch):
+    from garmin_mcp import server
+
+    calls = []
+    monkeypatch.setattr(workouts, "list_on_garmin", lambda: calls.append("list") or {"workouts": []})
+    monkeypatch.setattr(workouts, "delete_on_garmin", lambda workout_id: calls.append(workout_id) or
+                        {"deleted": workout_id})
+
+    assert server.garmin_workouts("delte") == {"error": "action must be list or delete"}
+    assert server.garmin_workouts("delete") == {"error": "workout_id required"}
+    assert calls == []
+    assert server.garmin_workouts() == {"workouts": []}
+    assert server.garmin_workouts("delete", workout_id=55) == {"deleted": 55}
+    assert calls == ["list", 55]

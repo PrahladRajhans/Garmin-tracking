@@ -33,7 +33,7 @@ def test_owner_report_matches_only_dated_values_and_keeps_archive_read_only(conn
     before = path.read_bytes()
     report = owner_acceptance.report(path, date.fromisoformat(day))
     assert path.read_bytes() == before
-    assert report["pulse"] == {"normalized_matches_expected": True,
+    assert report["pulse"] == {"normalized_available": True, "normalized_matches_expected": True,
                                "dated_sources_checked": ["pa_daily_summary", "user_summary"],
                                "dated_sources_matching": ["pa_daily_summary"],
                                "dated_sources_disagree": True}
@@ -52,3 +52,18 @@ def test_missing_archive_does_not_contact_ollama(tmp_path, monkeypatch):
     monkeypatch.setattr(owner_acceptance.narrator, "_request", fail)
     report = owner_acceptance.report(tmp_path / "missing.db", date(2026, 11, 2))
     assert report["archive_available"] is False
+
+
+def test_failed_replay_returns_a_shareable_status(conn, monkeypatch):
+    normalize.rebuild(conn)
+    path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    monkeypatch.setattr(owner_acceptance, "_ollama_check", lambda _: {})
+
+    def failed_replay(_):
+        raise OSError(f"Failed to read {path}")
+
+    monkeypatch.setattr(owner_acceptance, "replay_dashboard", failed_replay)
+    report = owner_acceptance.report(path, date(2026, 11, 2), replay=True)
+    assert report["archive_available"] and not report["dashboard_replay"]["ok"]
+    assert not report["pulse"]["normalized_available"]
+    assert str(path) not in json.dumps(report)

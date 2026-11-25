@@ -157,7 +157,8 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         (lo, asof)).fetchone()[0]
     garmin_max = conn.execute(
         "SELECT z.max_hr FROM fit_zones z JOIN activities a USING(activity_id) "
-        "WHERE substr(a.start_time_local,1,10) <= ? ORDER BY a.start_time_local DESC LIMIT 1",
+        "WHERE z.max_hr BETWEEN 1 AND 254 "
+        "AND substr(a.start_time_local,1,10) <= ? ORDER BY a.start_time_local DESC LIMIT 1",
         (asof,)).fetchone()
     garmin_lthr = conn.execute(
         "SELECT z.threshold_hr FROM fit_zones z JOIN activities a USING(activity_id) "

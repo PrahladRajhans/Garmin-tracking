@@ -1,4 +1,5 @@
 import json
+import stat
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -44,7 +45,8 @@ def test_monitoring_preview_counts_read_only_overlap_and_conflicts(tmp_path, mon
     })
     db.put_daily(conn, "stress", day, "garminconnect", {
         "stressValuesArray": [[_ms(STAMP), 20], [_ms(following), 31]],
-        "bodyBatteryValuesArray": [[_ms(STAMP), "level", 70]],
+        "bodyBatteryValuesArray": [[_ms(STAMP), "level", 70], [_ms(last), "level", 68],
+                                   [_ms(last), "level", 73]],
     })
     conn.commit()
     conn.close()
@@ -61,6 +63,7 @@ def test_monitoring_preview_counts_read_only_overlap_and_conflicts(tmp_path, mon
         ("STRESS_LEVEL", {"stress_level_time": last, "stress_level_value": 48}),
         ("STRESS_LEVEL", {"stress_level_time": last, "stress_level_value": 49}),
         ("HSA_BODY_BATTERY_DATA", {"timestamp": STAMP, "level": 70}),
+        ("HSA_BODY_BATTERY_DATA", {"timestamp": last, "level": 68}),
         ("MONITORING_HR_DATA", {"timestamp": STAMP, "resting_heart_rate": 80,
                                 "current_day_resting_heart_rate": 52}),
         ("MONITORING_HR_DATA", {"timestamp": following, "resting_heart_rate": 81}),
@@ -83,6 +86,7 @@ def test_monitoring_preview_counts_read_only_overlap_and_conflicts(tmp_path, mon
         "archive_conflicts": 0, "fit_conflicts": 1,
     }
     assert result["signals"]["body_battery"]["overlaps"] == 1
+    assert result["signals"]["body_battery"]["archive_conflicts"] == 1
     assert result["signals"]["resting_pulse"]["disagreements"] == 1
     assert result["signals"]["resting_pulse"]["fit_keys"] == 1  # no rolling value
     assert "2026-" not in output and str(tmp_path) not in output
@@ -123,3 +127,37 @@ def test_preview_rejects_activity_and_corrupted_fit(tmp_path):
     with pytest.raises(ValueError, match="integrity"):
         monitoring_preview.preview(database, damaged)
     assert not database.exists()
+
+
+
+def test_retain_is_explicit_private_idempotent_and_requires_valid_input(tmp_path, monkeypatch, capsys):
+    database = tmp_path / "archive.db"
+    db.connect(database).close()
+    archive = database.read_bytes()
+    source = _fixture(tmp_path / "well.fit")
+    directory = tmp_path / "monitoring-fit"
+    monkeypatch.setenv("GARMIN_DB_PATH", str(database))
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["garmin-mcp-verify", "--preview-wellness-fit", str(source)])
+    verify.main()
+    assert "retained" not in json.loads(capsys.readouterr().out)
+    assert not directory.exists()
+
+    monkeypatch.setattr(sys, "argv", [
+        "garmin-mcp-verify", "--preview-wellness-fit", str(source), "--retain",
+    ])
+    verify.main()
+    assert json.loads(capsys.readouterr().out)["retained"] == "created"
+    retained, = directory.iterdir()
+    assert retained.read_bytes() == source.read_bytes()
+    assert stat.S_IMODE(retained.stat().st_mode) == 0o600
+    verify.main()
+    assert json.loads(capsys.readouterr().out)["retained"] == "already_present"
+    assert list(directory.iterdir()) == [retained]
+    assert database.read_bytes() == archive
+
+    activity = _fixture(tmp_path / "activity.fit", kind="activity")
+    rejected = tmp_path / "unapproved"
+    with pytest.raises(ValueError, match="monitoring FIT"):
+        monitoring_preview.preview(database, activity, retain_directory=rejected)
+    assert not rejected.exists()

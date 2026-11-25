@@ -74,7 +74,7 @@ def _f(v: Any, nd: int = 0, unit: str = "") -> str:
 
 # =============================================================================== data
 def _last_full_night(conn: sqlite3.Connection, end: str) -> str | None:
-    row = conn.execute("SELECT MAX(day) FROM sleep WHERE day <= ? AND sleep_s >= 3*3600",
+    row = conn.execute("SELECT MAX(day) FROM sleep WHERE day <= ? AND sleep_s BETWEEN 3*3600 AND 24*3600",
                        (end,)).fetchone()
     return row[0] if row else None
 
@@ -84,14 +84,24 @@ TRACE_POINTS = 200    # about one every 9 s on a 30-minute run
 SCATTER_POINTS = 120  # most recent days drawn per pattern; statistics use every day
 
 
+def _latest_observation(conn: sqlite3.Connection, through: str) -> str | None:
+    days = [conn.execute(f"SELECT MAX(day) FROM {table} WHERE day<=?", (through,)).fetchone()[0]
+            for table in ("daily", "sleep", "hrv", "health_status", "readiness") if _has(conn, table)]
+    days.append(conn.execute("SELECT MAX(substr(start_time_local,1,10)) FROM activities "
+                             "WHERE substr(start_time_local,1,10)<=?", (through,)).fetchone()[0])
+    return max((day for day in days if day), default=None)
+
+
 def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
-    if not _has(conn, "daily") or not insights._latest_day(conn):
+    zone = engine._tz(conn)
+    today = datetime.now(zone).date()
+    explicit_date = end is not None
+    latest = _latest_observation(conn, end or today.isoformat()) if _has(conn, "daily") else None
+    if not latest:
         return {"available": False, "reason": "No Garmin data is available yet. Sync or import "
                 "your history on the Mac to build your dashboard."}
-    explicit_date = end is not None
-    end = end or insights._latest_day(conn)
+    end = end or latest
     e = date.fromisoformat(end)
-    zone = engine._tz(conn)
 
     def lo(n: int) -> str:
         return (e - timedelta(days=n - 1)).isoformat()
@@ -136,7 +146,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         runs[0]["route_review"] = route_review.compare(conn, runs[0])
     brief = insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"])
     retry = conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone() is not None
-    availability_day = end if explicit_date else datetime.now(zone).date().isoformat()
+    availability_day = end if explicit_date else today.isoformat()
     availability = reading_availability.collect(conn, availability_day, zone, brief=brief, retry=retry)
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
@@ -149,7 +159,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "tag_review": engine.tag_impact(conn, end)["tags"],
         "planned_week": coach_loop.week(conn, end),
         "movement": coach_loop.movement(conn, end),
-        "older_snapshot": e != datetime.now(zone).date(),
+        "older_snapshot": e != today,
         "history": scores.history(conn, end, 14),
         "brief": brief,
         "reading_availability": availability,
@@ -176,7 +186,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "month": health.monthly_report(conn, _prev_month(end)),
         "calendar": calendar, "workouts": workouts,
         "last_full_sync": _last_full_sync(conn, zone),
-        "trial": trials.status(conn, through=(e, zone) if e != datetime.now(zone).date() else None),
+        "trial": trials.status(conn, through=(e, zone) if e != today else None),
         "runs": runs, "form": running.form_trends(conn, 40, read_metrics=read_run, end=end),
         "running_block": running_block.collect(conn, end, read_metrics=read_run, latest=runs[0] if runs else None),
         "explore": explore,
@@ -672,7 +682,7 @@ def _narration(summary: dict | None) -> str:
 
 
 def _trial_card(trial: dict[str, Any], summary: dict | None = None, *,
-                last_target: str | None = None) -> str:
+                last_target: str | None = None, next_step: str | None = None) -> str:
     """Today: the experiment you're running, how the last attempt went, and what's next."""
     t = trial["trial"]
     attempts = trial.get("attempts") or []
@@ -683,7 +693,7 @@ def _trial_card(trial: dict[str, Any], summary: dict | None = None, *,
         link = (f'<a class="flow-link" href="{last_target}">{caption}{icon("chev")}</a>'
                 if last_target else f'<p class="sub">{caption}</p>')
         body += f'<p>{_e(last["summary"])}</p>{link}'
-    body += (f'<p class="sub"><b>Next:</b> {_e(trial["next"])}</p>'
+    body += (f'<p class="sub"><b>Next:</b> {_e(next_step or trial["next"])}</p>'
              f'<details><summary>So far</summary><p class="sub">{_e(trial["verdict"])} '
              'Compared with your own steady runs at a similar pace and duration from before '
              'the experiment. Changes smaller than normal day-to-day variation count as '
@@ -751,6 +761,12 @@ def _sunday_story(d: dict) -> str:
                  f'<a class="flow-link" href="#training">Review the week{icon("chev")}</a>', wide=True)
 
 
+def _pause_running(brief: dict) -> bool:
+    return bool(brief.get("knee_pause") or brief["focus"]["title"] in {
+        "Skip running today.", "Pause training today.", "Rest today or choose very easy movement.",
+    })
+
+
 def _weekly_cue_review(d):
     trial = d.get("trial") or {}
     if (d.get("older_snapshot") or d.get("sync_retry_required") or not trial.get("active")
@@ -760,8 +776,7 @@ def _weekly_cue_review(d):
     measured = sum(any(change["metric"] == "efficiency_factor" for change in a.get("changes", ()))
                    for a in attempts)
     next_step = trial["next"]
-    if d["brief"].get("knee_pause") or d["brief"]["focus"]["title"] in {
-            "Pause training today.", "Rest today or choose very easy movement."}:
+    if _pause_running(d["brief"]):
         next_step = "Pause the experiment. See today’s guidance before planning another attempt."
     return (f'<p><strong>Cadence experiment</strong> · {len(attempts)} recorded '
             f'attempt{"s" if len(attempts) != 1 else ""} · {measured} with a comparable effort reading.</p>'
@@ -807,6 +822,23 @@ def _decision_sources(d):
             f'<ul class="rows">{rows}</ul>'
             + (f'<p>Behind the previous recommendation</p><ul class="rows">{earlier}</ul>' if earlier else "")
             + '</details>')
+
+
+def _reviewed_insight(insight: dict, *, title: str, selection_title: str,
+                      lens: str | None = None) -> str:
+    links = "".join(f'<li>{_e(row["text"])}</li>' if row.get("previous") else
+                    f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
+                    for row in insight["readings"])
+    if insight.get("mode") == "selected_comparison":
+        title = selection_title
+    mode_note = ('<p class="sub">Used a direct draft after extended reasoning could not finish.</p>'
+                 if insight.get("mode") == "direct_retry" else "")
+    label = f'<p class="insight-label">{_e(lens)}</p>' if lens else ""
+    return (f'<section class="daily-interpretation wide"><h3>{_e(title)}</h3>{label}'
+            f'<p class="say">{_e(insight["observation"])}</p>'
+            f'<p><b>What to check next</b> · {_e(insight["question"])}</p>'
+            f'<details><summary>Recorded evidence · {len(insight["readings"])} readings</summary>'
+            f'{mode_note}<ul>{links}</ul></details></section>')
 
 
 def page_today(d: dict[str, Any]) -> str:
@@ -859,7 +891,8 @@ def page_today(d: dict[str, Any]) -> str:
                 for a in snapshot.get("activities", [])]
         body += _card("Today’s workouts" if current else "Workouts on this date",
                       f'<ul class="record-list">{"".join(rows)}</ul>', wide=not has_activity)
-    body += ('<section class="overview wide" aria-label="Today’s readings">'
+    overview_label = "Readings on this date" if d.get("older_snapshot") else "Today’s readings"
+    body += (f'<section class="overview wide" aria-label="{overview_label}">'
              f'<h3>Health &amp; activity</h3><div class="overview-tiles">{tiles}</div></section>')
     availability = d.get("reading_availability", {})
     if any(metric["state"] != "recorded" for metric in availability.get("rows", {}).values()):
@@ -879,18 +912,8 @@ def page_today(d: dict[str, Any]) -> str:
     if current and (insight := d.get("narration", {}).get("deep-insight")):
         lens = {"sleep": "Sleep & recovery", "running": "Running & recovery"}.get(
             insight.get("lens"), "Daily review")
-        links = "".join(f'<li>{_e(row["text"])}</li>' if row.get("previous") else
-                        f'<li><a class="source-link" href="#{row["page"]}">{_e(row["text"])}</a></li>'
-                        for row in insight["readings"])
-        mode_note = ('<p class="sub">Used a direct draft after extended reasoning could not finish.</p>'
-                     if insight.get("mode") == "direct_retry" else "")
-        title = "Readings selected by local AI" if insight.get("mode") == "selected_comparison" else "AI interpretation"
-        body += (f'<section class="daily-interpretation wide"><h3>{title}</h3>'
-                 f'<p class="insight-label">{_e(lens)}</p>'
-                 f'<p class="say">{_e(insight["observation"])}</p>'
-                 f'<p><b>What to check next</b> · {_e(insight["question"])}</p>'
-                 f'<details><summary>Recorded evidence · {len(insight["readings"])} readings</summary>'
-                 f'{mode_note}<ul>{links}</ul></details></section>')
+        body += _reviewed_insight(insight, title="AI interpretation",
+                                  selection_title="Readings selected by local AI", lens=lens)
     if current:
         week = d["brief"]["week_ahead"]
         body += _card("Next seven days", f'<p class="sub week-cue">{_e(week["plan"])}</p>'
@@ -918,7 +941,7 @@ def page_today(d: dict[str, Any]) -> str:
     if current and d["runs"] and not trial.get("active"):
         latest_run = d["runs"][0]
         cue = latest_run.get("cadence_experiment")
-        if cue and focus["title"] != "Pause training today.":
+        if cue and not _pause_running(d["brief"]):
             findings.insert(1, {"title": "Try shorter steps on an easy run",
                                 "detail": cue["suggestion"], "basis": cue["check"],
                                 "target": f'run-{latest_run["activity_id"]}'})
@@ -928,12 +951,19 @@ def page_today(d: dict[str, Any]) -> str:
     if trial.get("active"):  # About past runs, so useful even on an older snapshot.
         last_attempt = trial["attempts"][-1] if trial["attempts"] else None
         target = _workout_link(d, last_attempt["activity_id"], runs) if last_attempt else None
-        body += _trial_card(trial, narration.get("trial"), last_target=target)
-    if narration.get("today"):
+        next_step = None
+        if not current:
+            next_step = "Finish syncing before planning another attempt."
+        elif _pause_running(d["brief"]):
+            next_step = "Pause the experiment. See today’s guidance before planning another attempt."
+        body += _trial_card(trial, narration.get("trial") if current else None,
+                            last_target=target, next_step=next_step)
+    if current and narration.get("today"):
         body += _card("Recovery summary", _narration(narration["today"]), wide=True)
     body += (f'<a class="flow-link history-entry wide" href="#trends">'
              f'Browse trends and history{icon("chev")}</a>')
-    return _page("today", "Today", _date_label(day), body)
+    label = f"Readings for {_date_label(day)}" if d.get("older_snapshot") else _date_label(day)
+    return _page("today", "Today", label, body)
 
 
 def _bedroom_card(review: dict) -> str:
@@ -1084,12 +1114,18 @@ def page_sleep(d: dict[str, Any]) -> str:
         return _page("sleep", "Sleep", "No complete night recorded yet.", "")
     detail_days = set(d["calendar"]["detail_days"])
     body = _sleep_shortfall_card(d.get("sleep_shortfall"), detail_days)
+    narration = d.get("narration", {})
     if last:
         night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
                       if last in detail_days else "")
         body += (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
                 f'{_night_record(nights[last])}{night_link}'
-                + _narration(d.get("narration", {}).get("sleep")) + '</section>')
+                + _narration(narration.get("sleep") if not narration.get("sleep-insight") else None)
+                + '</section>')
+    if (last == d["end"] and not (d.get("older_snapshot") or d.get("sync_retry_required"))
+            and (insight := narration.get("sleep-insight"))):
+        body += _reviewed_insight(insight, title="AI sleep review",
+                                  selection_title="Sleep readings selected by local AI")
     anchor = review["anchor"]
     if anchor:
         suggested = plan.get("suggestion") or anchor.get("bedtime")
@@ -1501,20 +1537,21 @@ def _running_block(d: dict[str, Any]) -> str:
     measures = "".join(f'<div><dt>{_e(label)}</dt><dd>{_e(value)}</dd><small>{_e(note)}</small></div>'
                        for label, value, note in stats)
     tip = block["next"]
+    pause = not (d.get("older_snapshot") or d.get("sync_retry_required")) and _pause_running(d["brief"])
+    if pause:
+        focus = d["brief"]["focus"]
+        tip = {"title": focus["title"], "action": focus["detail"],
+               "basis": "See today’s guidance", "target": "today"}
     body = (f'<section class="running-lead wide"><div class="running-next">'
-            f'<p class="insight-label">{icon("run")} Next run</p><h3>{_e(tip["title"])}</h3>'
+            f'<p class="insight-label">{icon("run")} {"Today" if pause else "Next run"}</p>'
+            f'<h3>{_e(tip["title"])}</h3>'
             f'<p>{_e(tip["action"])}</p><a class="flow-link" href="#{_e(tip["target"])}">'
             f'{_e(tip["basis"])}{icon("chev")}</a></div><div class="running-block-summary">'
             '<h3>Last four completed weeks</h3>'
             f'<dl class="running-measures">{measures}</dl></div></section>')
     if insight := d.get("narration", {}).get("running-insight"):
-        sources = "".join(f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
-                          for row in insight["readings"])
-        label = "Running readings selected by local AI" if insight.get("mode") == "selected_comparison" else "AI running review"
-        body += (f'<section class="daily-interpretation wide"><h3>{label}</h3>'
-                 f'<p class="say">{_e(insight["observation"])}</p><p>{_e(insight["question"])}</p>'
-                 f'<details><summary>Recorded evidence · {len(insight["readings"])} readings</summary>'
-                 f'<ul>{sources}</ul></details></section>')
+        body += _reviewed_insight(insight, title="AI running review",
+                                  selection_title="Running readings selected by local AI")
     weeks = block["weeks"]
     weekly_rows = "".join(_row(_date_label(w["start"]) + ("" if w["complete"] else " · In progress"),
                                f'{w["km"]:g} km' if w["distance_count"] or not w["runs"] else "—",
@@ -3227,9 +3264,7 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
           queue_narration: bool = True, only_if_snapshot: bytes | None = None) -> Path:
     path, icloud = _snapshot_paths(out_dir)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    data = collect(conn)
-    # Keep background writes from replacing a newer snapshot, including its iCloud copy.
-    # The lock covers local rendering and file replacement only.
+    # Collect and write in the same order so a slower build cannot replace fresher data.
     with (path.parent / ".snapshot.lock").open("a") as lock:
         if os.name == "posix":
             import fcntl
@@ -3238,6 +3273,9 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
         if only_if_snapshot is not None and (
             _snapshot_id(path) != only_if_snapshot or narrator._sync_in_progress(conn)
         ):
+            return path
+        data = collect(conn)
+        if only_if_snapshot is not None and narrator._sync_in_progress(conn):
             return path
         if data.get("available", True) and not (data["older_snapshot"] or data["sync_retry_required"]):
             data["guidance_change"] = coach_review.guidance(

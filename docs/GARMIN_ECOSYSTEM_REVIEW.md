@@ -42,7 +42,7 @@ limits for this account. [Reddit detailed health export](https://www.reddit.com/
 GarminDB has a documented monitoring FIT pipeline. Our source archive and activity FIT
 pipeline are already persistent, but importing wellness FIT needs confirmed message layouts
 and independently validated fixtures. The archive audit gives the owner evidence about
-which gaps actually need that importer. The [monitoring FIT preview](WELLNESS_PREVIEW.md) now compares a file with the saved archive without writing either. Wewoc’s checker covers stored context such as
+which gaps actually need that importer. The [monitoring FIT preview](WELLNESS_PREVIEW.md) now compares a file with the saved archive without changing it. An explicit retain option preserves validated source bytes separately. Wewoc’s checker covers stored context such as
 weather rather than Garmin sample usability. Our implementation applies the idea to
 different data. [Wewoc archive checker](https://github.com/Wewoc/Garmin_Local_Archive/blob/5f65d71e28ff89299f8febef2169cf94808b3303/src/context/context_silo_check.py)
 
@@ -123,7 +123,7 @@ access, and an existing file is preserved.
 
 | # | Pinned artifact | Specific design or behavior | Adopting it here and the next check |
 |---:|---|---|---|
-| 1 | [`test_monitoring_fit_file.py`](https://github.com/tcgoetz/GarminDB/blob/392beb49cfba7599b5a9ed4d195267cf79ec51b0/test/test_monitoring_fit_file.py) | Monitoring FIT tests check message types, elapsed gaps and non-decreasing steps per activity type. | Shipped a read-only gap/overlap preview using the official SDK, a pinned monitoring file probe and synthetic fixtures. A write path still needs source-precedence and replay tests. |
+| 1 | [`test_monitoring_fit_file.py`](https://github.com/tcgoetz/GarminDB/blob/392beb49cfba7599b5a9ed4d195267cf79ec51b0/test/test_monitoring_fit_file.py) | Monitoring FIT tests check message types, elapsed gaps and non-decreasing steps per activity type. | Shipped a read-only gap/overlap preview and explicit raw-file retention using the official SDK, a pinned monitoring file probe and synthetic fixtures. A write path still needs source-precedence and replay tests. |
 | 2 | [`health.py`](https://github.com/cyberjunky/python-garminconnect/blob/82bc11073b597d20f8b080b7aeaac8d4cef4fc3e/garminconnect/api/health.py) | Two wrapper methods resolve the same daily stress endpoint. | Shared: this is the archived feed already used for the stress timeline. Test against a representative archived response before widening collection. |
 | 3 | [`tool_profiles.py`](https://github.com/Taxuspt/garmin_mcp/blob/a2ca5fcac34524b83814fe2fcf3d479f8a75983f/src/garmin_mcp/tool_profiles.py) | The profile module defines separate minimal, health, activity and workout tool sets. | Candidate: group read-only tools for reviewers. Verify exposed tools and ensure a reduced profile cannot reach any write tool before introducing this option. |
 | 4 | [`garmin_fetch.py`](https://github.com/arpanghosh8453/garmin-grafana/blob/e0cdba292d9ad77d1881e92ddcabd61525ad9d5a/src/garmin_grafana/garmin_fetch.py) | The intraday fetch reads stress and Body Battery arrays at different indices. | Shipped in v0.28.0: same-day aligned charts from saved values. Any further fields need a real sample and a no-new-request test. |

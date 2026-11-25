@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.30.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.31.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and reviewed local AI on Today, Sleep, and Running when evidence is available. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -51,10 +51,10 @@ Garmin Connect --(scheduled sync)--> local SQLite (~/.garmin-mcp) <--reads-- MCP
 The sync job stores every Garmin response verbatim plus parsed FIT streams, so the assistant reads
 fast local data and Garmin is called only by the scheduled sync (or the `refresh_data` tool).
 
-The optional local narrator summarizes recovery, sleep, the seven-day training review, experiments,
-and recent workouts on the Mac. When Today has multiple supported findings, Ollama can select which
-follow-up to show first. Python supplies the scores, training guidance, and evidence. Use
-`garmin-mcp-narrator --check` to see local service and coverage. [Setup and checks](docs/OLLAMA.md)
+The optional local narrator writes evidence-linked interpretations for Today, Sleep, and Running
+and summarizes recent workouts on the Mac. Python supplies the scores, training guidance, and
+evidence. Use `garmin-mcp-narrator --check` to see the local service, coverage, and whether each
+scope has reviewed prose or selected readings. [Setup and checks](docs/OLLAMA.md)
 
 It uses the unofficial [`garminconnect`](https://github.com/cyberjunky/python-garminconnect)
 Python library, which talks to the same endpoints as the Garmin Connect website.
@@ -111,7 +111,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `start_experiment(kind='cadence', title?, target_spm?)` | Start one small experiment (default: knee-friendly cadence +5 %) |
 | `log_experiment(knee_during?, knee_next_morning?, felt?, effort?, note?)` | Record how the latest attempt felt; Garmin's own feel/effort answers are read automatically |
 | `experiment_status()` / `end_experiment(note?)` | Each attempt versus your comparable runs before the experiment, the verdict so far and the next step; close it |
-| `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
+| `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs. Off by default. Sends rounded location (~1 km) and the UTC dates needed for the query. |
 | `outdoor_conditions_patterns(end?)` | Local paired comparisons of weather and AQI against moving heart rate and following sleep, HRV, and resting heart rate. Includes the runs and sample sizes behind eligible results |
 | `ai_narrator(enable?, model?, thinking?, thinking_minutes?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
 | `bedtime_plan(day?, accept?, bedtime?)` | Review a weekly target or save the proposal with `accept=True`. An explicit target uses `HH:MM`. |

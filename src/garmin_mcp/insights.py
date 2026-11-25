@@ -8,6 +8,7 @@ inputs. Thresholds used for flags are documented inline and in METRICS.md.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import statistics
 from datetime import date, timedelta
@@ -336,14 +337,14 @@ def trend(conn: sqlite3.Connection, metric: str, days: int = 30,
     start = (date.fromisoformat(end) - timedelta(days=days - 1)).isoformat()
     pts = [(d, v) for d, v in conn.execute(
         f"SELECT day, {col} FROM {table} WHERE day BETWEEN ? AND ? AND {col} IS NOT NULL "
-        "ORDER BY day", (start, end))]
-    nums = [v for _, v in pts if isinstance(v, (int, float))]
+        "ORDER BY day", (start, end)) if isinstance(v, (int, float)) and math.isfinite(v)]
+    nums = [v for _, v in pts]
     out: dict[str, Any] = {"metric": metric, "from": start, "to": end, "points": len(pts)}
     if nums:
         half = len(nums) // 2 or 1
         out.update(avg=_r(sum(nums) / len(nums), 2), min=min(nums), max=max(nums),
                    first_half_avg=_r(sum(nums[:half]) / half, 2),
-                   second_half_avg=_r(sum(nums[half:]) / max(len(nums) - half, 1), 2))
+                   second_half_avg=_r(sum(nums[half:]) / (len(nums) - half), 2) if len(nums) > half else None)
     out["series"] = pts if days <= 120 else pts[-120:]
     return out
 

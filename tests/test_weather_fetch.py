@@ -77,6 +77,32 @@ def test_legacy_rain_is_hidden_without_losing_other_recorded_weather(conn):
     assert gauge["precipitation_mm"] == 3
 
 
+def test_fetches_midnight_rain_for_runs_in_the_last_utc_hour(conn):
+    from datetime import date
+
+    _run(conn, start="2026-11-20 23:20:00")
+    conn.execute("DELETE FROM fit_records WHERE activity_id=7")
+    conn.executemany("INSERT INTO fit_records(activity_id,ts,lat,lon) VALUES (7,?,30.68,76.73)",
+                     [(f"2026-11-20T23:{minute}:00+00:00",) for minute in (20, 50)])
+    calls = {}
+
+    def get(url, params):
+        calls[url] = params["end_date"]
+        if url == weather_fetch.AIR:
+            return {}
+        hours = ["2026-11-20T23:00"]
+        if params["end_date"] == "2026-11-21":
+            hours.append("2026-11-21T00:00")
+        return {"hourly": {"time": hours, "temperature_2m": [14.0, 12.0],
+                           "precipitation": [0, 4]}}
+
+    windows = weather_fetch.fetch_for_run(conn, 7, today=date(2026, 11, 22), get=get)
+    assert calls == {weather_fetch.FORECAST: "2026-11-21", weather_fetch.AIR: "2026-11-20"}
+    assert len(windows) == 1
+    assert windows[0]["start_utc"] == "2026-11-20T23:00:00+00:00"
+    assert windows[0]["temperature_c"] == 14.0 and windows[0]["precipitation_mm"] == 4
+
+
 def test_rate_limit_never_breaks_sync(conn):
     from datetime import date
 

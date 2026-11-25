@@ -39,7 +39,16 @@ def _days_back(day: str, n: int) -> list[str]:
 
 
 def _series(conn: sqlite3.Connection, sql: str, start: str, end: str) -> dict[str, float]:
-    return {d: v for d, v in conn.execute(sql, (start, end)) if isinstance(v, (int, float))}
+    return {d: v for d, v in conn.execute(sql, (start, end))
+            if isinstance(v, (int, float)) and math.isfinite(v)}
+
+
+def _positive(value: float | None) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def garmin_score(value: float | None) -> float | None:
+    return value if type(value) in (int, float) and 0 <= value <= 100 else None
 
 
 def nightly_hrv(conn: sqlite3.Connection, start: str, end: str) -> dict[str, float]:
@@ -47,8 +56,8 @@ def nightly_hrv(conn: sqlite3.Connection, start: str, end: str) -> dict[str, flo
                   start, end)
     hs_hrv = _series(conn, "SELECT day, hrv FROM health_status WHERE day BETWEEN ? AND ?",
                      start, end)
-    valid = {d: v for d, v in hs_hrv.items() if math.isfinite(v) and v > 0}
-    valid.update({d: v for d, v in hrv.items() if math.isfinite(v) and v > 0})
+    valid = {d: v for d, v in hs_hrv.items() if v > 0}
+    valid.update({d: v for d, v in hrv.items() if v > 0})
     return valid  # HRV status wins; health status fills gaps
 
 
@@ -59,17 +68,16 @@ def load_series(conn: sqlite3.Connection, end: str, days: int, *,
                    start, end)
     hs_resp = _series(conn, "SELECT day, respiration FROM health_status "
                       "WHERE day BETWEEN ? AND ?", start, end)
+    rhr = _series(conn, "SELECT day, resting_hr FROM daily WHERE day BETWEEN ? AND ?", start, end)
+    sleep = _series(conn, "SELECT day, sleep_s FROM sleep WHERE day BETWEEN ? AND ?", start, end)
+    # A nonpositive record must not displace an otherwise usable Health Status reading.
+    breathing = {d: v for series in (hs_resp, resp) for d, v in series.items() if v > 0}
     out = {
         "hrv": nightly_hrv(conn, start, end),
-        "rhr": _series(conn, "SELECT day, resting_hr FROM daily WHERE day BETWEEN ? AND ?",
-                       start, end),
-        "resp": {**hs_resp, **resp},
-        "sleep_h": {d: v / 3600 for d, v in _series(
-            conn, "SELECT day, sleep_s FROM sleep WHERE day BETWEEN ? AND ?", start, end).items()
-            if v / 3600 >= MIN_VALID_NIGHT_H},
-        "sleep_incomplete_h": {d: v / 3600 for d, v in _series(
-            conn, "SELECT day, sleep_s FROM sleep WHERE day BETWEEN ? AND ?", start, end).items()
-            if v / 3600 < MIN_VALID_NIGHT_H},
+        "rhr": {d: v for d, v in rhr.items() if v > 0},
+        "resp": breathing,
+        "sleep_h": {d: v / 3600 for d, v in sleep.items() if v / 3600 >= MIN_VALID_NIGHT_H},
+        "sleep_incomplete_h": {d: v / 3600 for d, v in sleep.items() if 0 < v / 3600 < MIN_VALID_NIGHT_H},
         "sleep_need_h": {d: v / 60 for d, v in _series(
             conn, "SELECT day, sleep_need_min FROM sleep WHERE day BETWEEN ? AND ?",
             start, end).items() if v > 0},
@@ -97,11 +105,11 @@ def _z(value: float | None, ref: tuple[float, float] | None) -> float | None:
 
 
 def hrv_status(series: dict[str, float], day: str) -> dict[str, Any]:
-    ln = {d: math.log(v) for d, v in series.items() if v > 0}
+    ln = {d: math.log(v) for d, v in series.items() if _positive(v)}
     week = [ln[d] for d in _days_back(day, 7) if d in ln]
     base = [ln[d] for d in _days_back(day, BASELINE_DAYS) if d in ln]
     out: dict[str, Any] = {"nights_in_baseline": len(base), "nights_in_7d": len(week),
-                           "last_night_ms": series.get(day)}
+                           "last_night_ms": series.get(day) if day in ln else None}
     if len(base) < MIN_BASELINE_NIGHTS or len(week) < 4:
         out["state"] = "calibrating"
         out["meaning"] = (f"Needs {MIN_BASELINE_NIGHTS} nights in the last {BASELINE_DAYS} days "
@@ -184,14 +192,16 @@ def sleep_shortfall_review(conn: sqlite3.Connection, day: str) -> dict[str, Any]
 
 
 def bedtime_consistency(conn: sqlite3.Connection, day: str, nights: int = 14) -> float | None:
-    """SD of sleep-start time in minutes over the last `nights` (circular around noon)."""
+    """SD of usable local sleep-start times in minutes over the last `nights` dates."""
+    from garmin_mcp import engine, sleep_review
+
     start = (date.fromisoformat(day) - timedelta(days=nights - 1)).isoformat()
-    mins = []
-    for (ts,) in conn.execute("SELECT sleep_start FROM sleep WHERE day BETWEEN ? AND ? AND "
-                              "sleep_start IS NOT NULL AND sleep_s > 3*3600", (start, day)):
-        h, m = int(ts[11:13]), int(ts[14:16])
-        mins.append((h * 60 + m - 12 * 60) % 1440)  # minutes after 12:00 UTC: no midnight wrap
-    return round(statistics.stdev(mins), 0) if len(mins) >= 5 else None
+    zone = engine._tz(conn)
+    mins = [minute for ts, seconds in conn.execute(
+        "SELECT sleep_start,sleep_s FROM sleep WHERE day BETWEEN ? AND ? AND sleep_start IS NOT NULL",
+        (start, day)) if _positive(seconds) and seconds >= MIN_VALID_NIGHT_H * 3600
+        and (minute := sleep_review._clock_minutes(ts, zone)) is not None]
+    return round(statistics.stdev(sleep_review._unwrap(mins)), 0) if len(mins) >= 5 else None
 
 
 def _metric_z(series: dict[str, float], day: str) -> float | None:
@@ -260,8 +270,9 @@ def readiness(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
                  "helping": [c["name"] for c in drivers[::-1] if c["contribution"] > 0.5],
                  "method": "mean of signed, clipped z-scores vs your own baselines "
                            "(transparent heuristic; see METRICS.md)"},
-        "garmin": {"score": garmin[0], "level": garmin[1], "feedback": garmin[2],
-                   "recovery_time_h": round(garmin[3] / 60, 1) if garmin[3] else None}
+        "garmin": {"score": garmin_score(garmin[0]), "level": garmin[1], "feedback": garmin[2],
+                   "recovery_time_h": round(garmin[3] / 60, 1)
+                   if garmin[3] == 0 or _positive(garmin[3]) else None}
         if garmin else None,
         "hrv": hrv, "sleep": {**slp, "bedtime_sd_min_14d": bedtime_consistency(conn, day)},
         "illness_flag": illness_flag(series, day),

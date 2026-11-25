@@ -4,9 +4,11 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from statistics import fmean, median, pstdev
 
+from garmin_mcp import recovery
+
 
 def _timestamp(value):
-    if not isinstance(value, str):
+    if not isinstance(value, str) or not any(separator in value for separator in ("T", "t", " ")):
         return None
     try:
         moment = datetime.fromisoformat(value)
@@ -29,7 +31,10 @@ def _timeline(levels, start, end):
     samples = []
     for level in levels:
         try:
-            name = names[level["activityLevel"]]
+            stage = level["activityLevel"]
+            if type(stage) is not int:
+                continue
+            name = names[stage]
             low, high = _timestamp(level["startGMT"]), _timestamp(level["endGMT"])
         except (KeyError, TypeError):
             continue
@@ -50,8 +55,8 @@ def _timeline(levels, start, end):
 def _unwrap(values):
     # Cut the clock at its largest unobserved interval so midnight is never a boundary.
     ordered = sorted(values)
-    split = max(range(len(ordered)), key=lambda i: (ordered[(i + 1) % len(ordered)]
-                - ordered[i]) % 1440)
+    following = ordered[1:] + [ordered[0] + 1440]
+    split = max(range(len(ordered)), key=lambda i: following[i] - ordered[i])
     return ordered[split + 1:] + [v + 1440 for v in ordered[:split + 1]]
 
 
@@ -105,7 +110,9 @@ def collect(conn, end, zone, need_h):
     for day, seconds, score, start_at, wake_at, deep, light, rem, awake in conn.execute(
             "SELECT day,sleep_s,score,sleep_start,sleep_end,deep_s,light_s,rem_s,awake_s "
             "FROM sleep WHERE day BETWEEN ? AND ? AND sleep_s>=10800 ORDER BY day", (start, end)):
-        nights[day] = {"hours": seconds / 3600, "score": score if score is not None and 0 <= score <= 100 else None,
+        if not recovery._positive(seconds):
+            continue
+        nights[day] = {"hours": seconds / 3600, "score": recovery.garmin_score(score),
                        "bed": _clock_minutes(start_at, zone), "wake": _clock_minutes(wake_at, zone),
                        "window": (start_at, wake_at),
                        "stages": {"Deep": deep, "Light": light, "REM": rem, "Awake": awake}}
@@ -116,7 +123,10 @@ def collect(conn, end, zone, need_h):
             "SELECT day,payload FROM raw_daily WHERE dataset='sleep' AND "
             "((day BETWEEN ? AND ?) OR day=?)", (recent_first, end, newest)):
         if day in nights:
-            raw = json.loads(payload)
+            try:
+                raw = json.loads(payload)
+            except (TypeError, ValueError):
+                continue  # A missing source timeline should not hide a usable normalized night.
             levels = raw.get("sleepLevels") if isinstance(raw, dict) else None
             if isinstance(levels, list):
                 start_at, wake_at = nights[day]["window"]
@@ -156,8 +166,9 @@ def collect(conn, end, zone, need_h):
                        if (monday - timedelta(days=14)).isoformat() <= day < monday.isoformat()
                        and n["wake"] is not None]
         if len(last) >= 4 and len(fixed_wakes) >= 5:
-            fixed_wake = median(_unwrap(fixed_wakes)) % 1440
-            anchor["wake"] = clock(fixed_wake)
+            fixed_timings = _unwrap(fixed_wakes)
+            fixed_wake = median(fixed_timings) % 1440
+            anchor.update(wake=clock(fixed_wake), spread=round(pstdev(fixed_timings)), nights=len(fixed_timings))
             baseline = median(last)
             desired = (fixed_wake - need_h * 60 - 720) % 1440
             if 0 <= desired < baseline < 1320:

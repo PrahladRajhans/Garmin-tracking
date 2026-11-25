@@ -78,6 +78,8 @@ def test_full_archive_baseline_includes_older_history_and_exact_sparse_gaps(conn
                      [((start + timedelta(days=index)).isoformat(), 4000 + index)
                       for index in range(1097)])
     conn.execute("UPDATE daily SET resting_hr=46 WHERE day IN ('2026-11-22','2026-11-24','2026-11-25')")
+    conn.execute("UPDATE daily SET resting_hr='invalid' WHERE day='2025-01-01'")
+    conn.execute("INSERT INTO sleep(day, sleep_s, score) VALUES ('2025-01-01','invalid','invalid')")
     coverage = dashboard_history.collect(conn, end, UTC)["baseline_coverage"]
     assert coverage["steps"]["28 days"]["count"] == 28
     assert coverage["steps"]["90 days"]["count"] == 90
@@ -87,3 +89,5 @@ def test_full_archive_baseline_includes_older_history_and_exact_sparse_gaps(conn
     pulse = coverage["resting_hr"]["28 days"]
     assert pulse["typical"] is None and pulse["count"] == 2
     assert pulse["sparse_gaps"] == [("2026-10-28", "2026-11-21"), ("2026-11-23", "2026-11-23")]
+    assert coverage["resting_hr"]["Full archive"]["count"] == 2
+    assert coverage["sleep_h"]["Full archive"]["count"] == 0

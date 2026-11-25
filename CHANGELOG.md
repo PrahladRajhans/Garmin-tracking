@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-25
+
+- Add a reviewed Sleep interpretation with linked evidence. Distinguish model-written
+  coaching from evidence selection in the dashboard and local evaluation.
+- Include sleep-only and activity-led snapshots. Keep archived readings dated and pause
+  Today and weekly cadence experiments when the current guidance calls for rest.
+- Harden parsing of archived sleep, recovery and activity readings. Keep malformed rows
+  from crashing reviews or displacing valid evidence. Leave unavailable trend halves empty.
+- Skip malformed profile seed settings and report a missing archive without creating one
+  during verification.
+- Preserve valid activity FIT associations on failed imports and add optional private
+  retention of validated original monitoring FIT files, with no normalized-table writes.
+- Use the same raw range precedence when normalizing a date and checking the source value.
+- Reject other sports in running-only reports and keep legacy single-session FIT data readable.
+- Skip missing or invalid FIT maximum pulse in load calibration and include the following
+  midnight’s rain for opted-in weather queries that need it.
+- Fix source-specific refresh scheduling and reject unknown workout operations. Preserve
+  confirmed workout IDs across scheduling failures and report unverified uploads explicitly.
+- Serialize refreshes that target the same archive and keep superseded background renderers
+  from replacing a newer snapshot.
+- Verify both `/` and `/index.html` on production and preview before hosted publication.
+- Record the manual review scope, regressions and remaining owner-environment checks.
+
 ## [0.30.0] - 2026-11-25
 
 - Distinguish stale, missing, pending and recorded readings on Today and Recovery. Save

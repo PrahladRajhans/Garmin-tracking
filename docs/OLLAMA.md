@@ -55,13 +55,55 @@ Reasoning traces do not appear in the snapshot or local response cache.
 
 Thinking work runs first in a bounded background batch. The thinking draft keeps its
 2,450-token allowance and defaults to ten minutes. Set `--thinking-minutes 5` (1–30 minutes
-supported) to change its time limit. A failed draft moves directly to the shorter comparison request.
-The direct writing path can make one correction before selection. Each written draft must pass
-the same review. The job keeps up to 45 seconds for selection, with warm-up budgeted separately.
+supported) to change its time limit. After a thinking timeout, the worker can attempt one short
+direct draft when enough time remains for review and the comparison fallback. The direct
+writing path can also make one correction before selection. Ollama writes one observation
+and cites two current domains. Python supplies its neutral next question, and a separate
+Ollama request reviews the observation against the readings. Broad conclusions about
+fitness or recovery get withheld when only specific markers were measured. The job
+reserves up to 45 seconds for exact-source selection, with warm-up budgeted separately.
 A text model without thinking support can use the direct path. Later builds can retry unfinished
 work when the service also fails to return a comparison.
 Changing the draft budget gives the same evidence a fresh attempt.
 [Ollama thinking controls](https://docs.ollama.com/capabilities/thinking)
+
+### Sleep and the written-coaching check
+
+Sleep has a separate review when the current snapshot includes a recorded night and
+there is qualified sleep and recovery evidence. The review links to Sleep and Recovery.
+It can contrast the week's sleep duration with the measured change in HRV or resting
+pulse without turning either into a broader recovery diagnosis. This review uses the same
+configured thinking allowance and bounded direct retry as Today and Running. The worker
+queues Running ahead of the additional Sleep review. Missing night data and incomplete
+snapshots suppress it.
+
+To exercise the reviewed drafting path on fictional readings:
+
+```bash
+for case in today-written sleep-written running-block; do
+  garmin-mcp-narrator --eval-insight --no-thinking --insight-case "$case" --model qwen3.5:4b
+done
+```
+
+`reviewed_prose: true` identifies an accepted draft after the independent review completion.
+A successful exact-reading fallback uses `mode: selected_comparison` with
+`reviewed_prose: false`. The two outcomes are counted separately.
+
+On 25 November 2026, Qwen3.5 4B with Ollama 0.40.17 on Linux CPU passed the direct-writing
+checks for Today (89.96 seconds), Sleep (86.55 seconds), and Running (58.68 seconds), after
+warm-up. The first drafts for Today and Sleep failed the numeric citation gate. The checked
+revisions contrasted the latest moving heart rate with stable resting heart rate and longer
+recorded sleep with lower HRV respectively. Running's first draft contrasted more running
+days with a latest run whose moving pulse stayed in its earlier matched range. All three
+produced reviewed prose with synthetic inputs. The owner's archive and Mac were unavailable.
+
+The same Sleep case with `--thinking --thinking-minutes 1` ran the configured thinking request
+before retrying. The initial thinking draft did not finish. The final concise retry asked for
+measured directions without figures, passed the review with the sleep-duration and HRV contrast,
+and returned `mode: direct_retry` and `reviewed_prose: true` in 111.35 seconds after warm-up.
+An earlier retry had attempted an uncited number and used exact-reading fallback in 98.20
+seconds. The final pass shows that a checked written observation can survive a thinking timeout.
+The thinking draft itself remains unverified on this case.
 
 ### Post-run evidence check
 

@@ -12,7 +12,6 @@ Sources and conventions (see METRICS.md "Running breakdown"):
 
 from __future__ import annotations
 
-import json
 import math
 import sqlite3
 import statistics
@@ -21,6 +20,7 @@ from datetime import date, datetime
 from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence
+from garmin_mcp.fit import is_running_activity, session_messages
 
 # Per-metric reference bands in measurement order. Upper bounds are exclusive.
 GAUGES: dict[str, list[tuple[float | None, str, str]]] = {
@@ -166,14 +166,16 @@ def running_breakdown(
     from garmin_mcp.coaching import _pace, late_running_form, run_metrics
     from garmin_mcp.loads import RUN_TYPES
 
+    start = conn.execute("SELECT start_time_local, type FROM activities WHERE activity_id=?",
+                         (aid,)).fetchone()
+    if not start or not is_running_activity(start[1]):
+        return {"available": False, "reason": "This activity is not a run."}
     read_metrics = read_metrics or run_metrics
     m = read_metrics(conn, aid)
     if not m:
         return {"available": False, "reason": "no second-by-second data for this run"}
-    start = conn.execute("SELECT start_time_local, type FROM activities WHERE activity_id=?",
-                         (aid,)).fetchone()
     effort = run_evidence.matched_effort(conn, aid, m, read_metrics)
-    hist = _history(conn, start[0], read_metrics=read_metrics, activity_type=start[1]) if start and start[0] else []
+    hist = _history(conn, start[0], read_metrics=read_metrics, activity_type=start[1]) if start[0] else []
     history_by_id = {row["activity_id"]: row for row in hist}
     matched = [history_by_id.get(row["activity_id"]) or read_metrics(conn, row["activity_id"]) or {}
                for row in effort["matches"]]
@@ -183,11 +185,11 @@ def running_breakdown(
     if m.get("power_w") and weight_kg:
         eff = round(speed / (m["power_w"] / weight_kg), 3)
     session = conn.execute("SELECT payload FROM fit_sessions WHERE activity_id=?", (aid,)).fetchone()
-    sessions = json.loads(session[0]) if session and session[0] else []
+    sessions = session_messages(session[0] if session else None)
     recorded = sessions[0] if len(sessions) == 1 else {}
-    cue = knee_cadence_experiment(conn, start[1], m, end=end) if start else None
+    cue = knee_cadence_experiment(conn, start[1], m, end=end)
     late_form = (late_running_form(conn, aid, moving_s=m["moving_s"], elapsed_s=m["recorded_elapsed_s"])
-                 if start and start[1] in RUN_TYPES and m.get("steady") else {})
+                 if start[1] in RUN_TYPES and m.get("steady") else {})
     return {"available": True, "activity_id": aid, "pace": _pace(speed),
             "avg_hr": m.get("avg_hr"), "power_w": m.get("power_w"),
             "running_effectiveness": eff, "form": form,

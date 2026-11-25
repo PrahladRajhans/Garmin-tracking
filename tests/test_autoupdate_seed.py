@@ -14,6 +14,16 @@ def test_seed_from_file_only_fills_missing(conn, tmp_path):
     assert athlete.get(conn, "timezone") == "Asia/Kolkata"
 
 
+def test_invalid_profile_seed_cannot_stop_sync_or_replace_usable_settings(conn, tmp_path):
+    f = tmp_path / "athlete.json"
+    f.write_text("[]")
+    assert athlete.seed_from_file(conn, str(f)) == []
+    f.write_text(json.dumps({"timezone": "invalid", "hr_max_override": True, "goals": "fitness"}))
+    assert athlete.seed_from_file(conn, str(f)) == ["goals"]
+    assert athlete.get(conn, "timezone") is None
+    assert athlete.get(conn, "hr_max_override") is None
+
+
 def test_autoupdate_can_be_disabled(monkeypatch):
     monkeypatch.setenv("GARMIN_AUTO_UPDATE", "0")
     assert "disabled" in autoupdate.update(reexec=False)["skipped"]

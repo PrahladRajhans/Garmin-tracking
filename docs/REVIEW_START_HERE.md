@@ -24,7 +24,8 @@ For provenance tests, use synthetic dated-versus-rolling pulse inputs and inspec
 between the two live sources. If the Mac archive is available, compare the date for the reported
 44 bpm in Garmin Connect, saved sources and the page. Exercise the Sleep week with a missing
 date, month/year with time to support a trend, and archive baselines with an entirely missing metric.
-Before a second repo-wide sweep, start from [the file register](repository-review-queue.tsv).
+For the manual audit and its remaining paths, see [repository review](REPOSITORY_REVIEW.md)
+and the [file register](repository-review-queue.tsv).
 
 A reviewer with access to the private repository can review the source, run the tests
 and reproduce the synthetic cases independently. Use Python 3.12 or 3.13 with
