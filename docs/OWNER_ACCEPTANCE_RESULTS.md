@@ -38,6 +38,20 @@ a disposable copy), **runtime** (Mac, Ollama, launchd, Garmin calls), **device**
 | 25 | iOS Simulator | none | Not run: this Mac has no Xcode |
 | 26 | Protected hosting | none | Pending: not selected or configured |
 
+## After the merge (PR #46, commit `157a11c`)
+
+| Check | Result |
+|---|---|
+| Real launchd job (`launchctl kickstart`) | Passed: fetched `main`, reinstalled, restarted on v0.32.1, skipped the download (nothing new), rebuilt the page and the iCloud copy. Publishing disabled |
+| Database backup before the full sync | Taken with the SQLite backup API; quick check passed. FIT files not copied |
+| Controlled full sync, 180 days forced | Passed: no errors or rate-limit waits, SQLite quick check passed, 116 of 116 activities decoded |
+| Intraday Stress and Body Battery after backfill | Passed: usable from 1 July 2026 with no gaps; earlier requested days came back empty |
+| Replay after backfill | Passed: no broken links or duplicate ids |
+| AI worker while the sync was running | Passed: held with `sync_incomplete` |
+| First AI pass after the sync | **Partial**: ended `incomplete` with the run summaries and Running review pending. The pending prompts all succeeded on a copy, and the next build completed all 18. Cause not established |
+
+The dashboard grew from about 4.5 MB to 4.9 MB with the intraday timelines.
+
 ## AI results by path
 
 Times are after model warm-up on the M5.

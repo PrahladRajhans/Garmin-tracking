@@ -43,19 +43,21 @@ coverage from the earlier queue as regression checks where affected.
 
 1. **Owner, security:** turn off Ollama's network exposure and confirm it listens on loopback
    only. Check data-folder permissions and set up a backup ([operations](docs/OPERATIONS.md#backups-and-rollback)).
-2. **Owner, time-sensitive:** Garmin returned no intraday series for dates older than a few
-   months. Backfill the stress timeline while it is still available.
+2. **Done 25 November:** the stress timeline was backfilled from 1 July 2026. Garmin returned
+   nothing for earlier days tried, so older intraday history may only exist in monitoring FIT files.
 3. **Owner:** give the date and label of the 44 bpm reading; review the local AI report.
 4. **Device:** physical iPhone (Files, Home Screen, VoiceOver, offline) and watch workout check.
 5. **Code:** Running and weekly AI reviews usually fail the direction check and fall back to exact
    readings. Improve the evidence wording or the prompt, and measure on dated cases.
-6. **Code:** the dashboard file is about 4.5 MB against the 600 KB target. Most is inline SVG in
+6. **Code:** the dashboard file is about 4.9 MB against the 600 KB target. Most is inline SVG in
    collapsed detail sections.
 7. **Code:** bedtime, experiments and event timing still use the configured timezone on travel
    days.
 8. **Code:** import of monitoring FIT stays disabled until Body Battery message types, conflicts
    and rollback are validated.
-9. **Code:** wider repository audit (separate task, step 14 below).
+9. **Code:** one AI pass right after a long sync ended incomplete and the next build finished it.
+   Record why a pass is incomplete so this can be diagnosed.
+10. **Code:** wider repository audit (separate task, step 14 below).
 
 ### 25 November execution status
 
