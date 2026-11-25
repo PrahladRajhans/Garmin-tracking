@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added (docs only)
+- [`docs/LESSONS_FROM_30_LINKS_2026-11-25.md`](docs/LESSONS_FROM_30_LINKS_2026-11-25.md): independent review of 30 Garmin and MCP projects against v0.33.0. It covers the login risk, MCP tool design, a standalone (no-Mac) analysis, a backlog in priority order with dependencies, Trends page options and a ledger of every link with evidence depth. Proposals only; nothing was built.
+
 ## [0.33.0] - 2026-11-25
 
 Fixes from the Mac acceptance run and the AI usefulness verdicts.
