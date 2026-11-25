@@ -1,5 +1,7 @@
 # Dashboard plan (v2, to be rebuilt from the ground up)
 
+> **Proposed UX standards and backlog:** [Lessons document §14](docs/LESSONS_FROM_30_LINKS_2026-11-25.md#14-second-pass-uiux-and-ai-outputs) (decision-surface budget, state matrix, chart recipes, accessibility and visual-regression gates, time-aware Today) and [§12](docs/external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md). Proposals only; this plan remains the as-built reference.
+
 Status: **built in v0.12 (Phase 11 + 12).** Sections 6-8 are the as-built UI map and design system. The v0.10 dashboard was a working prototype: it proved the data pipeline, but it is too dense, uses jargon ("L1/L2", CTL/ATL), puts two scales on one chart (CTL with "Garmin load ÷ 10"), and has no visual hierarchy. v2 starts from what a person wants to know, in this order: *How am I today? → Why? → What should I do? → Am I improving?*
 
 ## 1. Platform decision
