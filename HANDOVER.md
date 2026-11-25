@@ -8,8 +8,9 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
 
 - **v0.32.1:** first acceptance run on the owner's Mac. Fixed the missing intraday stress
   download, cadence precision, watch-timezone dating, daily distance, weekly Garmin load, bedtime
-  validation and a test suite that could overwrite the iCloud dashboard. Open items and what was
-  not verified: [owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md) and
+  validation and a test suite that could overwrite the iCloud dashboard. The real launchd job, a
+  timeline backfill and the owner's iPhone checks passed after the merge. Open: the 44 bpm source,
+  Ollama network exposure, the watch workout check, hosting and the AI usefulness review. Details: [owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md) and
   [roadmap](ROADMAP.md#open-after-the-mac-acceptance-run-v0321).
 
 - **v0.32.0:** sample-rate-independent grade estimates, pulse coverage gates, missing-load

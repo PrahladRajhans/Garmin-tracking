@@ -34,9 +34,41 @@ a disposable copy), **runtime** (Mac, Ollama, launchd, Garmin calls), **device**
 | 21 | Model unreachable; stale worker before and during generation | archive copy | Passed: page kept, status recorded, newer snapshot never overwritten |
 | 22 | First build, then the AI update | archive copy + runtime | Passed: 3 s build, AI update 41 s later, page and cache agree |
 | 23 | Test suite leaves the owner's files alone | runtime | **Fixed**: it had replaced the iCloud dashboard with a test page (restored) |
-| 24 | iPhone, VoiceOver, offline reopen | device | **Open**, see the roadmap |
+| 24 | iPhone, VoiceOver, offline reopen | device | Passed after the merge, as reported by the owner. [Details](#physical-iphone) |
 | 25 | iOS Simulator | none | Not run: this Mac has no Xcode |
 | 26 | Protected hosting | none | Pending: not selected or configured |
+
+## After the merge (PR #46, commit `157a11c`)
+
+| Check | Result |
+|---|---|
+| Real launchd job (`launchctl kickstart`) | Passed: fetched `main`, reinstalled, restarted on v0.32.1, skipped the download (nothing new), rebuilt the page and the iCloud copy. Publishing disabled |
+| Database backup before the full sync | Taken with the SQLite backup API; quick check passed. FIT files not copied |
+| Controlled full sync, 180 days forced | Passed: no errors or rate-limit waits, SQLite quick check passed, 116 of 116 activities decoded |
+| Intraday Stress and Body Battery after backfill | Passed: usable from 1 July 2026 with no gaps; earlier requested days came back empty |
+| Replay after backfill | Passed: no broken links or duplicate ids |
+| AI worker while the sync was running | Passed: held with `sync_incomplete` |
+| First AI pass after the sync | **Partial**: ended `incomplete` with the run summaries and Running review pending. The pending prompts all succeeded on a copy, and the next build completed all 18. Cause not established |
+
+The dashboard grew from about 4.5 MB to 4.9 MB with the intraday timelines.
+
+## Physical iPhone
+
+The owner ran these on their iPhone with the v0.32.1 page opened from **Files → iCloud Drive →
+Garmin**, the access path in use. These are the owner's reports; the agent did not see the device.
+
+| Check | Result |
+|---|---|
+| Page controls (Light and Dark buttons) appear in Files | Passed |
+| Today, Sleep, Running and a historical day, and back | Passed |
+| Chart tap shows a reading; scrolling over the chart still works | Passed |
+| Overlay switch and exact readings list | Passed |
+| Light and dark readability; footer shows 0.32.1 | Passed |
+| Reopen in Airplane Mode: pages and chart taps | Passed. Fetching a newer snapshot still needs a connection for iCloud |
+| VoiceOver announces a chart selection and reads the readings list row by row | Passed |
+
+Not tested: Safari and a Home Screen icon. A local file in Files offers neither; both belong to
+protected hosting. The iOS Simulator was not used (no Xcode).
 
 ## AI results by path
 
