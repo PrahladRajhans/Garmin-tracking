@@ -392,7 +392,8 @@ def test_review_can_keep_a_supported_observation_with_a_grounded_question(monkey
     result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 240,
                                     attempts=attempts)
     assert result["observation"] == observation
-    assert result["question"] == "Does moving pulse stay in the same range on another run at a similar pace?"
+    assert result["question"] == ("Where does moving pulse fall against your earlier range on another run at "
+                                  "a similar pace?")
     assert json.loads(reviewed[1]["prompt"])["draft"]["question"] == result["question"]
     assert attempts[0]["question_reframed"] and attempts[0]["outcome"] == "supported"
     unsafe = {**draft, "observation": "You ran on more days, so you felt tired in your latest run."}
