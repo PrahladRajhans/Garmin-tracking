@@ -26,6 +26,7 @@ from typing import Any
 
 from garmin_mcp import (
     __version__,
+    baseline,
     bedtime_experiment,
     coach_loop,
     coach_review,
@@ -132,6 +133,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
         "sleep_review": sleep_data,
+        "sleep_shortfall": recovery.sleep_shortfall_review(conn, end),
         "bedtime_experiment": bedtime_experiment.status(conn, end, sleep_data, need_h),
         "wake_followup": coach_loop.wake_followup(sleep_data["nights"], end),
         "rested_review": coach_loop.rested_review(conn, end),
@@ -303,7 +305,12 @@ def _axes(left: int, right: int, top: int, bottom: int, h: int,
     ]
 
 
-def _x_ticks(labels: list[str], x, bottom: int, wide: bool) -> list[str]:
+def _x_ticks(labels: list[str], x, bottom: int, wide: bool, *, weekdays: bool = False) -> list[str]:
+    if weekdays:
+        return [f'<text x="{x(i):.2f}" y="{bottom + 13}" text-anchor="middle" class="tick day-tick">'
+                f'<tspan x="{x(i):.2f}">{day:%a}</tspan>'
+                f'<tspan x="{x(i):.2f}" dy="12">{day:%d %b}</tspan></text>'
+                for i, label in enumerate(labels) if (day := date.fromisoformat(label))]
     if len(labels) <= 3:
         indices = range(len(labels))
     else:
@@ -313,11 +320,12 @@ def _x_ticks(labels: list[str], x, bottom: int, wide: bool) -> list[str]:
             f'{_e(_short(labels[i]))}</text>' for i in indices]
 
 
-def _smooth_line(labels: list[str], values: dict[str, float], x, y) -> str:
+def _smooth_line(labels: list[str], values: dict[str, float], x, y, gap_at=None) -> str:
     path = []
     for i, label in enumerate(labels):
         if label in values:
-            path.append(f'{"L" if i and labels[i - 1] in values else "M"}'
+            join = i and labels[i - 1] in values and not (gap_at and gap_at(i))
+            path.append(f'{"L" if join else "M"}'
                         f'{x(i):.2f},{y(values[label]):.2f}')
     return f'<path class="moving-average" d="{" ".join(path)}"/>' if path else ""
 
@@ -330,7 +338,9 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                elapsed: dict[str, float] | None = None, *, connect_points: bool = True,
                reference: float | None = None, band_label: str = "Your usual range",
                rate_range: bool = False, zone_metric: str | None = None,
-               details: dict[str, str] | None = None) -> str:
+               details: dict[str, str] | None = None, max_gap: float | None = None,
+               whiskers: bool = False, weekdays: bool = False, average_label: str = "7-day average",
+               guides: dict[float, str] | None = None) -> str:
     """Date spacing reflects elapsed days. Missing observations stay out of the cursor."""
     bounds = band_series if band_series and len(band_series) == len(points) else [band] * len(points)
     rows = [(label, value, interval) for (label, value), interval in
@@ -357,8 +367,23 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     h = max(h, 184)
     left, right, top, bottom = 51, w - 31, 29, h - 49
     positions = [elapsed[label] for label in labels] if elapsed is not None else days
+    gap_limit = max_gap if max_gap is not None else 1 if break_gaps and days else None
+
+    def gap_at(i):
+        return positions is not None and gap_limit is not None and positions[i] - positions[i - 1] > gap_limit
+
+    calendar_ticks = sorted(label for label, _ in points) if weekdays else []
+    if calendar_ticks:
+        first, last = (date.fromisoformat(label).toordinal() for label in
+                       (calendar_ticks[0], calendar_ticks[-1]))
+
+        def calendar_x(label):
+            return left + (right - left) * ((date.fromisoformat(label).toordinal() - first)
+                                           / (last - first) if last > first else .5)
 
     def x(i: int) -> float:
+        if calendar_ticks:
+            return calendar_x(labels[i])
         if len(rows) == 1:
             return (left + right) / 2
         if positions and positions[-1] > positions[0]:
@@ -369,31 +394,43 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
         return bottom - (bottom - top) * (v - ticks[0]) / (ticks[-1] - ticks[0])
 
     g = _horizontal_scale(ticks, left, right, y, fmt or _tick_number)
+    if guides and elapsed and positions[0] < positions[-1]:
+        start, end = positions[0], positions[-1]
+        for minute, label in guides.items():
+            if start <= minute <= end:
+                gx = left + (right - left) * (minute - start) / (end - start)
+                g.append(f'<line class="timeline-guide" x1="{gx:.2f}" x2="{gx:.2f}" '
+                         f'y1="{top}" y2="{bottom}"><title>{_e(label)}</title></line>')
     if band:
         g.append(f'<rect class="band" x="{left}" y="{y(band[1]):.2f}" width="{right - left}" '
                  f'height="{max(0, y(band[0]) - y(band[1])):.2f}"><title>{_e(band_label)}</title></rect>')
+    elif band_series and whiskers:
+        for i, (_, _, interval) in enumerate(rows):
+            if interval:
+                g.append(f'<line class="observed-span" x1="{x(i):.2f}" x2="{x(i):.2f}" '
+                         f'y1="{y(interval[0]):.2f}" y2="{y(interval[1]):.2f}"/>')
     elif band_series:
         # Draw the envelope only across adjacent valid bounds.
         for i, (a, b) in enumerate(pairwise(rows)):
-            if a[2] and b[2] and (not break_gaps or not days or days[i + 1] - days[i] <= 1):
+            if a[2] and b[2] and not gap_at(i + 1):
                 g.append(f'<polygon class="band" points="{x(i):.2f},{y(a[2][1]):.2f} '
                          f'{x(i + 1):.2f},{y(b[2][1]):.2f} {x(i + 1):.2f},{y(b[2][0]):.2f} '
                          f'{x(i):.2f},{y(a[2][0]):.2f}"/>')
     g += _axes(left, right, top, bottom, h, x_label, y_label)
     locations = []
     for i, (_, value, _) in enumerate(rows):
-        gap = break_gaps and days and i and days[i] - days[i - 1] > 1
+        gap = i and gap_at(i)
         locations.append(f'{"M" if i == 0 or gap else "L"}{x(i):.2f},{y(value):.2f}')
     if connect_points:
         g.append(f'<path d="{" ".join(locations)}" class="ln {cls}{" context" if break_gaps else ""}"/>')
     if reference is not None:
         yr = y(reference)
         g.append(f'<line x1="{left}" x2="{right}" y1="{yr:.2f}" y2="{yr:.2f}" class="ref"/>')
-    g.append(_smooth_line(labels, averages, x, y))
+    g.append(_smooth_line(labels, averages, x, y, gap_at))
     for i, (label, value, interval) in enumerate(rows):
         display = fmt(value) if fmt else _f(value, nd, unit)
         if label in averages:
-            display += f" · 7-day avg {_f(averages[label], nd, unit)}"
+            display += f" · {average_label.lower()} {_f(averages[label], nd, unit)}"
         if interval:
             display += f" · {band_label.lower()} {_f(interval[0], nd)}–{_f(interval[1], nd, unit)}"
         if details and label in details:
@@ -413,7 +450,10 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
             marker = f"zone-dot zone-{zone[0]}"
             display += f" · {zone[1]}"
         g.append(_point(x(i), y(value), label, display, marker))
-    g += _x_ticks(labels, x, bottom, w > W)
+    if calendar_ticks:
+        g += _x_ticks(calendar_ticks, lambda i: calendar_x(calendar_ticks[i]), bottom, w > W, weekdays=True)
+    else:
+        g += _x_ticks(labels, x, bottom, w > W)
     return _chart("line", g, w, h, (left, right, top, bottom), x_label, y_label)
 
 
@@ -421,7 +461,7 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
               ref_label: str = "", h: int = 190, nd: int = 0,
               tones: list[str] | None = None, w: int = W, x_label: str = "Date",
               y_label: str = "Value", averages: dict[str, float] | None = None,
-              rate_goal: bool = False) -> str:
+              rate_goal: bool = False, weekdays: bool = False) -> str:
     if not any(isinstance(v, (int, float)) and math.isfinite(v) for _, v in items):
         return '<p class="empty">No measurements recorded for this chart.</p>'
     values = [v for _, v in items if isinstance(v, (int, float)) and math.isfinite(v)]
@@ -460,13 +500,14 @@ def bar_chart(items: list[tuple[str, float]], unit: str = "", ref: float | None 
         g.append(_point(x(i), y(value), label, display))
     labels = [label for label, _ in items]
     g.append(_smooth_line(labels, averages, x, y))
-    g += _x_ticks(labels, x, bottom, w > W)
+    g += _x_ticks(labels, x, bottom, w > W, weekdays=weekdays)
     return _chart("bar", g, w, h, (left, right, top, bottom), x_label, y_label)
 
 
 def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: float | None,
             w: int = W, h: int = 238, x_unit: str = "", y_unit: str = "", lag: int = 0,
-            *, absolute_x: bool = False, absolute_y: bool = False, x_format=None, dense: bool = False) -> str:
+            *, absolute_x: bool = False, absolute_y: bool = False, x_format=None, dense: bool = False,
+            fit_center: tuple[float, float] | None = None) -> str:
     """Signed axes show how each measurement differs from its own recent average."""
     points = [(d, a, b) for d, a, b in points if math.isfinite(a) and math.isfinite(b)]
     if not points or (len(points) < 3 and not (absolute_x and absolute_y and slope is None)):
@@ -477,7 +518,7 @@ def scatter(points: list[tuple[str, float, float]], xl: str, yl: str, slope: flo
     y_values = ys if absolute_y else ys + [0]
     fit_values = None
     if slope is not None:
-        mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+        mx, my = fit_center or (sum(xs) / len(xs), sum(ys) / len(ys))
         fit_values = [my + slope * (edge - mx) for edge in (min(xs), max(xs))]
         y_values.extend(fit_values)
     y_ticks = _ticks(*_scale(y_values, 0.05))
@@ -725,6 +766,7 @@ def page_today(d: dict[str, Any]) -> str:
         body += (f'<section class="card today-focus{width}"><p class="focus-label">{label}</p>{previous}'
                  f'<h3>{_e(focus["title"])}</h3>'
                  f'{detail}{more}</section>')
+        body += _resting_pulse_card(snapshot.get("resting_pulse_check"), flagged_only=True)
     if training_n:
         rows = [_record_link(_workout_name(a),
                              " · ".join(filter(None, [a["duration"],
@@ -894,6 +936,57 @@ def _sleep_journal(d: dict) -> str:
                   "Following-night readings vs your baseline.", wide=True) if rows else "")
 
 
+def _sleep_trend_key(context):
+    items = []
+    if context["trend"]:
+        items.append("Dashed: " + context["trend_label"])
+    if context["band"]:
+        items.append("Shaded: " + context["band_label"].lower())
+    return f'<p class="chart-note">{_e(" · ".join(items))}</p>' if items else ""
+
+
+def _sleep_trend_chart(chart, nights, *, monthly=False, metric="hours"):
+    context = sleep_review.trend_context(chart, nights, monthly=monthly, metric=metric)
+    aligned = [((stamp + "-01" if monthly else stamp), value) for stamp, value in chart]
+    averages = {stamp + "-01" if monthly else stamp: value for stamp, value in context["trend"].items()}
+    is_score = metric == "score"
+    visual = both(line_chart, aligned, " points" if is_score else " h", nd=0 if is_score else 1,
+                  x_label="Month" if monthly else "Wake date",
+                  y_label="Garmin sleep score (0–100)" if is_score else "Sleep duration (h)",
+                  band=context["band"], band_label=context["band_label"],
+                  averages=averages, average_label=context["trend_label"], break_gaps=True,
+                  max_gap=32 if monthly else 1, weekdays=not monthly and len(chart) <= 7)
+    return visual + _sleep_trend_key(context)
+
+
+def _sleep_shortfall_card(review, detail_days):
+    if not review or not review["current"]["debt_inputs"]:
+        return ""
+    current = review["current"]
+    nights = current["debt_inputs"]
+    coverage = f'{len(nights)} of 7 nights usable · {review["target_met"]} met their target'
+    previous = review["previous_min"]
+    per_night = review["per_night_min"]
+    comparison = ""
+    if previous is not None:
+        delta = per_night - previous
+        comparison = (f' · {abs(delta)} min {"more" if delta > 0 else "less"} per night than the prior week'
+                      if delta else " · same average gap as the prior week")
+    rows = "".join(_record_link(_date_label(n["day"]),
+                                f'{_sleep_time(n["sleep_h"])} of {_sleep_time(n["need_h"])} target '
+                                f'· {_sleep_time(n["shortfall_h"])} short · {n["source"]}',
+                                f'#day-{n["day"]}' if n["day"] in detail_days else None)
+                   for n in reversed(nights))
+    return (f'<section class="sleep-band wide"><h3>Sleep shortfall · '
+            f'{_sleep_time(review["total_min"] / 60)}</h3>'
+            f'<p><b>{coverage}</b> · {per_night} min short per usable night{comparison}.</p>'
+            f'<p class="sub">Garmin supplied the target on {len(nights) - review["fallback"]} nights. '
+            'The other targets use 8 hours. Missing and incomplete nights are excluded. '
+            'This shows time below target. It cannot tell you how much recovery sleep you need.</p>'
+            f'<details><summary>Nightly targets and gaps</summary><ul class="record-list">{rows}</ul>'
+            "</details></section>")
+
+
 def page_sleep(d: dict[str, Any]) -> str:
     review = d.get("sleep_review", {})
     nights = review.get("nights", {})
@@ -902,11 +995,11 @@ def page_sleep(d: dict[str, Any]) -> str:
     if not last and not (plan.get("current") or plan.get("previous")):
         return _page("sleep", "Sleep", "No complete night recorded yet.", "")
     detail_days = set(d["calendar"]["detail_days"])
-    body = ""
+    body = _sleep_shortfall_card(d.get("sleep_shortfall"), detail_days)
     if last:
         night_link = (f'<a class="flow-link" href="#day-{last}">Full day record{icon("chev")}</a>'
                       if last in detail_days else "")
-        body = (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
+        body += (f'<section class="sleep-hero wide"><h3>Night ending {_e(_date_label(last))}</h3>'
                 f'{_night_record(nights[last])}{night_link}'
                 + _narration(d.get("narration", {}).get("sleep")) + '</section>')
     anchor = review["anchor"]
@@ -942,12 +1035,6 @@ def page_sleep(d: dict[str, Any]) -> str:
         body += _card(label, f'<p>Sleep start by <b>{_e(tracked["target"])}</b> · '
                       f'{tracked["on_time"]} of {tracked["recorded"]} timed nights</p>{evidence}',
                       f'Week of {_date_label(tracked["week_start"])}', wide=True)
-    debt = d["scores"]["sleep"].get("debt_7d_h")
-    if debt is not None and debt > 0:
-        nights_to_half = math.ceil(debt * 30 / 40)
-        body += (f'<section class="sleep-band wide"><h3>Sleep shortfall · {_f(debt, 1)} h</h3>'
-                 f'<p>{nights_to_half} extra nights of 40 minutes would add at least half '
-                 'that amount.</p></section>')
     for period, label in ((7, "Past week"), (30, "Past month"), (365, "Past year")):
         window = review["windows"].get(period)
         if not window:
@@ -958,16 +1045,20 @@ def page_sleep(d: dict[str, Any]) -> str:
         if period == 7 and (delta := review["week_change_min"]):
             direction = "more" if delta > 0 else "less"
             average += f" · {abs(delta)} min {direction} per night than the week before"
-        chart = both(bar_chart, window["chart"], " h", nd=1, y_label="Sleep duration (h)",
-                     x_label="Month" if period == 365 else "Wake date")
+        chart = _sleep_trend_chart(window["chart"], nights, monthly=period == 365)
         if period != 365 and window["scored"] >= 3:
             sleep_rows = [{"t_s": date.fromisoformat(day).toordinal(), "hours": hours,
                            "sleep_score": nights.get(day, {}).get("score")}
                           for day, hours in window["chart"]]
-            chart = both(_paired_chart, sleep_rows,
-                         ("hours", "Sleep duration", "Sleep duration (h)", _sleep_time),
-                         (("sleep_score", "Garmin sleep score", "Sleep score (0–100)",
-                           lambda value: _f(value, unit="/100")),), 1, date_axis=True)
+            context = sleep_review.trend_context(window["chart"], nights)
+            chart = (both(_paired_chart, sleep_rows,
+                          ("hours", "Sleep duration", "Sleep duration (h)", _sleep_time),
+                          (("sleep_score", "Garmin sleep score", "Sleep score (0–100)",
+                            lambda value: _f(value, unit="/100")),), 1, date_axis=True, context=context)
+                     + _sleep_trend_key(context))
+        if period != 7 and window["scored"] >= 3:
+            score_chart = _sleep_trend_chart(window["score_chart"], nights, monthly=period == 365, metric="score")
+            chart += f'<details><summary>Sleep score trend</summary>{score_chart}</details>'
         records = ""
         if period == 7:
             rows = []
@@ -1087,7 +1178,8 @@ def page_recovery(d: dict[str, Any]) -> str:
     score += _narration(d.get("narration", {}).get("today"))
     if any(h["recovery"] is not None for h in hist):
         score += f'<details class="recovery-history"><summary>Last 14 days</summary>{chart}</details>'
-    body = (_card("Recovery score", score, wide=True)
+    body = (_resting_pulse_card(d["calendar"]["days"].get(d["end"], {}).get("resting_pulse_check"),
+                                flagged_only=True) + _card("Recovery score", score, wide=True)
             + _card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
                   "HRV measures variation in time between heartbeats. Compare the seven-day average "
                   "with your usual range.", wide=True)
@@ -1718,7 +1810,8 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
                   interval: int, w: int = W, *, context_by_second: dict[int, dict] | None = None,
                   faster_at_top: bool = False, hr_bounds: tuple | list = (),
                   crossings: tuple = (), elapsed_end: int = 0,
-                  date_axis: bool = False, shared_scale: bool = False) -> str:
+                  date_axis: bool = False, shared_scale: bool = False,
+                  context: dict | None = None) -> str:
     """Compare two series on a shared time axis, with a second scale when units differ."""
     akey, alabel, axis_a, afmt = primary
 
@@ -1727,6 +1820,7 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     def series(key: str) -> dict[int, float]:
         return {p["t_s"]: value for p in stream
                 if isinstance(value := p.get(key), (float, int)) and math.isfinite(value)
+                and (key != "sleep_score" or value <= 100)
                 and (value > 0 or key == "altitude_m" or (key in allow_zero and value == 0))}
 
     a = series(akey)
@@ -1743,14 +1837,19 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     def x(seconds: float) -> float:
         return left + (right - left) * (seconds - start) / (end - start)
 
-    common_values = list(a.values())
+    context = context or {}
+    band = context.get("band")
+    trend = context.get("trend", {})
+    chart_values = list(a.values()) + list(band or ()) + list(trend.values())
+    common_values = chart_values.copy()
     if shared_scale:
         common_values += [value for *_, samples in options for value in samples.values()]
 
     gap = 1 if date_axis else 2 * interval
 
     def track(key, values, caption, fmt, *, secondary=False, reverse=False):
-        ticks = _ticks(*_scale(common_values if shared_scale else list(values.values())))
+        ticks = ([0, 25, 50, 75, 100] if key == "sleep_score" else
+                 _ticks(*_scale(common_values if shared_scale else list(values.values()) if secondary else chart_values)))
         low, high = ticks[0], ticks[-1]
 
         def y(value: float) -> float:
@@ -1798,6 +1897,12 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
         return parts, y
 
     g, y_a = track(akey, a, axis_a, afmt if faster_at_top else _tick_number, reverse=faster_at_top)
+    if band:
+        g.insert(0, f'<rect class="band" x="{left}" y="{y_a(band[1]):.2f}" width="{right-left}" '
+                    f'height="{y_a(band[0])-y_a(band[1]):.2f}"><title>{_e(context["band_label"])}</title></rect>')
+    if trend and date_axis:
+        dates = [date.fromordinal(t).isoformat() for t in range(start, end + 1)]
+        g.append(_smooth_line(dates, trend, lambda i: x(start + i), y_a))
     guides = []
     last_label = left - 28
     for km, elapsed in enumerate(crossings, 1):
@@ -1820,19 +1925,23 @@ def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tu
     previous = None
     for t, v in a.items():
         starts_segment = previous is None or t - previous > gap
-        context = _condition_readout((context_by_second or {}).get(t))
-        index = context_labels.setdefault(context, len(context_labels)) if context else None
+        condition = _condition_readout((context_by_second or {}).get(t))
+        index = context_labels.setdefault(condition, len(context_labels)) if condition else None
         reading = f"{alabel} {afmt(v)}" + ("/km" if faster_at_top else "")
         rating = _trace_rating(akey, v, hr_bounds)
-        marker = "context-dot" if starts_segment else "hit"
+        if label_at(t) in trend:
+            reading += f' · {context["trend_label"]}: {afmt(trend[label_at(t)])}'
+        marker = "context-dot" if starts_segment or date_axis else "hit"
         if rating:
             marker = f"zone-dot zone-{rating[0]}"
             reading += f" · {rating[1]}"
         g.append(_point(x(t), y_a(v), label_at(t), reading, cls=marker, condition_index=index))
         previous = t
-    ticks_at = sorted({start, (end + start) // 2, end})
-    labels = [_short(label_at(t)) if date_axis else label_at(t) for t in ticks_at]
-    g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W)
+    weekdays = date_axis and end - start <= 6
+    ticks_at = (list(range(start, end + 1)) if weekdays else
+                sorted({start, (end + start) // 2, end}))
+    labels = [label_at(t) for t in ticks_at]
+    g += _x_ticks(labels, lambda i: x(ticks_at[i]), bottom, w > W, weekdays=weekdays)
     g.append(f'<text x="{(left + right) / 2:.1f}" y="{h - 8}" text-anchor="middle" '
              'class="axis-label">' + x_label + "</text>")
     buttons = []
@@ -2018,15 +2127,52 @@ def _date_list(days: list[str], calendar: dict[str, Any]) -> str:
     return f'<ul class="record-list">{"".join(rows)}</ul>'
 
 
+def _coverage_rows(windows, unit):
+    rows = []
+    for label, item in windows.items():
+        first, last = (item[key] for key in ("first", "last"))
+        date_range = f'{_date_label(first)} through {_date_label(last)}'
+        gaps = item["gap_count"]
+        note = f'{date_range} · {item["missing"]} dates without usable readings in {gaps} gap{"s" if gaps != 1 else ""}'
+        if sparse := item["sparse_gaps"]:
+            note += " · missing " + ", ".join(_short(start) if start == end else
+                                             f"{_short(start)}–{_short(end)}" for start, end in sparse)
+        elif item["longest"]:
+            start, end = item["longest"]
+            gap = _date_label(start) if start == end else f'{_date_label(start)} through {_date_label(end)}'
+            note += f' · longest gap {gap}'
+        typical = item["typical"]
+        if typical is None:
+            value = f'{item["count"]} usable readings · {baseline.MIN_READINGS} needed for a baseline'
+        else:
+            median, low, high = typical
+            value = (f'{_f(median, 1, unit)} median · {_f(low, 1)}–{_f(high, 1, unit)} middle half '
+                     f'· {item["count"]} readings')
+        rows.append(_row(label, _e(value), note))
+    return f'<ul class="rows">{"".join(rows)}</ul>'
+
+
+def _archive_baselines(coverage):
+    if not coverage:
+        return ""
+    metrics = "".join(f'<details><summary>{_e(label)}</summary>{_coverage_rows(coverage[key], unit)}</details>'
+                      for key, (label, unit) in baseline.METRICS.items())
+    return _card("What your archive can tell you",
+                 '<p>Compare your recent readings with the preceding 28 days, 90 days and all earlier '
+                 'records available in this dashboard’s archive. Each window ends before this dashboard’s '
+                 'date. The middle half describes the readings you recorded.</p>' + metrics, wide=True)
+
+
 def page_history_week(d: dict[str, Any]) -> str:
     calendar = d["calendar"]
     steps = [(day, calendar["days"].get(day, {}).get("daily", {}).get("steps"))
              for day in recovery._days_back(d["end"], 7)]
-    chart = both(bar_chart, steps, " steps", y_label="Daily steps")
+    chart = both(bar_chart, steps, " steps", y_label="Daily steps", weekdays=True)
     span = f'{_short(calendar["week_start"])}–{_short(d["end"])}'
     body = (_history_nav(d, "Week")
             + _card("Steps by day", chart, wide=True)
-            + _card("Open a day", _date_list(calendar["week"], calendar), wide=True))
+            + _card("Open a day", _date_list(calendar["week"], calendar), wide=True)
+            + _archive_baselines(calendar.get("baseline_coverage")))
     return _page("history", "Week history", span, body, back="#trends")
 
 
@@ -2041,7 +2187,7 @@ def page_history_month(d: dict[str, Any], month: str) -> str:
     for day in slots:
         seconds = c["days"].get(day, {}).get("sleep", {}).get("sleep_s") or 0
         sleep.append((day, seconds / 3600 if seconds >= 10800 else None))
-    chart = both(bar_chart, sleep, " h", nd=1, x_label="Wake date", y_label="Sleep duration (h)")
+    chart = _sleep_trend_chart(sleep, d.get("sleep_review", {}).get("nights", {}))
     recent = any(day >= c["detail_start"] for day in days)
     days_label = "Daily readings" if not recent else "Open a recent day"
     body = (_history_nav(d, "Month", month=month, day=days[-1] if days else None)
@@ -2054,6 +2200,78 @@ def page_history_month(d: dict[str, Any], month: str) -> str:
                  body, back="#month-detail")
 
 
+def _resting_pulse_card(check, *, flagged_only=False):
+    if not check or (flagged_only and not check["verify"]):
+        return ""
+    value = check["value"]
+    comparison = "Fewer than 14 usable readings in the prior 28 days. See the longer baselines below."
+    if check["median"] is not None:
+        lo, hi = check["range"]
+        relation = {"lower": "Below", "higher": "Above", "near": "Within"}[check["direction"]]
+        comparison = (f'{relation} your personal reference · '
+                      f'{check["median"]:g} bpm median · {lo:.0f}–{hi:.0f} bpm review range · '
+                      f'{check["count"]} prior readings.')
+    advice = ""
+    if check["verify"]:
+        concern = ("unusually low or high" if check["direction"] == "higher" else "unusually low")
+        advice = ('<p><b>Check it while awake.</b> Sit quietly, then count your wrist pulse for '
+                  f'a full minute. If it keeps reading {concern} for you, ask a clinician. '
+                  'If a sudden unusual change comes with chest pain, shortness of breath, '
+                  'dizziness or fainting, seek urgent medical help.</p>')
+    sources = {"pa_daily_summary": "Garmin Personal API", "user_summary": "Garmin Connect",
+               "ex_daily_summary": "Garmin export"}
+    rows = "".join(_row(sources[key], f"{value:g} bpm") for key, value in check["sources"].items())
+    disagreement = ('<p class="sub">Garmin records for this date report different estimates.</p>'
+                    if len(set(check["sources"].values())) > 1 else "")
+    source_note = (f'{disagreement}<details><summary>Source readings for this date</summary>'
+                   f'<ul class="rows">{rows}</ul>'
+                   '</details>' if rows else "")
+    history = (f'<details><summary>Resting pulse baseline coverage</summary>'
+               f'{_coverage_rows(check["coverage"], " bpm")}</details>' if "coverage" in check else "")
+    return _card("Resting pulse check", f'<p><b>{value:g} bpm · Garmin daily resting estimate</b></p>'
+                 f'<p>{_e(comparison)}</p>{advice}'
+                 '<p class="sub">Garmin describes this as the lowest 30-minute average in 24 hours, which '
+                 'can be during sleep. A low wrist reading can occur in active adults. Compare it '
+                 'with an awake pulse and your own history.</p>'
+                 '<p class="chart-note"><a class="source-link" href="https://support.garmin.com/en-US/?faq=F8YKCB4CJd5PG0DR9ICV3A">'
+                 'Garmin’s calculation</a> · <a class="source-link" href="https://www.heart.org/en/health-topics/high-blood-pressure/the-facts-about-high-blood-pressure/all-about-heart-rate-pulse/">'
+                 'American Heart Association pulse guidance</a></p>' + source_note + history, wide=True)
+
+
+def _intraday_pulse_card(pulse, activities, *, day, zone):
+    if not pulse:
+        return ""
+    slots = pulse["slots"]
+    peak = max((s for s in slots if s["count"] >= 2), key=lambda s: s["median"], default=None)
+    headline = (f'Highest 15-minute median · {peak["median"]:g} bpm at {peak["time"]}.'
+                if peak else "The available windows contain single readings.")
+    detail = {s["time"]: f'{s["count"]} sample{"s" if s["count"] != 1 else ""}' for s in slots}
+    workouts = [(a["start"][11:16], a["name"] or "Workout") for a in activities
+                if a["start"][:10] == day and len(a["start"]) >= 16]
+    guides = {}
+    for clock, name in workouts:
+        try:
+            local = datetime.fromisoformat(f"{day}T{clock}").replace(tzinfo=zone)
+        except ValueError:
+            continue
+        if local.utcoffset() == local.replace(fold=1).utcoffset():
+            guides[local.timestamp() / 60] = name
+    chart = both(line_chart, [(s["time"], s["median"]) for s in slots], " bpm", nd=0,
+                 x_label="Local time", y_label="Heart rate (bpm)", max_gap=15.1, whiskers=True,
+                 band_series=[s["range"] for s in slots], band_label="sample span",
+                 elapsed={s["time"]: s["minute"] for s in slots}, details=detail,
+                 break_gaps=True, guides=guides)
+    source = "Garmin Personal API" if pulse["dataset"] == "pa_heart_rate" else "Garmin Connect"
+    markers = "".join(_row(clock, _e(name), "Recorded workout start on this date")
+                      for clock, name in workouts)
+    marker_key = " Dashed guides mark workout starts where the timeline covers them." if guides else ""
+    return _card("Heart rate during the day", f'<p><b>{_e(headline)}</b></p>{chart}'
+                 f'<p class="chart-note">{pulse["samples"]} samples in {len(slots)} windows '
+                 f'· {source} · Line: 15-minute median · bars: recorded low to high. '
+                 f'Gaps show windows without samples.{marker_key}</p>'
+                 + (f'<ul class="rows">{markers}</ul>' if markers else ""), wide=True)
+
+
 def page_history_day(d: dict[str, Any], day: str) -> str:
     row = d["calendar"]["days"][day]
     daily = row.get("daily", {})
@@ -2062,7 +2280,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         ("Steps", daily.get("steps"), " steps", 0),
         ("Daily distance", daily["distance_m"] / 1000 if daily.get("distance_m") is not None else None,
          " km", 2),
-        ("Resting heart rate", daily.get("resting_hr"), " bpm", 0),
+        ("Garmin resting estimate", daily.get("resting_hr"), " bpm", 0),
         ("Overnight HRV", row.get("hrv"), " ms", 1),
         ("Daytime stress", daily.get("stress_avg"), "/100", 0),
         ("Garmin daily Pulse Ox", daily.get("spo2_avg"), "%", 1),
@@ -2075,7 +2293,17 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
             ("Overnight Pulse Ox", sleep.get("avg_spo2"), "%", 1),
             ("Overnight breathing rate", sleep.get("avg_respiration"), " breaths/min", 1),
         ))
-    readings = "".join(_row(name, _f(value, precision, unit))
+    meanings = {"Steps": (f'Usual: {row["steps_typical"]:,} steps on recorded prior days'
+                          if "steps_typical" in row else "Recorded steps so far for this date"),
+                "Garmin resting estimate": "See the resting pulse check above.",
+                "Overnight HRV": "Beat-to-beat variation during sleep.",
+                "Daytime stress": "Garmin’s estimate from heart-rate variability.",
+                "Body Battery low": "Lowest recorded Garmin energy estimate.",
+                "Body Battery high": "Highest recorded Garmin energy estimate.",
+                "Garmin daily Pulse Ox": "Wrist estimate of oxygen saturation.",
+                "Overnight Pulse Ox": "Wrist estimate during the recorded night.",
+                "Overnight breathing rate": "Average breathing rate during the recorded night."}
+    readings = "".join(_row(name, _f(value, precision, unit), meanings.get(name, ""))
                        for name, value, unit, precision in measurements if value is not None)
     stages = []
     if sleep_hours >= 3:
@@ -2102,8 +2330,19 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
                        f'<span>Later · {_e(_short(days[index + 1]))}</span>{icon("chev")}</a>')
     if neighbours:
         body += f'<nav class="day-neighbours wide" aria-label="Adjacent recorded days">{neighbours}</nav>'
+    if highlights := row.get("highlights"):
+        context = "".join(_row(h["label"], f'{_f(h["value"], int(h["unit"] == " h"), h["unit"])} '
+                               f'· {h["direction"]} than usual',
+                               f'Usual median {_f(h["median"], int(h["unit"] == " h"), h["unit"])} '
+                               f'across {h["count"]} readings in the prior 28 days.')
+                          for h in highlights)
+        body += _card("What stands out this day", f'<ul class="rows">{context}</ul>',
+                      "Compared with your recent recorded days.", wide=True)
+    body += _resting_pulse_card(row.get("resting_pulse_check"))
+    body += _intraday_pulse_card(row.get("intraday_hr"), row.get("activities", []), day=day, zone=d.get("zone", UTC))
     if readings:
-        body += _card("Readings", f'<ul class="rows">{readings}</ul>')
+        body += _card("Readings", f'<details><summary>All recorded values</summary>'
+                      f'<ul class="rows">{readings}</ul></details>', wide=True)
     night = d.get("sleep_review", {}).get("nights", {}).get(day)
     if night:
         body += f'<section class="sleep-band wide"><h3>Sleep</h3>{_night_record(night)}</section>'
@@ -2111,12 +2350,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         body += _card("Recorded sleep stages", f'<ul class="rows">{"".join(stages)}</ul>')
     if workouts:
         body += _card("Workouts", f'<ul class="record-list">{"".join(workouts)}</ul>', wide=True)
-    if row.get("hourly_hr"):
-        pulse = both(line_chart, row["hourly_hr"], " bpm", x_label="Local hour",
-                     y_label="Heart rate (bpm)",
-                     elapsed={hour: int(hour[:2]) for hour, _ in row["hourly_hr"]})
-        body += _card("Heart rate during the day", pulse, "Average of samples in each recorded hour.", wide=True)
-    if not any((readings, workouts, night, stages, row.get("hourly_hr"))):
+    if not any((readings, workouts, night, stages, row.get("intraday_hr"))):
         body += _card("Readings", '<p class="empty">No usable readings for this date.</p>')
     return _page(f"day-{day}", _date_label(day), "Garmin records for this date",
                  body, back=f"#month-{day[:7]}")
@@ -2206,16 +2440,19 @@ def page_patterns(d: dict[str, Any]) -> str:
         ux = "points" if p["x"] == "trimp" else engine.UNITS[p["x"]]
         uy = "points" if p["y"] == "trimp" else engine.UNITS[p["y"]]
         drawn = sorted(p["points"])[-SCATTER_POINTS:]
+        paired = p["points"]
+        center = (sum(row[1] for row in paired) / len(paired),
+                  sum(row[2] for row in paired) / len(paired)) if paired else None
         plot = both(scatter, drawn, x, y, p.get("slope"),
-                    x_unit=ux, y_unit=uy, lag=p["lag_days"])
+                    x_unit=ux, y_unit=uy, lag=p["lag_days"], fit_center=center)
         statement = p["statement"].partition(" (r =")[0]
         statement = statement.replace("TRIMP more training load", "more training load points")
         statement = statement.replace("TRIMP", "training load points")
-        body = (f'<p class="sub">{_e(statement)}.</p>{plot}'
+        body = (f'<p>{_e(statement)}.</p>'
                 f'<p class="chart-note">{p["n"]} paired days'
                 + (f' (latest {len(drawn)} drawn)' if len(drawn) < len(p["points"]) else "")
                 + ' · Each dot is a pair of readings. Zero is your recent average. The dashed line shows their overall relationship.</p>'
-                f'<details><summary>How sure is this?</summary><p class="sub">'
+                f'<details><summary>See the paired readings and uncertainty</summary>{plot}<p class="sub">'
                 f'Correlation {p["r"]:+.2f} · 95% range '
                 f'{p["r_ci95"][0]:+.2f} to {p["r_ci95"][1]:+.2f}.'
                 ' This relationship alone cannot establish a cause.</p></details>')
@@ -2406,6 +2643,9 @@ font-size:14px;font-weight:650;width:max-content}
 .axis-label{font-size:12px;fill:var(--ink);font-weight:640}
 .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .ln.context{stroke-width:1.45}
+.observed-span{stroke:var(--axis);stroke-width:1.15}
+.timeline-guide{stroke:var(--axis);stroke-dasharray:3 3;stroke-width:1}
+.day-tick{font-size:9.5px}
 .ln.s1{stroke:var(--s1)}.ln.s2{stroke:var(--s2)}
 .dot.s1{fill:var(--s1);stroke:var(--surface);stroke-width:2}
 .context-dot{fill:var(--s1);r:1.7}

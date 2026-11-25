@@ -101,3 +101,11 @@ save rendered pages. The temporary disk needs space for a copy of the database.
 - Compare models on the same fictional cases. Record whether the model returned a useful
   reviewed observation, its latency, and whether it used thinking or a direct draft. Model
   file size and vendor benchmarks do not establish those outcomes for this workflow.
+
+
+## Dated health evidence review
+
+The v0.27.4 pass traced sync, normalization, archive windows, Sleep, History, Patterns
+and Ollama evidence. It reused chart and inference paths and kept the preserved raw Garmin
+payloads. The [reviewer index](REVIEW_START_HERE.md) records those entry points.
+Further repository-wide formula and deployment review remains open in the [roadmap](../ROADMAP.md).

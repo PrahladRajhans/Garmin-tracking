@@ -141,7 +141,7 @@ def _ms_to_iso(value: Any) -> str | None:
 Rows = Iterator[tuple[str, dict[str, Any]]]
 
 
-def daily_from_summary(payload: Any) -> Rows:
+def daily_from_summary(payload: Any, *, exported=False) -> Rows:
     for rec in _records(payload):
         day = _calendar_day(rec.get("calendarDate"))
         if not day:
@@ -176,7 +176,7 @@ def daily_from_summary(payload: Any) -> Rows:
                 "floors_up_m": _num(rec.get("floorsAscendedInMeters")),
                 # export UDS: restingHeartRate is a 7-day value; the day's own is currentDay...
                 "resting_hr": _num(_first(rec.get("currentDayRestingHeartRate"),
-                                          rec.get("restingHeartRate"))),
+                                          rec.get("restingHeartRate") if not exported else None)),
                 "min_hr": _num(rec.get("minHeartRate")),
                 "max_hr": _num(rec.get("maxHeartRate")),
                 "kcal_total": _num(rec.get("totalKilocalories")),
@@ -399,12 +399,16 @@ def fitness_age_rows_for(day: str, payload: Any) -> Rows:
     }
 
 
+def daily_from_export(payload: Any) -> Rows:
+    return daily_from_summary(payload, exported=True)
+
+
 # dataset -> (table, extractor). Extractors for per-day raw rows receive the payload only;
 # fitness age needs the day because its payload has no date.
 EXTRACTORS: dict[str, tuple[str, Callable[[Any], Rows]]] = {
     "pa_daily_summary": ("daily", daily_from_summary),
     "user_summary": ("daily", daily_from_summary),
-    "ex_daily_summary": ("daily", daily_from_summary),
+    "ex_daily_summary": ("daily", daily_from_export),
     "pa_steps": ("daily", daily_from_steps),
     "pa_sleep": ("sleep", sleep_rows),
     "pa_sleep_summaries": ("sleep", sleep_rows),

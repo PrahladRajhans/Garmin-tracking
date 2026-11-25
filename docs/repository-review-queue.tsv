@@ -162,3 +162,6 @@ tests/test_sync.py	15	reviewed	1–276	pytest; dashboard, db, narrator, normaliz
 tests/test_trials.py	15	reviewed	1–84	pytest; trials	Trial replace/log constraints, wearable feel shapes, uncertainty and knee guidance. 6 test functions before parametrization. Included in local Python 3.12 and 3.13 suites.
 tests/test_weather_fetch.py	15	reviewed	1–100	pytest; conditions, db, weather_fetch	Opt-in guard, rounded position, rate limit, legacy rain hiding and source-specific clearing. 5 test functions before parametrization. Included in local Python 3.12 and 3.13 suites.
 tests/test_workouts.py	15	reviewed	1–83	pytest; workouts	Unit conversion, validation and fake server mutations. Actual watch behavior remains open. 4 test functions before parametrization. Included in local Python 3.12 and 3.13 suites.
+docs/GARMIN_DATA_REVIEW.md	16	reviewed	all	Hand-off and metrics sources	Documents 955, Garmin Connect and API source boundaries and owner checks.
+docs/REVIEW_START_HERE.md	16	reviewed	all	README and HANDOVER	Indexes the daily pulse, Sleep, Patterns and model paths.
+src/garmin_mcp/baseline.py	16	fixed and verified	all	Dashboard History collection	Read-only archive windows with counts, range and missing dates. Tested with sparse and dated input.

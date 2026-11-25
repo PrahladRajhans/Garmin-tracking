@@ -172,3 +172,16 @@ replace that durable context. [Ollama operations](docs/OLLAMA.md#thinking-insigh
 
 Archive replay opens the original in read-only mode and renders transient HTML using a copy.
 The verification output contains aggregate counts. [Repository review](docs/REPOSITORY_REVIEW.md).
+
+
+## Dated health evidence
+
+[Normalization](src/garmin_mcp/normalize.py) keeps the export's rolling RHR out of daily RHR.
+The tidy tables are rebuilt from retained raw data at full sync. [Archive coverage](src/garmin_mcp/baseline.py)
+reads all preceding normalized rows in date order logically and calculates coverage without writing.
+[Dashboard History](src/garmin_mcp/dashboard_history.py) joins those baselines to day pages and
+recent raw pulse windows. [Sleep review](src/garmin_mcp/sleep_review.py) and
+[recovery](src/garmin_mcp/recovery.py) supply the dated trends and target gaps. The static renderer
+uses those same datasets. [Local AI evidence](src/garmin_mcp/deep_insight.py) takes qualified
+comparisons only. The dated data, symptom guidance and source provenance render independently
+of the model. See [the reviewer guide](docs/REVIEW_START_HERE.md) for verification.

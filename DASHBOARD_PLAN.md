@@ -310,3 +310,13 @@ identify the values and scales. Garmin band colors encode sampled classification
 one color for an entire comparison can be mistaken for a performance warning. Use larger
 dots and a dated list for sparse scatter plots, and keep dense timelines compact. Offer
 recorded comparisons with matching dates or timestamps and name both axis units.
+
+
+## Dated health review
+
+Sleep opens with the observed target gap and exposes each dated target and source. A week of
+points has seven weekday/date ticks even with gaps. The month and year keep the score trends
+in a separate disclosure. History opens records with the readings that stood out, pulse source
+review and intraday context before the raw readings. Week History includes coverage and baselines
+for the retained archive. Patterns starts with the association and puts the scatter and
+uncertainty underneath. See [the validation record](docs/UI_REVIEW.md#dated-health-review).

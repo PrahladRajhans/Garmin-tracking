@@ -126,3 +126,13 @@ The running redesign adds a four-week comparison, pace-and-pulse evidence, match
 references, next-run checks, a separate local running review, and an elapsed kilometre
 overlay. The [running roadmap](../ROADMAP.md#running-performance-review) tracks open
 Mac archive validation, device checks and model quality.
+
+## Dated health request, v0.27.4
+
+| Request | Implemented | Remaining verification |
+|---|---|---|
+| Garmin source review and review handoff | [Garmin and research register](GARMIN_DATA_REVIEW.md) and [review index](REVIEW_START_HERE.md) | Owner payload coverage for detailed stress, Body Battery, naps and additional FIT fields |
+| Heart rate and daily context | 15-minute pulse, spans and gaps, workout starts, prior-only check, raw source disclosure, day highlights | Verify the specific Garmin 44 bpm entry and signal agreement |
+| Sleep shortfall and dated trends | Dated targets, coverage, average shortfall comparison and duration and score trends | Owner target coverage and browser pass on physical iPhone |
+| Three baseline horizons | 28 days, 90 days and all earlier retained records on nine health metrics, with missing-date coverage | Test the owner archive after a full sync rebuilds the RHR mapping |
+| Patterns and local thinking | Plain-language association followed by its evidence, and qualified sleep and pulse observations | Owner Qwen acceptance and usefulness in regularly synced dashboards |

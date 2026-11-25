@@ -247,3 +247,22 @@ def test_thinking_budget_is_explicit_and_survives_model_change(conn, packet):
     assert state["thinking"] is True and narrator._thinking_seconds(state) == 300
     with pytest.raises(ValueError, match="1 to 30"):
         narrator.configure(conn, thinking_minutes=31)
+
+
+def test_daily_evidence_names_garmin_estimate_with_explicit_dated_baseline():
+    from garmin_mcp.deep_insight import evidence
+
+    day = "2026-11-25"
+    check = {"value": 44, "median": 53, "direction": "lower", "verify": True, "count": 16}
+    data = {
+        "end": day,
+        "calendar": {"days": {day: {"resting_pulse_check": check}}},
+        "sleep_shortfall": {"per_night_min": 42, "previous_min": 60,
+                            "current": {"valid_nights_7d": 6}, "previous": {"valid_nights_7d": 7}},
+    }
+    sleep, pulse = evidence(data)
+    assert sleep.page == "sleep" and "42 min per usable night across 6 nights" in sleep.text
+    assert pulse.page == "recovery" and "44 bpm, below the personal review range" in pulse.text
+    assert evidence({**data, "older_snapshot": True}) == ()
+    check["median"] = None
+    assert evidence(data) == ()

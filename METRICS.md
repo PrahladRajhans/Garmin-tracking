@@ -661,3 +661,41 @@ Only complete nights with a recorded start count. After at least four timed nigh
 the target on a majority suggests 15 minutes later. Otherwise the suggestion may move up to
 15 minutes earlier, bounded by the wake anchor minus sleep need. Adherence and the outcome
 averages are descriptive. A comparison for a metric needs three readings in each group.
+
+
+## Day readings, sleep shortfall and archive baselines
+
+- **Garmin resting estimate.** Personal API `heartRate.restingValue` takes precedence, then
+  Connect summary, then the export's `currentDayRestingHeartRate`. The rolling export field
+  `restingHeartRate` is excluded from daily RHR during normalization. An older tidy database
+  needs a full sync or `python -m garmin_mcp.normalize` to rebuild this mapping from retained raw data.
+  Garmin's watch looks for the lowest 30-minute average in 24 h. The independent on-page check
+  requests an awake repeat below 50 bpm or outside a personal review range with at least 14
+  positive readings in the preceding 28 days. Its center is the median and the radius is the
+  larger of 5 bpm and three times 1.4826 × median absolute deviation. These are display
+  heuristics. Historical highlights reuse that robust range with floors of 0.5 h sleep,
+  1,500 steps and 8 stress points. The latest day omits completed-day comparisons.
+- **Intraday pulse.** Choose the usable Personal API series, otherwise Connect. Keep unique
+  timestamps in the athlete's local day and retain raw data. Show median, minimum, maximum
+  and sample count in each 15-minute slot, with breaks for missing slots. Only windows with
+  at least two samples qualify for the highest-median callout. Workout start guides mark
+  timing where pulse coverage spans the start and the local time can be aligned.
+- **Sleep shortfall.** Sum positive differences between each recorded night of at least
+  3 hours and its dated Garmin target, or 8 hours when Garmin did not supply one. Round
+  displayed totals and per-night means once. Extra sleep on one night does not erase another
+  night's gap. Compare means over two adjacent seven-day windows with at least five usable
+  nights each. Tagged but otherwise usable nights count in this descriptive review. The
+  readiness model retains its own exclusions. The estimates describe time below target.
+- **Sleep trends.** On daily charts the trailing seven-day average needs at least four
+  usable readings. The reference band is the observed middle half in the preceding 28 days
+  before the displayed window starts and needs 14 readings. For the year, each month
+  averages its recorded nights in the displayed window, the trend needs three consecutive
+  observed months and the band needs eight plotted months. Duration and Garmin score use
+  separate units and coverage.
+- **Archive windows.** In Week History and the resting pulse check, the short, medium and long
+  windows are 28 days, 90 days and all earlier retained health dates. Each ends the day before
+  the displayed date. Each usable date contributes one value per metric. Windows with at least
+  14 readings show the median and middle-half observed interval (sorted zero-based indices
+  `n//4` and `(n−1)*3//4`). Dates with missing or invalid observations count as gaps. Sparse
+  windows include the missing date ranges and do not display a numeric baseline. See
+  [Garmin sources and independent research](docs/GARMIN_DATA_REVIEW.md).
