@@ -18,7 +18,10 @@ from garmin_mcp.sources.base import DataSource
 
 # Datasets the official Personal API does not provide. In "both" mode only these are synced
 # from the unofficial source, so the fragile path carries as little as possible.
+# "stress" is here for its timestamped Stress and Body Battery arrays: the Personal API only
+# gives daily stress totals and a few Body Battery points per day.
 EXTRAS = {
+    "stress",
     "training_readiness", "training_status", "max_metrics", "respiration",
     "intensity_minutes", "body_battery_events", "acclimation", "floors",
     "race_predictions", "endurance_score", "hill_score", "lactate_threshold",

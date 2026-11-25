@@ -726,6 +726,9 @@ averages are descriptive. A comparison for a metric needs three readings in each
 ## Intraday Stress and Body Battery
 
 Connect stores epoch-millisecond Stress and Body Battery entries in the daily stress response.
+Both `--source both` (default) and `--source garminconnect` download it. Before v0.32.1 the
+default mode skipped it, so those archives have no intraday timeline for earlier days until a
+forced sync covers them.
 Use the configured local timezone, accept Stress 0–100 and Body Battery 5–100, and keep
 the first usable value at a duplicate timestamp. For each 15-minute window, Stress shows
 the median plus the recorded low and high. The peak summary needs at least two readings

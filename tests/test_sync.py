@@ -334,3 +334,16 @@ def test_skipped_fetch_retries_narration_without_replacing_the_snapshot(monkeypa
     assert queued == [(path, previous)]
     assert dashboard._snapshot_id(path) == previous
     conn.close()
+
+
+def test_default_mode_keeps_the_connect_stress_timeline():
+    """The Personal API has only daily stress totals and a few Body Battery points, so the
+    intraday charts need the Connect timeline in the default `both` mode too."""
+    from unittest.mock import MagicMock
+
+    from garmin_mcp.sources.garminconnect_source import GarminConnectSource
+
+    client = MagicMock()
+    daily = GarminConnectSource(client, extras_only=True).daily
+    assert daily["stress"] is client.get_all_day_stress
+    assert not {"sleep", "hrv", "user_summary", "heart_rate"} & set(daily)
