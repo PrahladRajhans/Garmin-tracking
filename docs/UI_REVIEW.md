@@ -324,3 +324,18 @@ Self-review: the charts exclude vendor sentinels and do not infer durations or a
 score from shared inputs. Using one drawing per panel limits duplicate markup. Dense
 seven-day detail still adds about 346 KB uncompressed in the synthetic fixture, so the
 real-archive iPhone performance and total snapshot size targets remain open.
+
+## Running chart readability, v0.29.0
+
+Chromium and WebKit passed 12 layout checks across 320, 390 and 1,440 px in light and
+dark themes. Four-split views showed the signed bars and readable durations. A
+42-split fixture retained every bar and exact reading. The tests exercised touch and
+keyboard selection, the comparison guide, document width, and the split list with
+JavaScript disabled. A separate Chromium pass also checked the intermediate desktop
+widths. The tests used generated data and desktop browser engines. Physical iPhone
+and Safari checks remain open.
+
+A bar from zero elapsed seconds would make small differences between splits hard to
+see. The chart compares to the median and labels its baseline. Whole-second
+annotations keep short views readable, while the list and readout retain tenths.
+Desktop adopts a 16 px body and a 940 px chart-width cap. Browser zoom stays available.

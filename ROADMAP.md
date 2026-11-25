@@ -32,6 +32,26 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+### Running chart legibility, metric meaning and coaching output
+
+1. Replace the kilometre line with discrete bars against an explicit reference and keep exact
+   recorded times accessible. Increase desktop type and chart scale while checking mobile,
+   both themes, long runs, keyboard/touch selection and missing data.
+2. Reuse one running-metric guide for dashboard and MCP. Verify Garmin boundaries, separate
+   population bands from personal matched ranges, explain units and tradeoffs, and surface
+   the guide at both the form numbers and timeline.
+3. Reproduce the local model timeout and rejected output. Test a useful evidence-preserving
+   alternative with actual Qwen when the runtime is available. Keep owner data outside replay.
+4. Implement a further feature backed by exact external code, review each repository at the
+   feature level, and record adoption or the test required before shipping a deferred item.
+5. Add the MIT license and Prahlad Rajhans attribution. Trace the handoff from source to UI
+   and model, run the closing checks and merge the tested head.
+
+The v0.29.0 implementation follows those steps. The source paths and checks are linked
+from [the independent review](docs/REVIEW_START_HERE.md). Owner data, physical iPhone
+performance, and model performance on the Mac remain separate acceptance items. The
+ecosystem ledger records which future improvements need representative inputs and tests.
+
 ### Garmin ecosystem review and implementation
 
 1. Open all 40 supplied entries in order, resolving duplicates and recording terminal states,
@@ -211,6 +231,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.29.0 | Running charts, contextual metrics, Ollama fallback, archive CSV and licensing | Implemented |
 | 0.28.0 | Ecosystem review, archive audit and intraday wellness charts | Implemented |
 | 0.27.4 | Dated health evidence, sleep shortfall and archive windows | Implemented |
 | 0.1.0 | Scaffold, 4 live tools | done |

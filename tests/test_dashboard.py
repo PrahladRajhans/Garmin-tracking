@@ -292,3 +292,31 @@ def test_daily_sleep_chart_keeps_missing_date_labels_and_observed_range():
     assert '>21 Nov</tspan>' in html
     assert 'data-title="2026-11-21"' not in html
     assert 'class="moving-average"' in html and 'class="band"' in html
+
+
+def test_kilometre_splits_have_signed_bars_and_full_elapsed_readings():
+    from garmin_mcp import dashboard
+
+    html = dashboard._split_chart([("km 1", 355.2), ("km 2", 351), ("km 3", 352), ("km 4", 356)])
+    assert html.count('data-chart="bar"') == 2
+    assert html.count('class="split-slower"') == html.count('class="split-faster"') == 4
+    assert 'data-title="km 2" data-value="5:51.0 · -2.6 s vs median"' in html
+    assert "above is slower · below is faster" in html and "All 4 split times" in html
+    assert ">5:55.2</span>" in html
+    assert 'class="split-even"' in dashboard._split_chart([("km 1", 360)])
+    assert "No full kilometre recorded." in dashboard._split_chart([])
+
+
+def test_form_boundaries_and_context_are_shared_with_mcp_glossary():
+    from garmin_mcp import coaching, dashboard, running
+
+    guide = dashboard._form_reference()
+    for metric, key in coaching._FORM_GLOSSARY_KEYS.items():
+        meaning = running.FORM_GUIDE[key][0]
+        assert dashboard._e(meaning) in guide and coaching.GLOSSARY[metric]["meaning"] == meaning
+    assert "164 to under 174" in guide and "249 to under 278" in guide
+    assert "chest-sensor reference" in guide and "effort zones in bpm" in guide
+    ranges = running.reference_ranges("cadence_spm")
+    assert ranges[2] == ("green", "164 to under 174")
+    assert running.rate("cadence_spm", 173.9)["colour"] == "green"
+    assert running.rate("cadence_spm", 174)["colour"] == "blue"

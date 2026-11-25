@@ -144,3 +144,11 @@ Mac archive validation, device checks and model quality.
 - Shipped aggregate archive inspection and timestamped wellness UI without new collection
   or model inference. Actual payload coverage and FIT file availability on the owner's Mac
   are independent acceptance checks. The Ollama output issue from the previous release is open.
+
+## Running and coaching follow-through, v0.29.0
+
+Closed in code: bar split view, desktop readability, Garmin bounds at the point of
+use, a common glossary, a tested fallback for rejected/unfinished local AI prose,
+targeted archive exports, additional Body Battery handling, per-feature ecosystem
+follow-up and MIT attribution. Still open: the owner’s actual archive and Mac, the
+iPhone performance target and wellness FIT import beyond the validated inputs.

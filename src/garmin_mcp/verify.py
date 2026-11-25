@@ -16,7 +16,9 @@ import json
 import math
 import sqlite3
 import statistics
-from datetime import datetime
+import sys
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from garmin_mcp import normalize as N
@@ -270,7 +272,34 @@ def main() -> None:
                         help="Compare stored FIT recordings with watch summaries by year, read-only.")
     modes.add_argument("--replay-dashboard", action="store_true",
                         help="Check monthly dashboard snapshots without changing the archive.")
+    modes.add_argument("--export-csv", choices=("activities", "wellness"),
+                       help="Export a selected local archive date range as CSV.")
+    parser.add_argument("--from-date", type=date.fromisoformat, help="First local date (YYYY-MM-DD).")
+    parser.add_argument("--to-date", type=date.fromisoformat, help="Last local date (YYYY-MM-DD).")
+    parser.add_argument("--output", type=Path, help="New private CSV file (default: standard output).")
     args = parser.parse_args()
+    if args.export_csv:
+        from garmin_mcp.archive_export import export_file, write_csv
+
+        if args.from_date is None or args.to_date is None:
+            parser.error("--export-csv requires --from-date and --to-date.")
+        path = db_path()
+        if not path.is_file():
+            parser.error("No stored Garmin database. Run this where your archive is stored.")
+        try:
+            if args.output is None:
+                write_csv(path, args.export_csv, args.from_date, args.to_date, sys.stdout)
+            else:
+                export_file(path, args.export_csv, args.from_date, args.to_date, args.output)
+        except FileExistsError:
+            parser.error("The CSV destination already exists. Choose a new filename.")
+        except sqlite3.Error:
+            parser.error("Could not read the expected Garmin archive tables.")
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
+        return
+    if args.from_date is not None or args.to_date is not None or args.output is not None:
+        parser.error("Date and output options require --export-csv.")
     if args.archive_audit:
         from garmin_mcp.archive_audit import audit
 

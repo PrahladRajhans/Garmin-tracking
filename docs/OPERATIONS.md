@@ -137,3 +137,17 @@ historical revision. Empty wellness coverage alone does not fail the audit. The 
 of SQLite is consistent, but the filesystem can change during a run. Check active paths
 after relocating the archive, and retain the complete FIT directory in backups.
 [Source review](GARMIN_ECOSYSTEM_REVIEW.md)
+
+## Local CSV exports
+
+Use explicit dates and, for a private file, an output path that does not already exist.
+
+```sh
+.venv/bin/garmin-mcp-verify --export-csv activities --from-date 2026-11-01 --to-date 2026-11-25 --output "$HOME/garmin-activities.csv"
+.venv/bin/garmin-mcp-verify --export-csv wellness --from-date 2026-11-01 --to-date 2026-11-25 --output "$HOME/garmin-wellness.csv"
+```
+
+The export reads SQLite without changing the archive. Activities use stable IDs so
+two workouts on the same day are preserved. Wellness joins dated readings and leaves
+missing values blank. The fixed schemas exclude names, routes, credentials and notes.
+The CSV still contains personal measurements. Share or upload it only as needed.

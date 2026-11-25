@@ -43,20 +43,23 @@ configuration without the flag keeps its current behavior. The same setting is a
 The daily interpretation uses recent and previous sleep and resting-heart-rate windows,
 seven-day HRV, and the current day's qualifying matched run when available. It requires at
 least two domains. Python supplies exact readings, comparable baselines and links. The model
-chooses the comparison and writes an interpretation and a question about the next comparable
-measurement. Python checks the citation coverage, number references and question wording.
+can write an interpretation and a question about the next comparable measurement.
+Python checks the citation coverage, number references and question wording.
 If only the question is unusable, Python substitutes a neutral repeat check from the cited
-evidence. A separate completion checks the observation and the final question. The renderer
-labels accepted output separately from deterministic guidance.
+evidence. A separate completion checks the observation and the final question.
+If drafting times out or the prose fails review, Ollama can choose an ID for one eligible pair
+of current readings. Python renders both supplied statements verbatim with their evidence links
+and a repeat-check question. The pair always spans two evidence categories. A rejected draft
+never enters the fallback prompt or reaches the dashboard. An explicit abstention stays empty.
 Reasoning traces do not appear in the snapshot or local response cache.
 
-Thinking work runs first in a bounded background batch. The thinking draft defaults to ten
-minutes. Set `--thinking-minutes 5` (1–30 minutes supported) to change it. Routine summaries
-keep their faster path. A thinking call that cannot finish can fall back to a direct draft.
-The worker can also make one direct revision after a draft fails a content or review check.
-Each draft passes the same checks. Review and direct work share an extra allowance of up to
-four and a half minutes per interpretation, with warm-up budgeted separately. A text model
-without thinking support can use the direct path. Later builds can retry unfinished work.
+Thinking work runs first in a bounded background batch. The thinking draft keeps its
+2,450-token allowance and defaults to ten minutes. Set `--thinking-minutes 5` (1–30 minutes
+supported) to change its time limit. A failed draft moves directly to the shorter comparison request.
+The direct writing path can make one correction before selection. Each written draft must pass
+the same review. The job keeps up to 45 seconds for selection, with warm-up budgeted separately.
+A text model without thinking support can use the direct path. Later builds can retry unfinished
+work when the service also fails to return a comparison.
 Changing the draft budget gives the same evidence a fresh attempt.
 [Ollama thinking controls](https://docs.ollama.com/capabilities/thinking)
 
@@ -129,9 +132,13 @@ on successful writes. Earlier evidence is labeled and cannot replace the require
 domains. No generated narrative or reasoning is replayed. Ollama keeps model weights warm
 for requests in a batch; that does not itself preserve the athlete's history between requests.
 
-Use `--insight-case mixed-recovery`, `run-exception`, `longer-sleep`, or `sunday-review` with
-`--eval-insight` to preview prompts without the archive. Add `--no-thinking` to compare direct
-drafting without changing model settings. See the [model and audit notes](REPOSITORY_REVIEW.md).
+Use `--insight-case dated-health`, `mixed-recovery`, `run-exception`, `running-block`,
+`longer-sleep`, or `sunday-review` with `--eval-insight` to preview prompts without the archive.
+Add `--no-thinking` to compare the direct writing path or `--selection-only` to measure just
+the fallback without changing model settings. A successful selection reports
+`insight.mode = "selected_comparison"` and `outcome = "grounded_selection"` with elapsed
+generation time, excluding warm-up. The numbered pair must contain two current categories and
+preserve both source statements. See the [model and audit notes](REPOSITORY_REVIEW.md).
 
 ## Where to make changes
 
@@ -185,6 +192,15 @@ The running-block trace also showed that Qwen used "felt steady" when it had a r
 moving pulse comparison. The Running prompt now asks for measured directions and time windows.
 Changing the shared observation instructions caused a Sunday regression in the Linux fixture.
 Running-specific wording is kept in its own prompt so the tested Sunday wording is preserved.
+
+On 25 November 2026, Ollama 0.40.17 and Qwen3.5 4B on Linux CPU accepted all six fictional
+comparison-selection cases. Generation took 12.11–22.75 seconds after warm-up. On the
+dated-health case, the final 2,450-token settings exhausted a one-minute thinking budget
+and then returned an exact selected comparison in 85.39 seconds after warm-up.
+The selected statements retained the sleep shortfall, usable-night counts, and the dated
+resting-pulse baseline. The test establishes availability of the checked fallback.
+Acceptance of freeform thinking prose and performance on the owner's Mac remain
+separate checks.
 
 ## Changes to review
 

@@ -168,3 +168,6 @@ src/garmin_mcp/baseline.py	16	fixed and verified	all	Dashboard History collectio
 docs/GARMIN_ECOSYSTEM_REVIEW.md	17	reviewed	all	Roadmap, handover and source review	40 input entries and 38 distinct revisions, three community links and adoption decisions.
 src/garmin_mcp/archive_audit.py	17	fixed and verified	all	Verifier CLI	Read-only file and wellness coverage counts. Empty, missing, unrelated DB and privacy checks.
 src/garmin_mcp/wellness_timeline.py	17	fixed and verified	all	History collection and verifier CLI	Verified known source arrays, missing values, time zones and deduplication. Owner coverage open.
+LICENSE	18	reviewed	all	Repository root, package metadata and README	MIT text and 2026 Prahlad Rajhans copyright.
+src/garmin_mcp/archive_export.py	18	fixed and verified	all	Verifier CLI	Fixed summaries, readonly database, same-day activity identities and owner-only file when requested.
+tests/test_archive_export.py	18	reviewed	all	pytest	Fixtures cover explicit dates, fixed columns and refusing overwrite.

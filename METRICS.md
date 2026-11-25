@@ -165,10 +165,10 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
 | Pace of ageing | Theil-Sen slope of Garmin fitness age × 365 over 180 days; needs ≥ 30 values spanning ≥ 90 days. 1.0 = calendar pace | Whoop scale. Check: 30 days gave 3.1 from a 0.3-yr wobble → span rule added |
 | Shift detection | For each split k with ≥ 14 days on both sides: \|mean after − mean before\| ÷ mean of the two within-segment SDs; report the best split if ≥ 1.0 | Simple, transparent stand-in for PELT |
 | Marathon shape | V = effective VO2max (≥ 25). Weekly target V^1.135 km; long-run target 12·ln(V/4) km. Long runs > 13 km in the last 70 days score (2 − 2·ago/70)·((d − 13)/(target − 13))². Shape = 100·(0.67·weekly km/target + 0.33·Σpoints·7/70), shown clamped 0–100. A race needs distance_km^1.23 % (5K 7, 10K 17, half 42.5, marathon 100) | Runalyze source (`MarathonShape.php`). Check: 1.1 km/week → 1 % |
-| Running form bands | Garmin colour gauges. Cadence spm: red < 153, orange 153–163, green 164–173, blue 174–183, purple ≥ 184. GCT ms: purple < 218, blue 218–248, green 249–277, orange 278–308, red > 308. VO cm: < 6.4 / 6.4–8.1 / 8.2–9.7 / 9.8–11.5 / > 11.5. VR %: < 6.1 / 6.1–7.4 / 7.5–8.6 / 8.7–10.1 / > 10.1 | Garmin owner's manual (fēnix 7 v12 tables; same across models). Chest-strap values used for wrist data |
+| Running form bands | Garmin colour gauges. Cadence spm: red < 153, orange 153–163, green 164–173, blue 174–183, purple ≥ 184. GCT ms: purple < 218, blue 218–248, green 249–277, orange 278–308, red > 308. VO cm: < 6.4 / 6.4–8.1 / 8.2–9.7 / 9.8–11.5 / > 11.5. VR %: < 6.1 / 6.1–7.4 / 7.5–8.6 / 8.7–10.1 / > 10.1 | [Garmin FR955 manual](https://www8.garmin.com/manuals/webhelp/GUID-9D99A9D4-467A-4F1A-A0EA-023184FEA3DD/EN-US/GUID-62A09512-518A-424A-8491-FE2B80CD2091.html). The UI labels the chest reference for bounce and ratio |
 | Pace-matched form | Least-squares line of each form metric vs average speed over up to 120 earlier runs (≥ 5 runs); a run is compared with the line at its own speed | Cadence and stride rise with speed (Moore 2016 review) |
 | Running effectiveness | speed (m/s) ÷ (power W ÷ weight kg) | Coggan/WKO (Palladino). Garmin wrist power reads higher than Stryd, so compare only with yourself |
-| Cadence advice | If < 170 spm: suggest +5 % at the same pace, in short metronome blocks | Heiderscheit 2011 (knee energy absorption falls at +5 %), Lenhart 2014 (+10 % → −14 % patellofemoral force), Willy 2016 (+7.5 % retained at 1 month) |
+| Cadence advice (historical) | The old 170 spm trigger was replaced by the current gated cadence experiment below | Heiderscheit 2011 (knee energy absorption falls at +5 %), Lenhart 2014 (+10 % → −14 % patellofemoral force), Willy 2016 (+7.5 % retained at 1 month) |
 
 ## Implemented in v0.21.0: coaching follow-up (`trials.py`)
 | Item | Rule |
@@ -712,3 +712,24 @@ The plotted full-day axis allows side-by-side comparison, and absent windows bre
 The metrics share physiological inputs and the chart supports time comparison without
 inferring causality, duration at a value or a recovery recommendation. Garmin Personal
 API series require their own confirmed mapping. [Source evidence](docs/GARMIN_ECOSYSTEM_REVIEW.md#implementation-evidence)
+
+## Interpreting running form and kilometre bars
+
+- The split chart uses the median duration of the full recorded kilometres from the
+  same run. Each bar is elapsed seconds minus that median, with positive above zero
+  and negative below. Pauses count in the elapsed duration. The timing summary retains
+  its original equal-distance comparison. The chart formatter rounds plot labels
+  to whole seconds and shows tenths in the list and cursor readout.
+- Garmin population bands, workout heart-rate zone cutoffs, and the observed range
+  across matched prior runs answer different questions. The dashboard shows which
+  comparison is in use. Upper cutoffs are exclusive in the continuous chart.
+  Bounce and vertical ratio use the published chest bands as a labelled reference.
+  The manufacturer documents different ranges by placement. A compatible accessory
+  is needed for left/right ground contact balance on the FR955.
+- [Running guide data](src/garmin_mcp/running.py) drives the dashboard and MCP glossary.
+  For a change in vertical ratio, inspect bounce and step length independently.
+  The device metric alone cannot establish running economy. Compare pace, grade,
+  surface, sensor and comfort. Small matched-pace cadence experiments have measured
+  acute biomechanics outcomes, which are distinct from a universal step-rate goal.
+  [Garmin FR955 running dynamics](https://www8.garmin.com/manuals/webhelp/GUID-9D99A9D4-467A-4F1A-A0EA-023184FEA3DD/EN-US/GUID-62A09512-518A-424A-8491-FE2B80CD2091.html)
+  · [Heiderscheit et al.](https://pubmed.ncbi.nlm.nih.gov/20581720/)
