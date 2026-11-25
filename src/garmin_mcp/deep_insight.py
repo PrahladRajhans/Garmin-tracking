@@ -6,11 +6,12 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, timedelta
+from itertools import combinations
 from pathlib import Path
 
 from garmin_mcp.config import data_dir
 
-INSIGHT_CONTRACT = 2
+INSIGHT_CONTRACT = 3
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,10 @@ class Evidence:
     text: str
     page: str
     previous: bool = False
+
+
+def _number(value):
+    return type(value) in (int, float) and math.isfinite(value)
 
 
 def evidence(data):
@@ -225,6 +230,18 @@ def remember(conn, day, rows):
 
 
 FICTIONAL_CASES = {
+    "dated-health": (
+        "sleep", evidence({
+            "end": "2026-11-25",
+            "sleep_shortfall": {"per_night_min": 42, "previous_min": 60,
+                                "current": {"valid_nights_7d": 6},
+                                "previous": {"valid_nights_7d": 7}},
+            "calendar": {"days": {"2026-11-25": {"resting_pulse_check": {
+                "verify": True, "value": 44, "median": 53, "count": 16, "direction": "lower",
+                "coverage": {"90 days": {"typical": (54, 50, 58), "count": 72}},
+            }}}},
+        }),
+    ),
     "sunday-review": (
         "sunday_review", (
             Evidence("training", "Recorded workout count with load data was 3 this week versus 2 per week "
@@ -269,10 +286,6 @@ FICTIONAL_CASES = {
 }
 
 
-def _number(value):
-    return type(value) in (int, float) and math.isfinite(value)
-
-
 SYSTEM = (
     "Review the athlete's log. Briefly choose the strongest comparison between two current signals. "
     "Return a short observation about what stands out, a neutral question that could check whether it "
@@ -293,6 +306,11 @@ REVIEW = (
     "for a new fact, feeling, cause or ratio. Use advice_or_prediction for a target, prescription, "
     "diagnosis or forecast. Check questions too. 'Did shorter sleep make you feel tired?' invents "
     "a cause and a feeling. 'Does sleep stay shorter in another week with more recorded workouts?' checks a repeat."
+)
+SELECT_COMPARISON = (
+    "Choose the numbered comparison that is most useful to check again. Favor meaningful measured "
+    "differences or a measured change alongside a steady reading. The program will display both "
+    "source readings and their time windows exactly as given. Return only the comparison ID."
 )
 _EXCLUDED = re.compile(
     r"[<>#`*\[\]{}]|\b(?:because|caused?|due to|leads? to|will|guarantee\w*|must|should|"
@@ -325,9 +343,12 @@ class Insight:
 
     @property
     def prompt(self):
-        return json.dumps([{"id": i, "domain": r.domain, "reading": r.text,
-                            **({"earlier_context": True} if r.previous else {})}
-                           for i, r in enumerate(self.rows, 1)], ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(self.prompt_readings(), ensure_ascii=False, separators=(",", ":"))
+
+    def prompt_readings(self, *, include_previous=True):
+        return [{"id": i, "domain": row.domain, "reading": row.text,
+                 **({"earlier_context": True} if row.previous else {})}
+                for i, row in enumerate(self.rows, 1) if include_previous or not row.previous]
 
     @property
     def schema(self):
@@ -339,6 +360,27 @@ class Insight:
 
     def response(self, raw):
         return self.assess(raw)[0]
+
+    def comparison_options(self):
+        """Offer only pairs of current, distinct evidence categories."""
+        return tuple((i, j) for i, j in combinations(range(1, len(self.rows) + 1), 2)
+                     if not self.rows[i - 1].previous and not self.rows[j - 1].previous
+                     and self.rows[i - 1].domain != self.rows[j - 1].domain)
+
+    def selected_comparison(self, raw, options):
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(data, dict) or data.keys() != {"comparison"}:
+            return None
+        choice = data["comparison"]
+        if type(choice) is not int or not 1 <= choice <= len(options):
+            return None
+        ids = list(options[choice - 1])
+        return {"observation": " ".join(self.rows[i - 1].text for i in ids),
+                "question": self._repeat_question(ids), "evidence": ids,
+                "mode": "selected_comparison"}
 
     def _repeat_question(self, ids):
         domains = {self.rows[i - 1].domain for i in ids if not self.rows[i - 1].previous}
@@ -354,6 +396,10 @@ class Insight:
                 if domain in domains:
                     return question
             return "Does the same pattern recur in the next comparable training block?"
+        if {"sleep", "recovery"} <= domains:
+            return "Do sleep and recovery readings show the same pattern in the next comparable period?"
+        if "running" in domains:
+            return "Do another matched run and its surrounding readings show the same pattern?"
         return "Does this pattern repeat in the next comparable set of readings?"
 
     def assess(self, raw, *, repair_question=False):

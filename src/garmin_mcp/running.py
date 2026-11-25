@@ -22,7 +22,7 @@ from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence
 
-# (metric, higher_is_better, [(upper bound exclusive or None, colour, label)]) low -> high
+# Per-metric reference bands in measurement order. Upper bounds are exclusive.
 GAUGES: dict[str, list[tuple[float | None, str, str]]] = {
     "cadence_spm": [(153, "red", "short of most runners"), (164, "orange", "below average"),
                     (174, "green", "average"), (184, "blue", "above average"),
@@ -66,6 +66,46 @@ FORM_GUIDE = {
         "When it shifts, check bounce and step length together. Use similar paces and the same sensor.",
     ),
 }
+
+
+FORM_CONTEXT = {
+    "cadence_spm": ("At the same pace, more steps usually mean shorter steps. A stable, comfortable "
+                    "rhythm across comparable runs is more useful than aiming for 180."),
+    "step_length_m": ("A longer step can reflect more speed. At equal pace it also means fewer "
+                      "steps per minute. Compare on similar terrain before trying to change it."),
+    "ground_contact_ms": ("Faster running often shortens contact. A longer value at the same pace is "
+                          "worth comparing with the surface, grade and your earlier runs."),
+    "vertical_oscillation_cm": ("Less bounce means less vertical movement. Compare with the same "
+                                "sensor and pace, and check comfort before changing your stride."),
+    "vertical_ratio_pct": ("Lower means less bounce per metre forward. Check the bounce and step "
+                           "length separately to see which moved."),
+}
+FORM_BANDS_NOTE = ("Colour bounds are the cutoffs between Garmin population percentiles. "
+                   "They describe how this sample compares with other runners. Use the same "
+                   "pace, grade and sensor for your own comparisons.")
+FORM_SENSOR_NOTE = ("Bounce and vertical-ratio colours use Garmin’s published chest-sensor reference. "
+                    "The watch can record both at the wrist and sensor placement affects the numbers.")
+HEART_RATE_BOUNDS_NOTE = ("The heart-rate bounds saved with the workout separate effort zones in bpm. "
+                          "They are specific to its recorded zone settings.")
+GARMIN_FORM_SOURCE = ("https://www8.garmin.com/manuals/webhelp/GUID-9D99A9D4-467A-4F1A-A0EA-023184FEA3DD/"
+                      "EN-US/GUID-62A09512-518A-424A-8491-FE2B80CD2091.html")
+FORM_UNITS = {"cadence_spm": "steps/min", "step_length_m": "m", "ground_contact_ms": "ms",
+              "vertical_oscillation_cm": "cm", "vertical_ratio_pct": "%"}
+
+
+def reference_ranges(metric):
+    rows = []
+    lower = None
+    for upper, colour, _ in GAUGES.get(metric, ()):
+        if lower is None:
+            span = f"Under {upper:g}"
+        elif upper is None:
+            span = f"{lower:g} or higher"
+        else:
+            span = f"{lower:g} to under {upper:g}"
+        rows.append((colour, span))
+        lower = upper
+    return rows
 
 
 def rate(metric: str, value: float | None) -> dict[str, Any] | None:

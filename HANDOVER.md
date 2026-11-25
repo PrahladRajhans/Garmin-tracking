@@ -1,10 +1,17 @@
-# Handover: Garmin-tracking (state at v0.28.0, 2026-11-25)
+# Handover: Garmin-tracking (state at v0.29.0, 2026-11-25)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.29.0:** signed kilometre split bars, larger desktop plots and text, a running
+  reference shared between the dashboard and MCP, and an evidence-preserving local
+  AI fallback. Archive analysis now includes date-bounded CSV and a wider validated
+  Body Battery payload reader. See [the reviewer index](docs/REVIEW_START_HERE.md) and
+  [the ecosystem feature ledger](docs/GARMIN_ECOSYSTEM_REVIEW.md). Prahlad Rajhans is
+  listed as author in the package and [MIT license](LICENSE).
 
 - **v0.28.0:** a revision-pinned review of 40 ecosystem links, an aggregate read-only
   archive audit, and recent Stress and Body Battery charts from Connect payloads already

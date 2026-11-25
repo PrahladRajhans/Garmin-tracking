@@ -116,3 +116,15 @@ Further repository-wide formula and deployment review remains open in the [roadm
 which were confirmed in source, and what changed in v0.28.0. Runtime review covered the
 Garmin Connect adapter, read-only SQLite and current FIT references, and the existing
 History rendering path. Live coverage and the full repository line audit remain open.
+
+## v0.29.0 handoff check
+
+A reviewer can follow the running chart, glossary, local CSV, and model fallback
+through the [review index](REVIEW_START_HERE.md). The [feature ledger](GARMIN_ECOSYSTEM_REVIEW.md)
+pairs each supplied GitHub link with an exact implementation artifact or documented
+constraint. The independent review checked all 88 pinned tree and file paths and
+corrected earlier license classifications. The repository remains private and now
+has an explicit [MIT license and author attribution](../LICENSE).
+
+The release check passed 289 tests and the 36-month synthetic replay. The Mac archive,
+physical iPhone and the wider manual audit are separate from this release check.

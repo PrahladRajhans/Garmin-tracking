@@ -31,8 +31,10 @@ DEFAULT_THINKING_MINUTES = 10
 INSIGHT_WARM_SECONDS = 90
 INSIGHT_DIRECT_SECONDS = 75
 INSIGHT_REVIEW_SECONDS = 40
-# Maximum overhead for review of a thinking draft plus two direct draft/review attempts.
-INSIGHT_OVERHEAD_SECONDS = 2 * (INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS) + INSIGHT_REVIEW_SECONDS
+INSIGHT_SELECTION_SECONDS = 45
+INSIGHT_THINKING_TOKENS = 2450
+# Allow two direct draft/review attempts and reserve a final short evidence selection.
+INSIGHT_OVERHEAD_SECONDS = 2 * (INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS) + INSIGHT_SELECTION_SECONDS
 PORT = 11434
 _RESPONSE_LIMIT = 16 * 1024
 _SETTING = "ai_narrator"
@@ -546,7 +548,7 @@ def _deep_items(conn, state, data):
 def _deep_key(item, state):
     content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
                      deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
-                     deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS])
+                     deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS, deep_insight.SELECT_COMPARISON])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -578,8 +580,8 @@ _CORRECTIONS = {
 
 
 def _deep_request(model, profile, item, deadline, *, still_current=None, think_first=True,
-                  thinking_seconds=DEFAULT_THINKING_MINUTES * 60, attempts=None):
-    """Draft, review the cited claims, and allow one corrected draft within the same job."""
+                  thinking_seconds=DEFAULT_THINKING_MINUTES * 60, attempts=None, selection_only=False):
+    """Review written prose, or use model-selected readings with exact source wording."""
     common = {"model": model + ":local", "stream": False, "keep_alive": "5m"}
     options = {"num_ctx": profile["num_ctx"], "temperature": 0, "presence_penalty": 0}
 
@@ -587,9 +589,10 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         if time.monotonic() >= deadline or (still_current is not None and not still_current()):
             raise OllamaUnavailable
 
-    def complete(system, prompt, schema, thinking, budget, tokens):
+    def complete(system, prompt, schema, thinking, budget, tokens, *, selection=False):
         current()
-        reply = _request("POST", "/api/generate", min(deadline, time.monotonic() + budget), {
+        until = deadline if selection else deadline - INSIGHT_SELECTION_SECONDS
+        reply = _request("POST", "/api/generate", min(until, time.monotonic() + budget), {
             **common, "system": system, "prompt": prompt, "format": schema,
             **({"think": _think_value(profile) if thinking else False} if profile.get("thinking", True) else {}),
             "options": {**options, "num_predict": tokens},
@@ -597,6 +600,26 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         if reply.get("done") is not True or reply.get("done_reason") == "length":
             raise OllamaUnavailable
         return reply.get("response")
+
+    def select_comparison():
+        pairs = item.comparison_options()
+        if not pairs:
+            return None
+        packet = {"readings": item.prompt_readings(include_previous=False),
+                  "comparisons": {i: sources for i, sources in enumerate(pairs, 1)}}
+        schema = {"type": "object", "required": ["comparison"], "additionalProperties": False,
+                  "properties": {"comparison": {"type": "integer", "enum": list(range(1, len(pairs) + 1))}}}
+        outcome = "incomplete"
+        try:
+            raw = complete(deep_insight.SELECT_COMPARISON, _json(packet), schema, False,
+                           INSIGHT_SELECTION_SECONDS, 24, selection=True)
+            current()
+            selected = item.selected_comparison(raw, pairs)
+            outcome = "grounded_selection" if selected else "invalid_selection"
+            return selected
+        finally:
+            if attempts is not None:
+                attempts.append({"mode": "selected_comparison", "stage": "selection", "outcome": outcome})
 
     def try_draft(mode, correction=None):
         thinking = mode == "thinking"
@@ -607,7 +630,8 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
             system += " Revise the approach. " + _CORRECTIONS[correction]
         try:
             raw = complete(system, item.prompt, item.schema, thinking,
-                           thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS, 2450 if thinking else 180)
+                           thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS,
+                           INSIGHT_THINKING_TOKENS if thinking else 180)
             draft, reason = item.assess(raw, repair_question=True)
             question_reframed = reason == "question_reframed"
             if draft:
@@ -635,17 +659,19 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
                              **({"question_reframed": True} if question_reframed else {})})
         return ({**draft, "mode": mode} if reason == "supported" else None), reason
 
-    mode = "thinking" if think_first else "direct"
+    if selection_only or deadline - time.monotonic() <= INSIGHT_SELECTION_SECONDS:
+        return select_comparison()
     try:
-        draft, reason = try_draft(mode)
+        draft, reason = try_draft("thinking" if think_first else "direct")
+        if draft is None and reason in _CORRECTIONS and not think_first:
+            draft, reason = try_draft("direct_revision", reason)
     except (OllamaUnavailable, TimeoutError):
-        if not think_first:
-            raise
-        mode = "direct_retry"
-        draft, reason = try_draft(mode)
-    if draft is None and reason in _CORRECTIONS:
-        return try_draft("direct_revision", reason)[0]
-    return draft
+        if selected := select_comparison():
+            return selected
+        raise
+    if draft or reason == "abstained":
+        return draft
+    return select_comparison()
 
 
 def _cloud_disabled(deadline):
@@ -912,12 +938,16 @@ def main() -> None:
                         help="Use deliberate reasoning for the daily evidence review")
     parser.add_argument("--thinking-minutes", type=int, help="Time for the thinking draft, 1 to 30 minutes")
     parser.add_argument("--eval-insight", action="store_true", help="Try a fictional thinking insight")
+    parser.add_argument("--selection-only", action="store_true",
+                        help="With --eval-insight, exercise the fallback on fictional evidence")
     parser.add_argument("--insight-case", choices=deep_insight.FICTIONAL_CASES, default="mixed-recovery",
                         help="Select the fictional evidence used by --eval-insight")
     parser.add_argument("--eval", action="store_true", help="Benchmark installed models with fiction")
     parser.add_argument("--models", help="Comma-separated local tags to benchmark")
     parser.add_argument("--worker", nargs=3, metavar="ARG", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.selection_only and not args.eval_insight:
+        parser.error("--selection-only requires --eval-insight")
     if args.worker:
         database, out_dir, snapshot = args.worker
         _worker(Path(database), Path(out_dir), snapshot.encode("ascii"))
@@ -938,19 +968,21 @@ def main() -> None:
                 model_profile = _model_profile(chosen, time.monotonic() + 5)
                 if not model_profile["text_generation"]:
                     raise ValueError("This model does not support Ollama text generation.")
-                if args.thinking is not False and not model_profile["thinking"]:
+                think = args.thinking is not False and not args.selection_only
+                if think and not model_profile["thinking"]:
                     raise ValueError("This model does not advertise thinking support.")
                 _warm(chosen, model_profile, time.monotonic() + INSIGHT_WARM_SECONDS)
                 lens, rows = deep_insight.FICTIONAL_CASES[args.insight_case]
                 voice, focus, _ = deep_insight.writing_style(conn, lens)
                 fixture = deep_insight.Insight(rows, lens, voice, focus)
                 start = time.monotonic()
-                remaining = (minutes * 60 if args.thinking is not False else 0) + INSIGHT_OVERHEAD_SECONDS
+                remaining = (INSIGHT_SELECTION_SECONDS if args.selection_only else
+                             (minutes * 60 if think else 0) + INSIGHT_OVERHEAD_SECONDS)
                 attempts = []
                 try:
                     insight = _deep_request(chosen, model_profile, fixture, start + remaining,
-                                            think_first=args.thinking is not False, thinking_seconds=minutes * 60,
-                                            attempts=attempts)
+                                            think_first=think, thinking_seconds=minutes * 60,
+                                            attempts=attempts, selection_only=args.selection_only)
                 except (OllamaUnavailable, TimeoutError):
                     print(_json({"model": chosen, "case": args.insight_case, "status": "incomplete_or_timed_out",
                                  "attempts": attempts, "seconds": round(time.monotonic() - start, 2)}))

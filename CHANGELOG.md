@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-25
+
+- Plot kilometre splits as bars above or below the run median and keep every elapsed
+  split available. Increase desktop type and chart size.
+- Explain running form on the dashboard and in MCP from one guide, with exact Garmin
+  colour bounds, sensor context and matched-run readings.
+- Reserve local AI time for evidence selection if thinking cannot produce an accepted
+  draft. Label selected readings separately and benchmark the fallback with Qwen.
+- Add date-bounded read-only activity and wellness CSV and handle more saved Body Battery
+  payload shapes. Record feature-level findings from the 40 ecosystem links.
+- Add the MIT license and credit Prahlad Rajhans as author.
+
 ## [0.28.0] - 2026-11-25
 
 - Review 40 supplied Garmin ecosystem links, recording 38 distinct source revisions,

@@ -27,7 +27,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from garmin_mcp import conditions, environment_review, run_evidence
+from garmin_mcp import conditions, environment_review, run_evidence, running
 from garmin_mcp.fit import cadence_units
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
@@ -542,28 +542,24 @@ def session_unit_check(conn: sqlite3.Connection, limit: int = 30) -> dict[str, A
 
 
 # --------------------------------------------------------------------------- glossary
+_FORM_GLOSSARY_KEYS = {"cadence": "cadence_spm", "step_length": "step_length_m",
+                       "ground_contact_time": "ground_contact_ms", "vertical_oscillation": "vertical_oscillation_cm",
+                       "vertical_ratio": "vertical_ratio_pct"}
+
 GLOSSARY: dict[str, dict[str, str]] = {
-    "cadence": {"meaning": "Steps per minute (both feet).",
-                "typical": "150-180 spm recreational; rises with speed.",
-                "improve": "Small increases (5-10 %) at the same pace reduce overstriding and "
-                           "impact loading (Heiderscheit 2011). Compare at matched pace only.",
-                "unit": "spm"},
-    "step_length": {"meaning": "Distance per step. Speed = cadence x step length.",
-                    "typical": "0.8-1.3 m; grows with speed.",
-                    "improve": "Comes from strength and power (hill sprints, plyometrics), not "
-                               "reaching forward.", "unit": "m"},
-    "ground_contact_time": {"meaning": "Time each foot is on the ground per step.",
-                            "typical": "200-300 ms; shorter when faster.",
-                            "improve": "Strength, plyometrics, strides; compare at matched pace.",
-                            "unit": "ms"},
-    "vertical_oscillation": {"meaning": "Up-down bounce of the torso per step.",
-                             "typical": "6-11 cm.",
-                             "improve": "Less bounce for the same speed is more economical; "
-                                        "cues: run tall, quicker steps.", "unit": "cm"},
-    "vertical_ratio": {"meaning": "Vertical oscillation / step length x 100: bounce per unit of "
-                                  "forward motion (lower = more efficient).",
-                       "typical": "6-10 %.", "improve": "Raise cadence slightly, reduce bounce.",
-                       "unit": "%"},
+    **{name: {"meaning": running.FORM_GUIDE[key][0], "typical": running.FORM_CONTEXT[key],
+              "improve": running.FORM_GUIDE[key][1], "unit": running.FORM_UNITS[key]}
+       for name, key in _FORM_GLOSSARY_KEYS.items()},
+    "bounds": {"meaning": running.FORM_BANDS_NOTE, "typical": running.FORM_SENSOR_NOTE,
+               "improve": "Use the matched-run range to compare with earlier similar runs.", "unit": "varies"},
+    "heart_rate_bounds": {"meaning": running.HEART_RATE_BOUNDS_NOTE,
+                          "typical": "Zone settings and heart-rate thresholds are personal.",
+                          "improve": "Use the saved zones when comparing runs recorded with the same settings.",
+                          "unit": "bpm"},
+    "ground_contact_balance": {"meaning": "Percentage of contact time on each side.",
+                               "typical": "A compatible accessory is needed for left/right readings.",
+                               "improve": "Compare like terrain and the same sensor before interpreting a change.",
+                               "unit": "%"},
     "running_power": {"meaning": "Garmin wrist estimate of mechanical power, includes wind.",
                       "typical": "Personal; ~3.5-5 W/kg at threshold for recreational runners.",
                       "improve": "Use for trends on the same watch; not comparable with Stryd.",

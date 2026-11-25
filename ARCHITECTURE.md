@@ -195,3 +195,12 @@ for recent History day pages. Storage and download behavior stay the same.
 checks database structure and current FIT file references, and reuses timeline validation
 for date coverage on all retained Connect stress rows. It does not send data to Ollama.
 [Source evidence](docs/GARMIN_ECOSYSTEM_REVIEW.md#implementation-evidence)
+
+## Running interpretation and bounded exports
+
+Running dashboard and MCP use the guide in `running.py`. Split bars transform the
+recorded elapsed splits for display. Source timings remain in the existing pacing
+analysis. `archive_export.py` exports fixed-schema local summaries via the verifier
+without mutating the archive. The narrator can select a fixed evidence pair when
+reviewed prose is unavailable. The dashboard distinguishes pair selection from prose.
+[Review index](docs/REVIEW_START_HERE.md)

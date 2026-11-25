@@ -328,3 +328,12 @@ responsive plot, a 0–100 scale and the same local clock axis. Compare side by 
 screen or vertically on a phone. The panel states when one stream is missing and breaks lines
 across empty windows. Together they show what was observed and how much evidence supports it.
 [Metric definitions](METRICS.md#intraday-stress-and-body-battery)
+
+## Desktop legibility and kilometre comparisons
+
+Desktop uses a wider content shell, larger body and supporting text and a higher
+chart-width cap. Phone navigation and browser zoom remain available. Kilometre bars
+use the run's median as the zero reference, show elapsed labels for short runs,
+and expose every full split in an expandable list. The running-form guide appears
+beside the values and timeline tools, with examples, comparisons and colour bounds.
+[Metric definitions](METRICS.md#interpreting-running-form-and-kilometre-bars)

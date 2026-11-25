@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.28.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.29.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -218,7 +218,8 @@ runs in your records. See [the method and limits](METRICS.md#matched-run-evidenc
 
 The local archive preserves received FIT files and changed source payloads. Chart sampling
 only affects the dashboard. Recent day pages show recorded Stress and Body Battery when present.
-Run `garmin-mcp-verify --archive-audit` locally for an aggregate archive check. Include both the database and the FIT directory in backups.
+Run `garmin-mcp-verify --archive-audit` locally for an aggregate archive check.
+Use the [date-bounded CSV exports](docs/OPERATIONS.md#local-csv-exports) for activity and wellness summaries. Include both the database and the FIT directory in backups.
 [Storage and restore](docs/OPERATIONS.md#backups-and-rollback)
 
 ### Local workout weather and AQI
@@ -397,9 +398,9 @@ tests/
 
 Every change must add an entry to [CHANGELOG.md](CHANGELOG.md) and keep this README in sync.
 
-## License
+## Author and license
 
-MIT
+Created by **Prahlad Rajhans**. [MIT License](LICENSE).
 
 ### Dashboard reliability and privacy (v0.14.1)
 

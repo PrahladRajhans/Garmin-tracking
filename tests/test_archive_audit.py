@@ -94,3 +94,39 @@ def test_audit_reports_unrelated_database_without_migrating(tmp_path):
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE other (key TEXT)")
     assert archive_audit.audit(path) == {"ok": False, "reason": "This database has no Garmin Tracking archive schema."}
+
+
+def test_battery_accepts_known_compact_and_described_archive_shapes():
+    day = "2026-11-25"
+    instant = datetime.fromisoformat(day).replace(tzinfo=UTC)
+    stamp = _stamp(instant)
+    compact = wellness_timeline.samples({"bodyBatteryValuesArray": [[stamp, 72]]}, day, UTC)
+    assert compact == {"battery": [(instant, 72)]}
+
+    described = {
+        "bodyBatteryValueDescriptorDTOList": [
+            {"bodyBatteryValueDescriptorKey": "BODY_BATTERY_LEVEL", "bodyBatteryValueDescriptorIndex": 0},
+            {"bodyBatteryValueDescriptorKey": "TIMESTAMP", "bodyBatteryValueDescriptorIndex": 2},
+        ],
+        "bodyBatteryValuesArray": [[64, 10, stamp], [75, 14, stamp + 60_000]],
+    }
+    assert wellness_timeline.samples(described, day, UTC) == {
+        "battery": [(instant, 64), (instant + timedelta(minutes=1), 75)],
+    }
+
+
+def test_unknown_battery_descriptors_do_not_mask_stress_or_guess_a_column():
+    day = "2026-11-25"
+    instant = datetime.fromisoformat(day).replace(tzinfo=UTC)
+    stamp = _stamp(instant)
+    payload = {
+        "stressValuesArray": [[stamp, 32]],
+        "bodyBatteryValuesArray": [[stamp, 55, 64]],
+        "bodyBatteryValueDescriptorDTOList": [{"key": "timestamp", "index": 0},
+                                               {"key": "unknown_score", "index": 1}],
+    }
+    assert wellness_timeline.samples(payload, day, UTC) == {"stress": [(instant, 32)]}
+    payload["bodyBatteryValueDescriptorDTOList"].extend(
+        [{"key": "level", "index": 1}, {"key": "level", "index": 2}],
+    )
+    assert wellness_timeline.samples(payload, day, UTC) == {"stress": [(instant, 32)]}

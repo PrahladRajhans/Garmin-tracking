@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from garmin_mcp import (
@@ -726,7 +727,8 @@ def _sunday_story(d: dict) -> str:
     if result := d.get("narration", {}).get("sunday-insight"):
         sources = "".join(f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
                           for row in result["readings"])
-        intro = (f'<p class="insight-label">Local AI review</p><p>{_e(result["observation"])}</p>'
+        label = "Readings selected by local AI" if result.get("mode") == "selected_comparison" else "Local AI review"
+        intro = (f'<p class="insight-label">{label}</p><p>{_e(result["observation"])}</p>'
                  f'<p>{_e(result["question"])}</p><details><summary>Recorded evidence</summary>'
                  f'<ul>{sources}</ul></details>')
     plan = d["brief"]["week_ahead"]
@@ -808,7 +810,8 @@ def page_today(d: dict[str, Any]) -> str:
                         for row in insight["readings"])
         mode_note = ('<p class="sub">Used a direct draft after extended reasoning could not finish.</p>'
                      if insight.get("mode") == "direct_retry" else "")
-        body += (f'<section class="daily-interpretation wide"><h3>AI interpretation</h3>'
+        title = "Readings selected by local AI" if insight.get("mode") == "selected_comparison" else "AI interpretation"
+        body += (f'<section class="daily-interpretation wide"><h3>{title}</h3>'
                  f'<p class="insight-label">{_e(lens)}</p>'
                  f'<p class="say">{_e(insight["observation"])}</p>'
                  f'<p><b>What to check next</b> · {_e(insight["question"])}</p>'
@@ -1401,7 +1404,8 @@ def _running_block(d: dict[str, Any]) -> str:
     if insight := d.get("narration", {}).get("running-insight"):
         sources = "".join(f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
                           for row in insight["readings"])
-        body += (f'<section class="daily-interpretation wide"><h3>AI running review</h3>'
+        label = "Running readings selected by local AI" if insight.get("mode") == "selected_comparison" else "AI running review"
+        body += (f'<section class="daily-interpretation wide"><h3>{label}</h3>'
                  f'<p class="say">{_e(insight["observation"])}</p><p>{_e(insight["question"])}</p>'
                  f'<details><summary>Recorded evidence · {len(insight["readings"])} readings</summary>'
                  f'<ul>{sources}</ul></details></section>')
@@ -1503,7 +1507,7 @@ def page_running(d: dict[str, Any]) -> str:
             f'{lst or "<p class=empty>No runs with detail yet.</p>"}</nav>'
             + _card("Steady run efficiency over time", _tests(d["tests"]),
                     "Similar-distance outdoor runs · grade-adjusted speed per heartbeat", wide=True)
-            + _card("Running dynamics", cad + extra_form, running.FORM_GUIDE["cadence_spm"][0],
+            + _card("Running dynamics", cad + _form_reference() + extra_form, running.FORM_GUIDE["cadence_spm"][0],
                     wide=True)
             + '<details class="card wide secondary-metrics"><summary>Race planning estimates</summary>'
             + '<div class="grid">'
@@ -1528,6 +1532,23 @@ def _tests(t: dict[str, Any]) -> str:
     return head + chart
 
 
+def _form_reference():
+    notes = []
+    spans = []
+    for key, name in running.LABELS.items():
+        meaning = running.FORM_GUIDE[key][0]
+        notes.append(f'<dt>{_e(name)}</dt><dd>{_e(meaning)} {_e(running.FORM_CONTEXT[key])}</dd>')
+        if ranges := running.reference_ranges(key):
+            labels = " · ".join(f"{colour.title()} {span}" for colour, span in ranges)
+            spans.append(_row(name, _e(running.FORM_UNITS[key]), labels))
+    return (f'<details class="form-reference"><summary>Metric guide and colour bounds</summary>'
+            f'<dl>{"".join(notes)}</dl><p>{_e(running.FORM_BANDS_NOTE)} {_e(running.FORM_SENSOR_NOTE)}</p>'
+            f'<p>{_e(running.HEART_RATE_BOUNDS_NOTE)} The matched range spans the earlier comparable runs.</p>'
+            f'<ul class="rows">{"".join(spans)}</ul>'
+            f'<a class="source-link" href="{_e(running.GARMIN_FORM_SOURCE)}">Garmin’s running dynamics reference</a>'
+            '</details>')
+
+
 def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
              summary: dict | None = None, *, run_ids: set[int] | None = None,
              run_check: int | None = None) -> str:
@@ -1550,7 +1571,8 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
         meaning, check = running.FORM_GUIDE[key]
         rows += (f'<div class="form-row"><div class="fr-head"><span>{_e(fm["label"])}</span>'
                  f'<b>{fm["value"]:g}{units[key]}</b></div>{g}<p class="sub">{_e(baseline)}</p>'
-                 f'<p class="sub">{_e(meaning)}</p><details><summary>What to try</summary>'
+                 f'<p class="metric-meaning">{_e(meaning)} {_e(running.FORM_CONTEXT[key])}</p>'
+                 '<details><summary>What to try</summary>'
                  f'<p>{_e(check)}</p></details></div>')
     p = r["pacing"]
     first, *other = r["work_on"]
@@ -1574,9 +1596,10 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
             + _card("What to try next", work + followup, wide=True)
             + _card("Run numbers", _narration(summary) + f'<ul class="rows">{facts}</ul>', wide=True)
             + f'<section class="card wide running-anchor" id="run-{r["activity_id"]}-form">'
-              f'<h3>Running form</h3><p class="sub">Garmin colours describe population ranges. '
-              f'Bounce and ratio bands vary by sensor.</p>{rows}'
-              '<p class="legend"><i class="mk"></i>This run <i class="mk2"></i>Your usual at this pace</p></section>')
+              f'<h3>Running form</h3><p class="sub">{_e(running.FORM_BANDS_NOTE)} '
+              f'{_e(running.FORM_SENSOR_NOTE)}</p>{rows}'
+              '<p class="legend"><i class="mk"></i>This run <i class="mk2"></i>Your usual at this pace</p>'
+              f'{_form_reference()}</section>')
     comparison = r["comparable_effort"]
     if next_step := coach_review.after_run(comparison):
         options = coach_review.run_questions(r)
@@ -1692,11 +1715,66 @@ def _run_conditions_comparison(records: list[dict]) -> str:
                  wide=True)
 
 
+def _split_elapsed(seconds: float) -> str:
+    whole, tenths = divmod(round(seconds * 10), 10)
+    return f"{loads._hms(whole)}.{tenths}"
+
+
+def _split_bars(splits: list[tuple[str, float]], reference: float, w: int = W) -> str:
+    extent = max(1.0, *(abs(seconds - reference) for _, seconds in splits))
+    limit = _ticks(0, extent)[-1]
+    left, right, top, bottom, h = 57, w - 18, 32, 161, 207
+    gap = (right - left) / len(splits)
+    width = min(46, gap * .58)
+
+    def x(i):
+        return left + gap * (i + .5)
+
+    def y(delta):
+        return (top + bottom) / 2 - (bottom - top) / 2 * delta / limit
+
+    center = y(0)
+    title = "Seconds vs median split"
+    g = _horizontal_scale([-limit, -limit / 2, 0, limit / 2, limit], left, right, y,
+                          lambda n: f"{n:+g}" if n else "0")
+    g += _axes(left, right, top, bottom, h, "Kilometre", title)
+    g.append(f'<line x1="{left}" x2="{right}" y1="{center}" y2="{center}" class="zero"/>')
+    for i, (label, seconds) in enumerate(splits):
+        delta = seconds - reference
+        endpoint = y(delta)
+        display = (f'{_split_elapsed(seconds)} · {delta:+.1f} s vs median' if delta else
+                   f'{_split_elapsed(seconds)} · median')
+        tone = "split-slower" if delta > 0 else "split-faster" if delta < 0 else "split-even"
+        g.append(f'<rect x="{x(i) - width / 2:.2f}" y="{min(endpoint, center) - (.8 if not delta else 0):.2f}" '
+                 f'width="{width:.2f}" height="{max(1.6, abs(endpoint - center)):.2f}" class="{tone}"/>')
+        g.append(_point(x(i), endpoint, label, display, "hit"))
+        if len(splits) <= (12 if w > W else 6):
+            y_text = min(endpoint, center) - 5
+            g.append(f'<text x="{x(i):.2f}" y="{y_text:.2f}" text-anchor="middle" class="tick split-value">'
+                     f'{loads._hms(seconds)}</text>')
+    labels = [label.removeprefix("km ") for label, _ in splits]
+    if len(labels) <= (16 if w > W else 10):
+        g += [f'<text x="{x(i):.2f}" y="{bottom + 17}" text-anchor="middle" class="tick">{label}</text>'
+              for i, label in enumerate(labels)]
+    else:
+        g += _x_ticks(labels, x, bottom, w > W)
+    return _chart("bar", g, w, h, (left, right, top, bottom), "Kilometre", title)
+
+
+def _split_chart(splits):
+    if not splits:
+        return '<p class="empty">No full kilometre recorded.</p>'
+    reference = median(seconds for _, seconds in splits)
+    rows = "".join(_row(label, _e(_split_elapsed(seconds))) for label, seconds in splits)
+    return (f'<p class="chart-note">Median {_split_elapsed(reference)} · above is slower · below is faster.</p>'
+            + both(_split_bars, splits, reference)
+            + f'<details><summary>All {len(splits)} split times</summary><ul class="rows">{rows}</ul></details>')
+
+
 def _run_pacing(r: dict[str, Any]) -> str:
     p = r["pacing"]
     splits = [(f"km {i}", seconds) for i, seconds in enumerate(p["km_split_s"], 1)]
-    chart = both(line_chart, splits, fmt=loads._hms, y_label="Elapsed time (min:sec)",
-                 x_label="Kilometre")
+    chart = _split_chart(splits)
     delta = p["half_split_delta_s"]
     half_note = "Needs at least 4 km of usable distance data"
     if delta is not None:
@@ -1811,10 +1889,14 @@ def _trace_legend(key, label, hr_bounds, *, secondary=False, shared_scale=False)
                   "blue": "above average", "purple": "top 5%"}
         swatches = "".join(f'<span class="zone-{colour}">{labels[colour]}</span>' for _, colour, _ in bands)
         band_key = f'<span class="trace-bands" aria-label="Garmin reference bands">{swatches}</span>'
-    elif key == "hr" and hr_bounds:
-        band_key = " · colors show recorded heart-rate bands"
+    if key in running.FORM_GUIDE:
+        band_key += f'<span class="chart-definition">{_e(running.FORM_GUIDE[key][0])}</span>'
+    if key in {"vertical_oscillation_cm", "vertical_ratio_pct"}:
+        band_key += '<span class="chart-definition">Colours use the chest-sensor reference.</span>'
+    if key == "hr" and hr_bounds:
+        band_key = f'<span class="chart-definition">{_e(running.HEART_RATE_BOUNDS_NOTE)}</span>'
     track = f' class="chart-key overlay-secondary" data-overlay-track="{key}"' if secondary else ' class="chart-key"'
-    return f'<p{track}><b>{_e(label)}</b> · {stroke}{scale}{band_key}</p>' if secondary or bands else ""
+    return f'<p{track}><b>{_e(label)}</b> · {stroke}{scale}{band_key}</p>' if secondary or band_key else ""
 
 
 def _paired_chart(stream: list[dict[str, Any]], primary: tuple, alternatives: tuple,
@@ -2030,9 +2112,8 @@ def _run_trace(r: dict[str, Any]) -> str:
     toggle = ('<label class="split-toggle wide"><input type="checkbox"> Kilometre splits</label>'
               if crossings else "")
     body = (toggle + _card("Pace", pace_hr, cue, wide=True)
-            + _card("Running form", cadence_step,
-                    "Garmin reference bands describe where a reading falls. "
-                    "Compare form at similar paces.", wide=True)
+            + _card("Running form", cadence_step + _form_reference(),
+                    "Compare form at similar paces and on similar terrain.", wide=True)
             + _card("Elevation", elevation, wide=True)
             + power_detail
             + _conditions_card(context))
@@ -2681,6 +2762,8 @@ font-size:13px;line-height:1.35}
 .source-link{text-decoration:underline;color:var(--active)}
 .grid line.grid,.chart .grid{stroke:var(--grid);stroke-width:1}
 .chart .axis,.chart .zero{stroke:var(--axis);stroke-width:1;fill:none}
+.split-faster{fill:var(--s1)}.split-slower{fill:var(--purple)}.split-even{fill:var(--axis)}
+.split-value{fill:var(--ink);font-weight:640}
 .chart .ref{stroke:var(--ink2);stroke-width:1;stroke-dasharray:3 3}
 .split-toggle{display:flex;align-items:center;gap:8px;min-height:44px;color:var(--active);
 font-size:14px;font-weight:650;width:max-content}
@@ -2759,6 +2842,10 @@ box-sizing:border-box}
 .form-row{padding:12px 0;border-top:1px solid var(--grid)}.form-row:first-of-type{border-top:0}
 .fr-head{display:flex;justify-content:space-between;font-size:15px}
 .fr-head b{font-variant-numeric:tabular-nums}
+.metric-meaning{margin:5px 0;max-width:72ch}
+.form-reference dt{font-weight:650;margin-top:8px}
+.form-reference dd{margin:2px 0 8px;color:var(--ink2);max-width:72ch}
+.chart-definition{display:block;margin-top:3px;color:var(--ink2)}
 .form-row .sub{margin:0}
 .legend{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:8px 0 0}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%}
@@ -2846,6 +2933,18 @@ background:var(--stage);margin-right:5px}
 .sleep-timeline .awake{--lane:2px}.sleep-timeline .rem{--lane:18px}
 .sleep-timeline .light{--lane:34px}.sleep-timeline .deep{--lane:50px}
 .deep{--stage:var(--purple)}.light{--stage:var(--s1)}.rem{--stage:var(--good)}.awake{--stage:var(--s2)}
+@media(min-width:900px){
+body{font-size:16px}
+.wrap{max-width:1300px}
+.top a,.theme button{font-size:14px}
+.card h3,.sleep-hero h3,.sleep-band h3{font-size:18px}
+.sub,.rows .n,.record-link small,.empty,summary{font-size:15px}
+.chart-note,.chart-key,.chart-readout,.chart-readout strong{font-size:14px}
+.lg .chart-interaction{max-width:940px}
+.lg .tick{font-size:12px}
+.lg .axis-label{font-size:13px}
+.lg .day-tick{font-size:10px}
+}
 footer{margin-top:48px;font-size:12px;color:var(--muted);line-height:1.6}
 @media print{.top,.mast,.back,.chart-readout,.overlay-options{display:none!important}
 .page{display:block!important;break-after:page}}

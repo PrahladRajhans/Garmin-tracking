@@ -38,19 +38,25 @@ def test_thinking_and_review_only_use_final_response(packet, monkeypatch):
 
     def response(method, path, deadline, body):
         requests.append(body)
+        fields = body["format"]["required"]
+        payload = verdict if fields == ["verdict"] else {"comparison": 2} if fields == ["comparison"] else draft
         return {"done": True, "thinking": "This is never parsed.",
-                "response": json.dumps(draft if len(requests) % 2 else verdict)}
+                "response": json.dumps(payload)}
 
     monkeypatch.setattr(narrator, "_request", response)
     profile = {"thinking": True, "controls": ["low", "medium"], "num_ctx": 4096}
     attempts = []
-    assert narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240, attempts=attempts) is None
+    result = narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240, attempts=attempts)
+    assert result["mode"] == "selected_comparison"
+    assert result["observation"] == "Sleep duration was lower. HRV stayed near its earlier average."
+    assert result["evidence"] == [1, 3]
     assert attempts == [{"mode": "thinking", "stage": "review", "outcome": "unsupported_claim"},
-                        {"mode": "direct_revision", "stage": "review", "outcome": "unsupported_claim"}]
+                        {"mode": "selected_comparison", "stage": "selection", "outcome": "grounded_selection"}]
     verdict["verdict"] = "supported"
     assert narrator._deep_request("test:9b", profile, packet, time.monotonic() + 240) == {**draft, "mode": "thinking"}
-    assert requests[0]["think"] == "low" and requests[1]["think"] is False
+    assert [request["think"] for request in requests[:3]] == ["low", False, False]
     assert requests[0]["format"] == packet.schema
+    assert requests[0]["options"]["num_predict"] == 2450
     assert all(request["model"] == "test:9b:local" for request in requests)
     assert "never parsed" not in requests[1]["prompt"]
 
@@ -137,21 +143,89 @@ def test_completion_only_model_resolves_pending_daily_review(conn, monkeypatch, 
     assert attempts["deep-insight"][0]["outcome"] == "supported"
 
 
-def test_timed_out_thinking_can_retry_original_prose_without_skipping_review(packet, monkeypatch):
+def test_timed_out_thinking_keeps_time_for_the_checked_comparison(packet, monkeypatch):
     calls = []
-    answer = {"observation": "Shorter nights and a higher resting pulse stand out while HRV held steady.",
-              "question": "Does resting pulse settle after a longer night?", "evidence": [1, 2, 3]}
+    total_deadline = time.monotonic() + 120
 
     def request(method, path, deadline, body):
         calls.append(body)
         if len(calls) == 1:
-            raise narrator.OllamaUnavailable
-        return {"done": True, "response": json.dumps(answer if len(calls) == 2 else {"verdict": "supported"})}
+            assert deadline <= total_deadline - narrator.INSIGHT_SELECTION_SECONDS
+            raise TimeoutError("thinking took too long")
+        assert deadline <= total_deadline
+        return {"done": True, "response": '{"comparison":1}'}
 
     monkeypatch.setattr(narrator, "_request", request)
-    result = narrator._deep_request("test:9b", {"num_ctx": 4096}, packet, time.monotonic() + 420)
-    assert result == {**answer, "mode": "direct_retry"}
-    assert [c["think"] for c in calls] == [True, False, False]
+    result = narrator._deep_request("test:9b", {"num_ctx": 4096}, packet, total_deadline)
+    assert result["observation"] == "Sleep duration was lower. Resting pulse was higher."
+    assert result["evidence"] == [1, 2] and result["mode"] == "selected_comparison"
+    assert [c["think"] for c in calls] == [True, False]
+
+
+def test_selection_cannot_choose_previous_rows_or_write_new_claims(packet):
+    earlier = deep_insight.Evidence("running", "Earlier moving pulse was 162 bpm.", "running", previous=True)
+    item = deep_insight.Insight(packet.rows + (earlier,))
+    options = item.comparison_options()
+    assert options == ((1, 2), (1, 3))
+    for raw in ('{"comparison":true}', '{"comparison":0}', '{"comparison":3}', '{"comparison":1.0}',
+                '{"comparison":1,"observation":"invented claims"}', '[]', 'not JSON'):
+        assert item.selected_comparison(raw, options) is None
+    assert item.selected_comparison('{"comparison":2}', options)["evidence"] == [1, 3]
+
+
+def test_abstention_is_not_replaced_with_a_comparison(packet, monkeypatch):
+    calls = []
+
+    def request(*args):
+        calls.append(args)
+        return {"done": True, "response": '{"observation":"","question":"","evidence":[]}'}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    assert narrator._deep_request("test:9b", {"num_ctx": 4096}, packet, time.monotonic() + 120) is None
+    assert len(calls) == 1
+
+
+def test_selection_from_stale_snapshot_is_not_returned(packet, monkeypatch):
+    fresh = True
+
+    def request(*args):
+        nonlocal fresh
+        fresh = False
+        return {"done": True, "response": '{"comparison":1}'}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    with pytest.raises(narrator.OllamaUnavailable):
+        narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 60,
+                               still_current=lambda: fresh, selection_only=True)
+
+
+def test_worker_caches_selected_readings_after_a_truncated_thinking_draft(conn, monkeypatch):
+    lens, readings = deep_insight.FICTIONAL_CASES["dated-health"]
+    item = deep_insight.Insight(readings, lens)
+    narrator.configure(conn, True, "test:4b", True)
+    monkeypatch.setattr(narrator, "items", lambda _: {})
+    monkeypatch.setattr(narrator, "_deep_items", lambda *_: {"deep-insight": item})
+    monkeypatch.setattr(narrator, "_cloud_disabled", lambda _: True)
+    monkeypatch.setattr(narrator, "_warm", lambda *_: None)
+    monkeypatch.setattr(narrator, "_model_profile",
+                        lambda *_: {"thinking": True, "text_generation": True, "num_ctx": 4096})
+
+    def request(method, path, deadline, body):
+        if body["think"]:
+            return {"done": True, "done_reason": "length", "response": "unfinished prose"}
+        assert "unfinished prose" not in body["prompt"]
+        assert "2026-11-25" not in body["prompt"]
+        return {"done": True, "response": '{"comparison":1}'}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    data = {"end": "2026-11-25"}
+    assert narrator.generate(conn, data, time.monotonic() + 120)
+    summaries, pending = narrator.cached(conn, data)
+    result = summaries["deep-insight"]
+    assert not pending and result["mode"] == "selected_comparison"
+    assert result["observation"] == " ".join(row.text for row in readings)
+    assert [row["page"] for row in result["readings"]] == ["sleep", "recovery"]
+    assert "unfinished prose" not in json.dumps(summaries)
 
 
 def test_invalid_draft_gets_one_correction_and_full_review(packet, monkeypatch):
