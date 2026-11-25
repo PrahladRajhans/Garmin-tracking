@@ -129,8 +129,12 @@ def test_athlete_placeholders_and_goal(conn):
 def test_malformed_saved_race_goal_returns_an_error(conn):
     for distance, target, race_day in (("bad", "50:00", None), (10, "00:99", None),
                                        (10, "50:00", "not a date")):
-        athlete.set_value(conn, "goal_race", {"distance_km": distance, "target": target, "date": race_day})
+        goal = {"distance_km": distance, "target": target, "date": race_day}
+        assert athlete.validate_setting("goal_race", goal)
+        athlete.set_value(conn, "goal_race", goal)
         assert "error" in goals.goal_check(conn, "2026-11-24")
+
+
 def test_invalid_athlete_overrides_are_rejected():
     from garmin_mcp import athlete
 

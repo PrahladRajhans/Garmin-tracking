@@ -10,7 +10,7 @@ into it, and every item there is mapped to a phase here:
 
 ## Current priorities
 
-Reviewed 25 November 2026 through v0.31.0 against the owner's three tables and the earlier numbered
+Reviewed 25 November 2026 through v0.32.0 against the owner's three tables and the earlier numbered
 list. The sequence below maps all 14 items to acceptance criteria. Earlier execution IDs and
 release decisions remain in the detailed queue. The [execution log](docs/REPOSITORY_REVIEW.md#execution-log)
 distinguishes completed evidence from owner acceptance.
@@ -51,6 +51,15 @@ coverage from the earlier queue as regression checks where affected.
 | 10. Deeper wellness | Recovery compares prior completed-day Body Battery charge/drain across qualified groups. Sleep reports separately recorded nap totals and coverage. No missing value is counted as zero. | Confirm nap and charge/drain coverage and validate use in repeated recovery/running comparisons on the real archive. |
 | 11. Workout preview | The local compiler can expose repeat counts, performed work, pace bounds and estimated time, with watch compatibility marked unverified. | Validate owner-device behavior after explicit upload and sync. |
 | 12. Repository review | The [continuation audit](docs/REPOSITORY_REVIEW.md#25-november-continuation-audit) reconciles 173 baseline paths. The [post-v0.30.0 audit](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) tracks manual ranges and fixture results. It verifies the corrected source-specific sync gate, overlapping refresh behavior, valid workout routing and the protected publisher preflight. | Continue the recorded manual review of remaining paths. Exercise the configured scheduler, sources and publishing on the owner's Mac. |
+
+The [v0.32.0 follow-up](docs/REPOSITORY_REVIEW.md#v0320-manual-work-and-acceptance)
+closes the reproduced grade, pulse coverage, missing-load, timestamp, import-log, and
+archive provenance regressions. Equivalent 1 Hz and 5-second traces qualify for the same
+graded comparisons. Charts expose exact readings and announce committed taps. Open
+work, in order, is the real archive and representative FIT comparison, real scheduled
+Qwen coaching, physical iPhone and protected delivery, then remaining renderer, CSS,
+and legacy paths. Provenance for precedence between different overlapping export bundles
+requires dependable export dates.
 
 ## Detailed execution queue
 
@@ -253,6 +262,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.32.0 | FIT grade parity, pulse and load coverage, archive chronology and provenance, exact chart readings | [Review and acceptance](docs/REPOSITORY_REVIEW.md#v0320-manual-work-and-acceptance). |
 | 0.31.0 | Reviewed Sleep prose, archive and FIT safeguards, partial-date rendering, refresh serialization and broader manual review | [Audit coverage and remaining dependencies](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) and [owner acceptance](docs/OWNER_ACCEPTANCE.md). |
 | 0.30.0 | Dated recovery evidence, cadence follow-up, recommendation history, FIT and workout previews, owner acceptance and phone chart loading | Workspace checks and remaining owner acceptance are in the [execution status](#25-november-execution-status). |
 | 0.29.0 | Running charts, contextual metrics, Ollama fallback, archive CSV and licensing | Implemented |

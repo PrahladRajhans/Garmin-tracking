@@ -12,7 +12,6 @@ from datetime import date
 from pathlib import Path
 
 from garmin_mcp import archive_audit, baseline, narrator
-from garmin_mcp.normalize import daily_from_summary
 from garmin_mcp.verify import replay_dashboard
 
 
@@ -20,20 +19,7 @@ def _pulse_check(conn, day, expected):
     text = day.isoformat()
     row = conn.execute("SELECT resting_hr FROM daily WHERE day=?", (text,)).fetchone()
     value = row[0] if row else None
-    datasets = ("pa_daily_summary", "user_summary", "ex_daily_summary")
-    sources = {}
-    for dataset, payload in conn.execute(
-        "SELECT dataset,payload FROM raw_daily WHERE day=? AND dataset IN (?,?,?) "
-        "UNION ALL SELECT dataset,payload FROM raw_range WHERE start_day<=? AND end_day>=? "
-        "AND dataset IN (?,?,?)", (text, *datasets, text, text, *datasets)
-    ):
-        try:
-            for stamp, readings in daily_from_summary(json.loads(payload), exported=dataset == "ex_daily_summary"):
-                reading = readings.get("resting_hr")
-                if stamp == text and reading is not None:
-                    sources.setdefault(dataset, set()).add(reading)
-        except (TypeError, ValueError):
-            continue
+    sources = baseline.resting_pulse_sources(conn, text, text).get(text, {})
     return {"normalized_available": value is not None,
             "normalized_matches_expected": value == expected,
             "dated_sources_checked": sorted(sources),
@@ -42,7 +28,13 @@ def _pulse_check(conn, day, expected):
 
 
 def _archive_coverage(conn):
-    latest = conn.execute("SELECT max(day) FROM daily").fetchone()[0]
+    # Start with all wellness families, then anchor on the most recent usable value.
+    last_stored = conn.execute(
+        "SELECT MAX(day) FROM (SELECT MAX(day) AS day FROM daily UNION ALL "
+        "SELECT MAX(day) FROM sleep UNION ALL SELECT MAX(day) FROM hrv "
+        "UNION ALL SELECT MAX(day) FROM health_status)").fetchone()[0]
+    _, signals = baseline.collect(conn, last_stored) if last_stored else (None, {})
+    latest = max((day for readings in signals.values() for day in readings), default=None)
     if not latest:
         return {"recorded_daily_months": 0, "expected_months": 36, "signal_days": {}}
     end = date.fromisoformat(latest)
@@ -51,8 +43,7 @@ def _archive_coverage(conn):
     months = conn.execute(
         "SELECT count(DISTINCT substr(day,1,7)) FROM daily WHERE day BETWEEN ? AND ?", (first, latest)
     ).fetchone()[0]
-    _, signals = baseline.collect(conn, latest)
-    keys = ("resting_hr", "sleep_h", "stress_avg", "body_battery_max")
+    keys = ("resting_hr", "sleep_h", "hrv", "stress_avg", "body_battery_max")
     return {"recorded_daily_months": months, "expected_months": 36,
             "signal_days": {key: sum(day >= first for day in signals[key]) for key in keys}}
 

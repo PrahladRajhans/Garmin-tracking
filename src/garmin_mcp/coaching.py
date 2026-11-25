@@ -29,10 +29,10 @@ from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence, running
 from garmin_mcp.fit import cadence_units, is_running_activity, session_messages
+from garmin_mcp.grade import MAX_SAMPLE_GAP_S, interval_grades
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
-MAX_SAMPLE_GAP_S = 10
 
 
 def _ts(v: str) -> float:
@@ -61,8 +61,9 @@ def _rows(conn: sqlite3.Connection, aid: int) -> list[dict[str, Any]]:
     return out
 
 
-def _moving(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [r for r in rows if r["speed"] and math.isfinite(r["speed"]) and r["speed"] > 1.0]
+def _is_moving(row: dict[str, Any]) -> bool:
+    speed = row["speed"]
+    return isinstance(speed, (int, float)) and math.isfinite(speed) and speed > 1.0
 
 
 def _mean(vals: list[float]) -> float | None:
@@ -70,25 +71,26 @@ def _mean(vals: list[float]) -> float | None:
     return statistics.fmean(vals) if vals else None
 
 
-def _moving_pairs(rows):
-    for a, b in itertools.pairwise(rows):
+def _graded_moving_pairs(rows):
+    moving = [_is_moving(row) for row in rows]
+    grades = interval_grades(
+        (row["t"], row["distance"], row["altitude"]) if active else (row["t"], None, None)
+        for row, active in zip(rows, moving, strict=True)
+    )
+    for (a, b), (first_moving, last_moving), grade in zip(
+            itertools.pairwise(rows), itertools.pairwise(moving), grades, strict=True):
         dt = b["t"] - a["t"]
-        if 0 < dt <= MAX_SAMPLE_GAP_S and all(
-                isinstance(r["speed"], (int, float)) and math.isfinite(r["speed"])
-                and r["speed"] > 1.0 for r in (a, b)):
-            yield dt, a, b
+        if 0 < dt <= MAX_SAMPLE_GAP_S and first_moving and last_moving:
+            yield dt, b, grade
 
 
 def _moving_intervals(rows: list[dict[str, Any]]) -> list[tuple[float, float, float, float | None]]:
     intervals = []
-    for dt, a, b in _moving_pairs(rows):
-        dd = b["distance"] - a["distance"] if None not in (a["distance"], b["distance"]) else 0
-        da = b["altitude"] - a["altitude"] if None not in (a["altitude"], b["altitude"]) else 0
-        grade = da / dd if dd > 2 and math.isfinite(da) else 0
+    for dt, b, grade in _graded_moving_pairs(rows):
         hr = b["heart_rate"]
         valid_hr = hr if isinstance(hr, (int, float)) and math.isfinite(hr) and hr > 0 else None
         speed = b["speed"]
-        intervals.append((dt, speed, speed * minetti_cost(grade) / minetti_cost(0), valid_hr))
+        intervals.append((dt, speed, speed * minetti_cost(grade or 0.0) / minetti_cost(0), valid_hr))
     return intervals
 
 
@@ -104,17 +106,10 @@ def late_running_form(conn, aid, *, moving_s, elapsed_s):
     }
     halves = [defaultdict(lambda: [0.0, 0.0]) for _ in range(2)]
     elapsed = 0.0
-    for dt, a, b in _moving_pairs(_rows(conn, aid)):
+    for dt, b, grade in _graded_moving_pairs(_rows(conn, aid)):
         early = min(dt, max(0.0, moving_s / 2 - elapsed))
         elapsed += dt
-        values = (a["distance"], b["distance"], a["altitude"], b["altitude"])
-        if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
-            continue
-        distance = values[1] - values[0]
-        if distance <= 2:
-            continue
-        grade = (values[3] - values[2]) / distance
-        if abs(grade) > 0.12:
+        if grade is None or abs(grade) > 0.12:
             continue
         pace_bin = round(1000 / b["speed"] / 15)
         grade_bin = round(grade / 0.02)
@@ -209,7 +204,7 @@ def _elapsed_splits(rows: list[dict[str, Any]]) -> tuple[list[float], float | No
 
 def run_metrics(conn: sqlite3.Connection, aid: int) -> dict[str, Any] | None:
     rows = _rows(conn, aid)
-    mov = _moving(rows)
+    mov = [row for row in rows if _is_moving(row)]
     intervals = _moving_intervals(rows)
     dur = sum(dt for dt, _, _, _ in intervals)
     if dur < 120:

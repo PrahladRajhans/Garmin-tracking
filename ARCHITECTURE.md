@@ -72,6 +72,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 | `publish.py` | Opt-in Pages upload, Access checks, check-only CLI; no account configuration writes |
 | `server.py` | MCP server. Most analysis is local. `refresh_data` syncs Garmin. Workout upload, listing and deletion use Garmin Connect. The optional dashboard publisher uses Cloudflare. |
 | `verify.py`, `autoupdate.py` | Checks; self-update |
+| `grade.py` | Shared distance-window FIT grade for run metrics, form comparisons and graded workload |
 
 ## Design principles
 - **Transparent:** every number can be traced to a formula in `METRICS.md` and its inputs. Garmin's values are shown beside ours, never blended.
@@ -79,6 +80,11 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 - **Raw first:** analytics can be recomputed from stored raw data at any time.
 - **Private:** collection and analysis stay on the Mac. A dashboard copy leaves only when publishing
   is explicitly enabled (or a manual Artifact is requested). Access must protect all Pages addresses.
+
+Per-workout load remains absent when neither the FIT stream nor its summary can support the
+calculation. Totals and comparison flags require complete workout coverage. Smoothed values
+use the measured contributions. A dashboard chart can show the exact plotted points on demand
+using its existing offline data, with the active overlay included.
 
 ## Tests and CI
 `pytest` (unit + small end-to-end on synthetic FIT data) and `ruff`, run on Python 3.12 and 3.13 by `.github/workflows/ci.yml`. Real-data checks run with `garmin-mcp-verify` on the Mac.

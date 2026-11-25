@@ -228,8 +228,7 @@ def _weekly_load(conn: sqlite3.Connection, end: str, weeks: int = 12) -> list[tu
     out = []
     for i in range(weeks - 1, -1, -1):
         a = monday - timedelta(weeks=i)
-        v = conn.execute("SELECT SUM(load) FROM fitness WHERE day BETWEEN ? AND ?",
-                         (a.isoformat(), min(e, a + timedelta(days=6)).isoformat())).fetchone()[0]
+        v = loads.total_daily_load(conn, a.isoformat(), min(e, a + timedelta(days=6)).isoformat())
         out.append((a.isoformat(), round(v) if v is not None else None))
     return out
 
@@ -285,7 +284,7 @@ def _point(x: float, y: float, label: str, value: str, cls: str = "hit",
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
            x_label: str, y_label: str, controls: str = "",
            *, condition_labels: list[str] | None = None,
-           compact: bool = False, dense: bool = False) -> str:
+           compact: bool = False, dense: bool = False, static_readings: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
@@ -294,8 +293,9 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
     caption = '<figcaption class="chart-readout"><strong></strong><span></span></figcaption>'
     lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
     layout = (" chart-compact" if compact else "") + (" chart-dense" if dense else "")
-    return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}>'
-            f'{controls}<span class="sr-only" role="status"></span>'
+    readings = " data-static-readings" if static_readings else ""
+    return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}{readings}>'
+            f'{controls}<span class="sr-only" role="status" aria-atomic="true"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
             f'{"".join(parts)}{overlay}</svg>{caption}</figure>')
@@ -1457,8 +1457,11 @@ def page_training(d: dict[str, Any]) -> str:
     review = d["weekly_review"]
     if review:
         week, usual, rest = review["week"], review["previous_4wk_weekly_avg"], review["recovery"]
-        prior_text = (f'Previous four-week average: {_f(usual["trimp"])} points/week'
-                      if usual["sessions"] else "No recent comparison weeks with recorded workouts")
+        prior_text = (f'{week["sessions_with_load"]} of {week["sessions"]} workouts have usable load'
+                      if week["trimp"] is None else
+                      f'Previous four-week average: {_f(usual["trimp"])} points/week'
+                      if usual["sessions"] and usual["trimp"] is not None else
+                      "No complete comparison load for the previous four weeks")
         rows = (_row("Recorded workouts", _f(week["sessions"]),
                      f'{_f(week["hours"], 1)} h · {_f(week["run_km"], 1)} km running')
                 + _row("Training load", _f(week["trimp"]), prior_text)
@@ -1498,10 +1501,10 @@ def page_training(d: dict[str, Any]) -> str:
             recent += ('<details><summary>More recent workouts</summary>'
                        f'<ul class="record-list">{"".join(entries[4:])}</ul></details>')
         body += _card("Recent workouts", recent, wide=True)
-    body += (_card("Training load trend", fit, "A smoothed view of workout effort over time. A rising line "
-                    "means your recent sessions are adding more load. Recent load responds more quickly "
-                    "to workouts and rest.", wide=True)
-             + _card("Load per week", wl, "Points combine workout duration and intensity. The latest week may be partial."
+    body += (_card("Training load trend", fit, "Workout effort smoothed over time using workouts with usable load. "
+                    "Recent load responds more quickly to workouts and rest.", wide=True)
+             + _card("Load per week", wl, "Points combine duration and intensity. Weeks with unmeasured workouts have "
+                     "no total. The latest week may still be in progress."
                      + (f" · Dashed: {_f(four_week_avg)} average of the previous four bars"
                         if four_week_avg is not None else ""), wide=True)
              + _outdoor_patterns_card(d.get("outdoor_patterns", {}))
@@ -1911,7 +1914,8 @@ def _split_bars(splits: list[tuple[str, float]], reference: float, w: int = W) -
               for i, label in enumerate(labels)]
     else:
         g += _x_ticks(labels, x, bottom, w > W)
-    return _chart("bar", g, w, h, (left, right, top, bottom), "Kilometre", title)
+    return _chart("bar", g, w, h, (left, right, top, bottom), "Kilometre", title,
+                  static_readings=True)
 
 
 def _split_chart(splits):
@@ -2465,9 +2469,10 @@ def _resting_pulse_card(check, *, flagged_only=False):
                   'dizziness or fainting, seek urgent medical help.</p>')
     sources = {"pa_daily_summary": "Garmin Personal API", "user_summary": "Garmin Connect",
                "ex_daily_summary": "Garmin export"}
-    rows = "".join(_row(sources[key], f"{value:g} bpm") for key, value in check["sources"].items())
+    rows = "".join(_row(label, ", ".join(f"{v:g} bpm" for v in check["sources"][key]))
+                   for key, label in sources.items() if key in check["sources"])
     disagreement = ('<p class="sub">Garmin records for this date report different estimates.</p>'
-                    if len(set(check["sources"].values())) > 1 else "")
+                    if len(set().union(*check["sources"].values())) > 1 else "")
     source_note = (f'{disagreement}<details><summary>Source readings for this date</summary>'
                    f'<ul class="rows">{rows}</ul>'
                    '</details>' if rows else "")
@@ -2912,6 +2917,8 @@ font-size:13px;line-height:1.35}
 .chart-cursor line{stroke:var(--cursor);stroke-width:.9;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
 .chart-cursor circle{fill:var(--surface);stroke:var(--active);stroke-width:1.6}
 .chart-note{font-size:12px;color:var(--muted);margin:3px 0 0}
+.chart-readings ul{padding-inline-start:1.3em}
+.chart-readings li{font-size:.875em;line-height:1.5;padding-block:3px;overflow-wrap:anywhere}
 .source-link{text-decoration:underline;color:var(--active)}
 .grid line.grid,.chart .grid{stroke:var(--grid);stroke-width:1}
 .chart .axis,.chart .zero{stroke:var(--axis);stroke-width:1;fill:none}
@@ -3191,7 +3198,8 @@ def render(d: dict[str, Any]) -> str:
         '<button type="button" data-theme-choice="light" aria-pressed="true">Light</button>'
         '<button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>'
         '</div></header><p class="sr-only" id="chart-help">Arrow keys select a reading. '
-        'Home and End move to the first and last readings. Escape clears the selection.</p>'
+        'Home and End move to the first and last readings. Escape clears the selection. '
+        'Open Chart readings for the exact values.</p>'
         '<nav class="top" '
         f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status}{ai_state} '
         f'</footer></main><script>{SCRIPT}</script></body></html>')

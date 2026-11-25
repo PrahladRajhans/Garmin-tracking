@@ -11,15 +11,18 @@ from typing import Any
 
 from garmin_mcp import baseline, health, insights, normalize, recovery, wellness_timeline
 
+_DAILY_NUMBERS = frozenset(normalize.TABLES["daily"])
+_SLEEP_NUMBERS = frozenset(normalize.TABLES["sleep"]) - {"sleep_start", "sleep_end"}
+
 
 def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo) -> dict[str, dict]:
     output = {}
+    ranks = {}
     rows = conn.execute(
         "SELECT day, dataset, payload FROM raw_daily WHERE day BETWEEN ? AND ? "
-        "AND dataset IN ('pa_heart_rate','heart_rate') "
-        "ORDER BY day, CASE dataset WHEN 'pa_heart_rate' THEN 0 ELSE 1 END", (start, end))
+        "AND dataset IN ('pa_heart_rate','heart_rate')", (start, end))
     for day, dataset, raw in rows:
-        if day in output or not raw:
+        if not raw:
             continue
         try:
             payload = json.loads(raw)
@@ -48,6 +51,11 @@ def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo
             start_slot = local.replace(minute=local.minute // 15 * 15, second=0, microsecond=0)
             buckets.setdefault(start_slot.timestamp(), []).append(bpm)
         if buckets:
+            # Rank by recorded time coverage, then freshness. Sample frequency
+            # inside each 15-minute window does not give a source more weight.
+            rank = (len(buckets), max(unique), dataset == "pa_heart_rate")
+            if day in ranks and ranks[day] >= rank:
+                continue
             slots = []
             for stamp, values in buckets.items():
                 local = datetime.fromtimestamp(stamp, zone)
@@ -57,6 +65,7 @@ def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo
                 slots.append({"time": label, "minute": stamp / 60, "median": statistics.median(values),
                               "range": (min(values), max(values)), "count": len(values)})
             output[day] = {"slots": slots, "samples": len(unique), "dataset": dataset}
+            ranks[day] = rank
 
     return output
 
@@ -65,7 +74,7 @@ def _prior_values(days, day, field, section="daily"):
     start = date.fromisoformat(day)
     return [value for offset in range(1, 29)
             if (value := days.get((start - timedelta(days=offset)).isoformat(), {})
-                .get(section, {}).get(field)) is not None and math.isfinite(value)]
+                .get(section, {}).get(field)) is not None and baseline._within(value, -math.inf, math.inf)]
 
 
 def _personal_reference(value, baseline, minimum_radius):
@@ -81,18 +90,17 @@ def _personal_reference(value, baseline, minimum_radius):
 
 def _day_highlights(days, day, row):
     candidates = []
-    for section, field, label, unit, factor, minimum_radius in (
-        ("sleep", "sleep_s", "Sleep duration", " h", 3600, .5),
-        ("daily", "steps", "Steps", " steps", 1, 1500),
-        ("daily", "stress_avg", "Garmin daytime stress", "/100", 1, 8),
+    for section, field, label, unit, factor, minimum_radius, low, high in (
+        ("sleep", "sleep_s", "Sleep duration", " h", 3600, .5, 10800, 86400),
+        ("daily", "steps", "Steps", " steps", 1, 1500, 0, math.inf),
+        ("daily", "stress_avg", "Garmin daytime stress", "/100", 1, 8, 0, 100),
     ):
         value = row.get(section, {}).get(field)
-        minimum = 10800 if section == "sleep" else 0
-        if value is None or value < minimum:
+        if not baseline._within(value, low, high):
             continue
         value /= factor
-        baseline = [v / factor for v in _prior_values(days, day, field, section) if v >= minimum]
-        ref = _personal_reference(value, baseline, minimum_radius)
+        prior = [v / factor for v in _prior_values(days, day, field, section) if low <= v <= high]
+        ref = _personal_reference(value, prior, minimum_radius)
         if ref["direction"] in {"lower", "higher"}:
             center = ref["median"]
             radius = (ref["range"][1] - ref["range"][0]) / 2
@@ -102,32 +110,28 @@ def _day_highlights(days, day, row):
 
 
 def resting_pulse_checks(conn, days, start, end, archive_start, archive_pulse):
-    sources: dict[str, dict[str, float]] = {}
-    for day, dataset, payload in conn.execute(
-            "SELECT day,dataset,payload FROM raw_daily WHERE day BETWEEN ? AND ? AND dataset IN "
-            "('pa_daily_summary','user_summary','ex_daily_summary')", (start, end)):
-        try:
-            for stamp, readings in normalize.daily_from_summary(
-                    json.loads(payload), exported=dataset == "ex_daily_summary"):
-                if stamp == day and (value := readings.get("resting_hr")) is not None:
-                    sources.setdefault(day, {})[dataset] = value
-        except (TypeError, ValueError):
-            continue
+    sources = baseline.resting_pulse_sources(conn, start, end)
     checks = {}
     for day, row in days.items():
         if not start <= day <= end:
             continue
         value = row.get("daily", {}).get("resting_hr")
-        if value is None or value <= 0:
+        if not baseline._within(value, 1, 300):
             continue
         earlier = date.fromisoformat(day) - timedelta(days=28)
         recent = [v for d, v in archive_pulse.items() if earlier.isoformat() <= d < day]
         ref = _personal_reference(value, recent, 5)
         checks[day] = {"value": value, **ref,
                        "verify": value < 50 or ref["direction"] in {"lower", "higher"},
-                       "sources": sources.get(day, {}),
+                       "sources": {dataset: tuple(sorted(values))
+                                   for dataset, values in sources.get(day, {}).items()},
                        "coverage": baseline.windows(archive_pulse, day, archive_start)}
     return checks
+
+
+def _history_values(row, numeric_fields):
+    return {key: value if key not in numeric_fields or baseline._within(value, -math.inf, math.inf)
+            else None for key, value in dict(row).items()}
 
 
 def collect(conn: sqlite3.Connection, end: str, zone: tzinfo) -> dict[str, Any]:
@@ -138,9 +142,9 @@ def collect(conn: sqlite3.Connection, end: str, zone: tzinfo) -> dict[str, Any]:
     start = months[0]["month"] + "-01"
     days: dict[str, dict] = {}
     for row in conn.execute("SELECT * FROM daily WHERE day BETWEEN ? AND ?", (start, end)):
-        days.setdefault(row["day"], {})["daily"] = dict(row)
+        days.setdefault(row["day"], {})["daily"] = _history_values(row, _DAILY_NUMBERS)
     for row in conn.execute("SELECT * FROM sleep WHERE day BETWEEN ? AND ?", (start, end)):
-        days.setdefault(row["day"], {})["sleep"] = dict(row)
+        days.setdefault(row["day"], {})["sleep"] = _history_values(row, _SLEEP_NUMBERS)
     for day, value in recovery.nightly_hrv(conn, start, end).items():
         days.setdefault(day, {})["hrv"] = value
     span = (last - date.fromisoformat(start)).days + 1

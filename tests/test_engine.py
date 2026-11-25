@@ -69,3 +69,24 @@ def test_personal_ranges_do_not_present_stale_values_as_today(conn):
     assert engine.personal_ranges(conn, "2026-11-23")["outside_range"] == 0
     detail = engine.insight_feed(conn, "2026-11-23")["insights"][0]["detail"]
     assert isinstance(detail, str) and "not enough recovery data" in detail
+
+
+def test_training_end_uses_local_finish_date_without_leaking_past_query_end(conn, monkeypatch):
+    from garmin_mcp import db
+    from garmin_mcp.normalize import rebuild
+
+    monkeypatch.setenv("GARMIN_TZ", "America/New_York")
+    rebuild(conn)
+    for aid, stamp, local, duration in [
+        (1, "2026-03-07T23:30:00-05:00", "2026-03-07 23:30:00", 1800),
+        (2, "2026-03-08T01:50:00-05:00", "2026-03-08 01:50:00", 1200),
+        (3, "2026-03-08T23:50:00-04:00", "2026-03-08 23:50:00", 1200),
+        (4, "2026-03-08T18:00:00-04:00", "2026-03-08 18:00:00", None),
+    ]:
+        db.upsert_activity(conn, {"activityId": aid, "startTimeGMT": stamp,
+                                  "startTimeLocal": local, "duration": duration})
+    day = engine.features(conn, "2026-03-08", "2026-03-08")
+    assert list(day) == ["2026-03-08"]
+    assert day["2026-03-08"]["last_training_end_h"] == 3 + 10 / 60
+    midnight = engine.features(conn, "2026-03-09", "2026-03-09")
+    assert midnight["2026-03-09"]["last_training_end_h"] == 10 / 60

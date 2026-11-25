@@ -45,6 +45,41 @@ def test_history_preserves_missing_dates_and_uses_local_quarter_hour(conn):
     assert "2026-11-24" not in history["days"]
 
 
+def test_intraday_pulse_chooses_one_stream_by_coverage_and_freshness(conn):
+    case = (
+        ("2026-11-21", (0, 1, 2), (0, 900, 1800), "heart_rate"),
+        ("2026-11-22", (0, 900), (0, 901), "heart_rate"),
+        ("2026-11-23", (0, 900), (0, 1, 900), "pa_heart_rate"),
+    )
+    for day, official, connect, expected in case:
+        start = datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp()
+        for dataset, source, offsets, pulse in (
+            ("pa_heart_rate", "personal_api", official, 60),
+            ("heart_rate", "garminconnect", connect, 80),
+        ):
+            db.put_daily(conn, dataset, day, source,
+                         {"heartRateValues": [[int((start + offset) * 1000), pulse] for offset in offsets]})
+        reading = dashboard_history._intraday_pulse(conn, day, day, UTC)[day]
+        assert reading["dataset"] == expected
+        assert {slot["median"] for slot in reading["slots"]} == ({60} if expected == "pa_heart_rate" else {80})
+
+
+def test_history_ignores_invalid_legacy_fields_without_dropping_valid_dates(conn):
+    rebuild(conn)
+    day = "2026-11-23"
+    previous = "2026-11-22"
+    conn.execute("INSERT INTO daily(day,steps,resting_hr) VALUES (?,?,?)", (day, "bad field", 44))
+    conn.execute("INSERT INTO daily(day,steps,stress_avg) VALUES (?,?,?)", (previous, 1000, "bad field"))
+    conn.execute("INSERT INTO sleep(day,sleep_s,score) VALUES (?,?,?)", (day, "bad field", 80))
+
+    history = dashboard_history.collect(conn, "2026-11-24", UTC)
+    current = history["days"][day]
+    assert current["daily"]["steps"] is None and current["sleep"]["sleep_s"] is None
+    assert current["daily"]["resting_hr"] == 44 and current["highlights"] == []
+    assert dashboard_history._prior_values(history["days"], day, "steps") == [1000]
+    assert conn.execute("SELECT steps FROM daily WHERE day=?", (day,)).fetchone()[0] == "bad field"
+
+
 def test_resting_check_uses_dated_source_and_prior_days_only(conn):
     end = date(2026, 11, 23)
     for offset in range(1, 17):
@@ -66,7 +101,7 @@ def test_resting_check_uses_dated_source_and_prior_days_only(conn):
     assert coverage["28 days"]["missing"] == 12
     assert coverage["90 days"]["last"] == "2026-11-22"
     assert check == {"value": 44, "median": 53, "range": (48, 58), "count": 16,
-                     "direction": "lower", "verify": True, "sources": {"pa_daily_summary": 44}}
+                     "direction": "lower", "verify": True, "sources": {"pa_daily_summary": (44,)}}
     assert conn.execute("SELECT resting_hr FROM daily WHERE day=?", (future,)).fetchone()[0] is None
 
 

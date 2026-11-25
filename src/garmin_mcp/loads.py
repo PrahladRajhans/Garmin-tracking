@@ -35,6 +35,8 @@ from typing import Any
 
 BANISTER = {"male": (0.64, 1.92), "female": (0.86, 1.67)}
 CTL_DAYS, ATL_DAYS = 42, 7
+MAX_HR_INTERVAL_S = 10
+MIN_HR_COVERAGE = 0.90
 CURVE_WINDOWS_S = [60, 120, 180, 300, 600, 720, 1200, 1800, 2700, 3600, 5400, 7200]
 RACES_M = {"5k": 5000, "10k": 10000, "half": 21097.5, "marathon": 42195}
 RUN_TYPES = ("running", "trail_running", "track_running")  # treadmill excluded: wrist speed
@@ -125,23 +127,47 @@ def _sex(conn: sqlite3.Connection, end: str) -> tuple[str, str]:
 
 
 # --------------------------------------------------------------------------- thresholds
-def best_rolling_hr(records: list[tuple], window_s: int) -> float | None:
-    pts = [(_ts(r[0]), r[1]) for r in records if r[1]]
-    if len(pts) < 2 or pts[-1][0] - pts[0][0] < window_s:
+def _valid_hr(hr: float | None) -> bool:
+    return isinstance(hr, (int, float)) and 0 < hr <= 254
+
+
+def _record_time(record: tuple) -> float | None:
+    try:
+        return _ts(record[0])
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
-    best, j, acc, w = None, 0, 0.0, 0.0
-    # time-weighted average over a sliding window
-    for i in range(1, len(pts)):
-        dt = min(pts[i][0] - pts[i - 1][0], 10)
-        acc += pts[i][1] * dt
-        w += dt
-        while pts[i][0] - pts[j][0] > window_s and j < i - 1:
-            dtj = min(pts[j + 1][0] - pts[j][0], 10)
-            acc -= pts[j + 1][1] * dtj
-            w -= dtj
-            j += 1
-        if pts[i][0] - pts[0][0] >= window_s and w > 0:
-            avg = acc / w
+
+
+def _hr_intervals(records: list[tuple], times: list[float | None]):
+    for (_, current), (start, end) in zip(itertools.pairwise(records), itertools.pairwise(times), strict=True):
+        if start is not None and end is not None and 0 < end - start <= MAX_HR_INTERVAL_S and _valid_hr(current[1]):
+            yield start, end, current[1]
+
+
+def best_rolling_hr(records: list[tuple], window_s: int) -> float | None:
+    times = [_record_time(row) for row in records]
+    first = next((stamp for stamp in times if stamp is not None), None)
+    if first is None or window_s <= 0:
+        return None
+    intervals = list(_hr_intervals(records, times))
+    best, left, weighted, covered = None, 0, 0.0, 0.0
+    for i, (start, end, hr) in enumerate(intervals):
+        dt = end - start
+        covered += dt
+        weighted += dt * hr
+        cutoff = end - window_s
+        if cutoff < first:
+            continue
+        while left < i and intervals[left][1] <= cutoff:
+            old_start, old_end, old_hr = intervals[left]
+            covered -= old_end - old_start
+            weighted -= (old_end - old_start) * old_hr
+            left += 1
+        old_start, _, old_hr = intervals[left]
+        excess = max(0.0, cutoff - old_start)
+        measured = covered - excess
+        if measured >= window_s * MIN_HR_COVERAGE:
+            avg = (weighted - excess * old_hr) / measured
             best = avg if best is None or avg > best else best
     return best
 
@@ -227,44 +253,60 @@ def thresholds(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, A
         "sources": {"hr_max": "max(repeatable activity peak, Tanaka 208-0.7*age); your override "
                               "wins",
                     "hr_rest": "median daily resting HR, last 60 days",
-                    "lthr": "best 20-min rolling HR on a run >= 25 min, last 365 days"},
+                    "lthr": "best 20-min rolling HR with at least 90% measured time on a "
+                            "run >= 25 min, last 365 days; Garmin fallback"},
         "notes": notes,
     }
 
 
 # --------------------------------------------------------------------------- per activity
+def _graded_distance(records: list[tuple], times: list[float | None]) -> tuple[float, float]:
+    from garmin_mcp.grade import MAX_SAMPLE_GAP_S, interval_grades
+
+    samples = [(stamp, row[4], row[3]) if isinstance(row[2], (int, float)) and row[2] > 0.5
+               else (stamp, None, None) for row, stamp in zip(records, times, strict=True)]
+    grades = interval_grades(samples)
+    distance = moving = 0.0
+    for grade, (_, row), (start, end) in zip(grades, itertools.pairwise(records),
+                                            itertools.pairwise(times), strict=True):
+        speed = row[2]
+        if (start is not None and end is not None and 0 < end - start <= MAX_SAMPLE_GAP_S
+                and isinstance(speed, (int, float)) and math.isfinite(speed) and speed > 0.5):
+            dt = end - start
+            distance += speed * dt * minetti_cost(grade or 0.0) / minetti_cost(0)
+            moving += dt
+    return distance, moving
+
+
 def activity_load(conn: sqlite3.Connection, activity: dict[str, Any], th: dict[str, Any],
                   threshold_speed: float | None) -> dict[str, Any]:
     recs = _records(conn, activity["activity_id"])
     rest, hrmax, lthr, sex = th["hr_rest"], th["hr_max"], th["lthr"], th["sex"]
-    trimp, zones, graded_dist, moving_s = 0.0, [0.0, 0.0, 0.0], 0.0, 0.0
-    stream = False
-    if recs and rest and hrmax:
-        prev = None
-        for r in recs:
-            t = _ts(r[0])
-            if prev is not None:
-                dt = min(t - prev[0], 10.0)  # cap gaps (pauses) at 10 s
-                hr = r[1]
-                if hr:
-                    stream = True
-                    trimp += banister_trimp(hr, dt / 60, rest, hrmax, sex)
-                    if lthr:
-                        zones[0 if hr < 0.9 * lthr else 1 if hr < lthr else 2] += dt
-                if r[2] and r[2] > 0.5 and r[4] is not None and prev[4] is not None:
-                    dd = r[4] - prev[4]
-                    da = (r[3] - prev[3]) if r[3] is not None and prev[3] is not None else 0
-                    grade = da / dd if dd > 2 else 0.0
-                    graded_dist += r[2] * dt * minetti_cost(grade) / minetti_cost(0)
-                    moving_s += dt
-            prev = (t, r[1], r[2], r[3], r[4])
-    if not stream and activity.get("avg_hr") and activity.get("duration_s") and rest and hrmax:
-        trimp = banister_trimp(activity["avg_hr"], activity["duration_s"] / 60, rest, hrmax, sex)
+    trimp = trimp_from = None
+    zones = [0.0, 0.0, 0.0]
+    times = [_record_time(row) for row in recs]
+    intervals = list(_hr_intervals(recs, times))
+    duration = activity.get("duration_s")
+    timing = isinstance(duration, (int, float)) and math.isfinite(duration) and duration > 0
+    covered = sum(end - start for start, end, _ in intervals)
+    valid_thresholds = _valid_hr(rest) and _valid_hr(hrmax) and rest < hrmax
+    if valid_thresholds and timing and covered >= duration * MIN_HR_COVERAGE:
+        trimp = sum(banister_trimp(hr, (end - start) / 60, rest, hrmax, sex)
+                    for start, end, hr in intervals)
+        trimp_from = "hr stream"
+    elif valid_thresholds and timing and _valid_hr(activity.get("avg_hr")):
+        trimp = banister_trimp(activity["avg_hr"], duration / 60, rest, hrmax, sex)
+        trimp_from = "average hr"
+    if _valid_hr(lthr):
+        for start, end, hr in intervals:
+            zones[0 if hr < 0.9 * lthr else 1 if hr < lthr else 2] += end - start
     rtss = None
-    if threshold_speed and moving_s > 300 and activity["type"] in RUN_TYPES:  # only with a maximal CS
-        ngs = graded_dist / moving_s
-        rtss = moving_s / 3600 * (ngs / threshold_speed) ** 2 * 100
-    return {"trimp": round(trimp, 1), "trimp_from": "hr stream" if stream else "average hr",
+    if threshold_speed and activity["type"] in RUN_TYPES:  # only with a maximal CS or an override
+        graded_dist, moving_s = _graded_distance(recs, times)
+        if moving_s > 300:
+            ngs = graded_dist / moving_s
+            rtss = moving_s / 3600 * (ngs / threshold_speed) ** 2 * 100
+    return {"trimp": round(trimp, 1) if trimp is not None else None, "trimp_from": trimp_from,
             "rtss": round(rtss, 1) if rtss else None,
             "zone_s": [round(z) for z in zones]}
 
@@ -444,33 +486,45 @@ def rebuild(conn: sqlite3.Connection, asof: str | None = None) -> dict[str, Any]
     conn.execute("DROP TABLE IF EXISTS fitness")
     conn.execute("CREATE TABLE fitness (day TEXT PRIMARY KEY, load REAL, ctl REAL, atl REAL, "
                  "tsb REAL, ramp REAL, monotony REAL, strain REAL)")
-    daily = dict(conn.execute("SELECT day, SUM(trimp) FROM activity_load GROUP BY day"))
+    daily = {day: (load, missing) for day, load, missing in conn.execute(
+        "SELECT day, SUM(trimp), COUNT(*) - COUNT(trimp) FROM activity_load GROUP BY day")}
     if daily:
         d = date.fromisoformat(min(daily))
         last = date.fromisoformat(max(max(daily), asof))
         ctl = atl = 0.0
         hist: list[tuple] = []
-        loads: list[float] = []
+        loads: list[float | None] = []
+        has_measurement = False
         while d <= last:
             key = d.isoformat()
-            load = daily.get(key, 0.0) or 0.0
+            take, missing = daily.get(key, (0.0, 0))
+            has_measurement |= key in daily and take is not None
+            load = None if missing else take
             tsb = ctl - atl  # yesterday's values (TrainingPeaks convention)
-            ctl, atl = ewma(ctl, load, CTL_DAYS), ewma(atl, load, ATL_DAYS)
+            ctl, atl = ewma(ctl, take or 0.0, CTL_DAYS), ewma(atl, take or 0.0, ATL_DAYS)
             loads.append(load)
             week = loads[-7:]
             mono = (statistics.fmean(week) / statistics.stdev(week)
-                    if len(week) == 7 and statistics.stdev(week) > 0 else None)
-            ramp = ctl - hist[-7][2] if len(hist) >= 7 else None
-            hist.append((key, load, ctl, atl, tsb, ramp, mono, sum(week) * mono if mono else None))
+                    if len(week) == 7 and None not in week and statistics.stdev(week) > 0 else None)
+            ramp = (ctl - hist[-7][2] if len(hist) >= 7 and None not in week
+                    and hist[-7][2] is not None else None)
+            hist.append((key, load, ctl if has_measurement else None,
+                         atl if has_measurement else None, tsb if has_measurement else None,
+                         ramp, mono, sum(week) * mono if mono is not None else None))
             d += timedelta(days=1)
         conn.executemany("INSERT INTO fitness VALUES (?,?,?,?,?,?,?,?)",
-                         [(k, round(lo, 1), round(c, 1), round(a, 1), round(t, 1),
-                           round(r, 1) if r is not None else None,
-                           round(m, 2) if m else None, round(s, 1) if s else None)
+                         [(k, *(round(v, n) if v is not None else None
+                                for v, n in zip((lo, c, a, t, r, m, s), (1, 1, 1, 1, 1, 2, 1), strict=True)))
                           for k, lo, c, a, t, r, m, s in hist])
     conn.commit()
     return {"thresholds": th, "critical_speed": cs, "activities": len(rows),
             "fitness_days": conn.execute("SELECT COUNT(*) FROM fitness").fetchone()[0]}
+
+
+def total_daily_load(conn: sqlite3.Connection, start: str, end: str) -> float | None:
+    """Return a period total only when none of its derived days has incomplete load."""
+    return conn.execute("SELECT CASE WHEN COUNT(*) = COUNT(load) THEN SUM(load) END "
+                        "FROM fitness WHERE day BETWEEN ? AND ?", (start, end)).fetchone()[0]
 
 
 # --------------------------------------------------------------------------- sense checks
@@ -525,8 +579,9 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
     # 1. Our 7-day load vs Garmin's acute load (different models; should move together).
     rows = conn.execute(
         "SELECT f.day, f.atl, t.acute_load FROM fitness f JOIN training t USING(day) "
-        "WHERE t.acute_load IS NOT NULL AND f.day >= ?",
-        ((date.fromisoformat(asof) - timedelta(days=365)).isoformat(),)).fetchall()
+        "WHERE t.acute_load IS NOT NULL AND f.atl IS NOT NULL AND f.load IS NOT NULL "
+        "AND f.day BETWEEN ? AND ?",
+        ((date.fromisoformat(asof) - timedelta(days=365)).isoformat(), asof)).fetchall()
     r = _pearson([x[1] for x in rows], [x[2] for x in rows])
     add("ATL (TRIMP) vs Garmin acute load correlation", None if r is None else r > 0.7,
         f"r = {r:.2f} over {len(rows)} days" if r is not None else "not enough days",
@@ -572,7 +627,7 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
 
     # 6. Training load per run: our TRIMP vs Garmin load should correlate across runs.
     rows = conn.execute("SELECT trimp, garmin_load FROM activity_load WHERE type IN "
-                        "('running','trail_running','treadmill_running') AND garmin_load > 0"
+                        "('running','trail_running','treadmill_running') AND trimp IS NOT NULL AND garmin_load > 0"
                         ).fetchall()
     r = _pearson([x[0] for x in rows], [x[1] for x in rows])
     add("Per-run TRIMP vs Garmin training load", None if r is None else r > 0.6,

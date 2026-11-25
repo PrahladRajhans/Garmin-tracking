@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Self
+from uuid import uuid4
 
 from garmin_mcp import db, fit
 from garmin_mcp.config import db_path, fit_dir
@@ -152,17 +153,42 @@ def import_daily(conn: sqlite3.Connection, reader: ExportReader, names: list[str
     return {"files": files, "days_per_dataset": dict(sorted(counts.items()))}
 
 
-def import_snapshots(conn: sqlite3.Connection, reader: ExportReader, names: list[str]) -> list:
-    stored = []
+def _snapshots_already_retained(
+    conn: sqlite3.Connection, dataset: str, snapshots: list[Any],
+) -> bool:
+    current = conn.execute(
+        "SELECT payload FROM raw_range WHERE dataset=? AND start_day='all' AND end_day='all' "
+        "AND source=?", (dataset, SOURCE),
+    ).fetchone()
+    canonical = db.dumps(snapshots[-1])
+    if current is None or current[0] != canonical:
+        return False
+    earlier = {db.dumps(payload) for payload in snapshots[:-1]} - {canonical}
+    return all(conn.execute(
+        "SELECT 1 FROM raw_payload_history WHERE kind='range' AND dataset=? "
+        "AND record_key='all..all' AND source=? AND payload=? LIMIT 1",
+        (dataset, SOURCE, payload),
+    ).fetchone() is not None for payload in earlier)
+
+
+def import_snapshots(conn: sqlite3.Connection, reader: ExportReader, names: list[str]) -> list[str]:
+    grouped: dict[str, list[Any]] = defaultdict(list)
     for name in names:
         if not name.endswith(".json"):
             continue
         dataset = _match_prefix(name, SNAPSHOT_FILES)
         if dataset:
-            db.put_range(conn, dataset, "all", "all", SOURCE, json.loads(reader.read(name)))
-            stored.append(dataset)
-    conn.commit()
-    return sorted(set(stored))
+            grouped[dataset].append(json.loads(reader.read(name)))
+    with conn:
+        if grouped and not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        for dataset, snapshots in grouped.items():
+            # Preserve canonical selection and raw history when this bundle adds no information.
+            if _snapshots_already_retained(conn, dataset, snapshots):
+                continue
+            for payload in snapshots:
+                db.put_range(conn, dataset, "all", "all", SOURCE, payload)
+    return sorted(grouped)
 
 
 def _ms_to_str(value: Any) -> str | None:
@@ -323,7 +349,7 @@ def run_import(path: str | Path, conn: sqlite3.Connection | None = None) -> dict
 
             result["tidy_tables"] = rebuild(conn)
             errors = result["fit"]["errors"] or result["tidy_tables"].get("loads_error")
-            db.log(conn, "import", SOURCE, "export", str(path), "error" if errors else "ok",
+            db.log(conn, f"import-{uuid4().hex}", SOURCE, "export", str(path), "error" if errors else "ok",
                    "Some FIT files or derived tables could not be processed." if errors else None)
             conn.commit()
             return result

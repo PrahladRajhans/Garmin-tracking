@@ -29,7 +29,35 @@ def _parse_time(text: str) -> float | None:
     secs = 0
     for p in parts:
         secs = secs * 60 + p
-    return float(secs)
+    try:
+        return float(secs)
+    except OverflowError:
+        return None
+
+
+def parse_goal(goal: Any) -> tuple[float, float, date | None]:
+    """Validate the same race goal on input and when reading saved settings."""
+    if not isinstance(goal, dict):
+        raise TypeError("Race goal must include a distance_km and a target time.")
+    try:
+        distance = goal.get("distance_km")
+        dist_m = float(distance) * 1000
+        if isinstance(distance, bool) or not math.isfinite(dist_m) or dist_m <= 0:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ValueError("distance_km must be a positive, finite number") from error
+    target_s = _parse_time(goal.get("target"))
+    if not target_s:
+        raise ValueError("target must look like 'mm:ss' or 'h:mm:ss'")
+    race_day = None
+    if goal.get("date") not in (None, ""):
+        try:
+            race_day = date.fromisoformat(goal["date"])
+            if race_day.isoformat() != goal["date"]:
+                raise ValueError
+        except (TypeError, ValueError) as error:
+            raise ValueError("race date must be YYYY-MM-DD") from error
+    return dist_m, target_s, race_day
 
 
 def goal_check(conn: sqlite3.Connection, today: str | None = None) -> dict[str, Any]:
@@ -39,23 +67,12 @@ def goal_check(conn: sqlite3.Connection, today: str | None = None) -> dict[str, 
                 "question": athlete.PLACEHOLDERS["goal_race"][0],
                 "example": {"distance_km": 10, "date": "2027-03-01", "target": "50:00"}}
     try:
-        dist_m = float(goal["distance_km"]) * 1000
-    except (TypeError, ValueError, OverflowError):
-        return {"error": "distance_km must be a positive, finite number"}
-    if isinstance(goal["distance_km"], bool) or not math.isfinite(dist_m) or dist_m <= 0:
-        return {"error": "distance_km must be a positive, finite number"}
-    target_s = _parse_time(str(goal["target"]))
-    if not target_s:
-        return {"error": "target must look like 'mm:ss' or 'h:mm:ss'"}
+        dist_m, target_s, race_day = parse_goal(goal)
+    except ValueError as error:
+        return {"error": str(error)}
     today = today or conn.execute("SELECT MAX(day) FROM daily").fetchone()[0] or \
         date.today().isoformat()
-    weeks = None
-    if goal.get("date"):
-        try:
-            race_day = date.fromisoformat(goal["date"])
-        except (TypeError, ValueError):
-            return {"error": "race date must be YYYY-MM-DD"}
-        weeks = round((race_day - date.fromisoformat(today)).days / 7, 1)
+    weeks = round((race_day - date.fromisoformat(today)).days / 7, 1) if race_day else None
 
     th = loads.thresholds(conn, today)
     eff = loads.effective_vo2max(conn, today, th["hr_max"], 180) if th["hr_max"] else {}

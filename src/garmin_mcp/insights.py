@@ -465,16 +465,19 @@ def weekly_review(conn: sqlite3.Connection, end: str | None = None) -> dict[str,
         r = conn.execute(
             "SELECT COUNT(*), SUM(a.duration_s), SUM(CASE WHEN a.type LIKE '%run%' THEN "
             "a.distance_m END), SUM(l.trimp), SUM(l.garmin_load), SUM(l.z1_s), SUM(l.z2_s), "
-            "SUM(l.z3_s) FROM activities a JOIN activity_load l USING(activity_id) "
+            "SUM(l.z3_s), COUNT(l.trimp) FROM activities a JOIN activity_load l USING(activity_id) "
             "WHERE l.day BETWEEN ? AND ?", (a, b)).fetchone()
         return {"sessions": r[0], "hours": _r((r[1] or 0) / 3600, 2),
-                "run_km": _r((r[2] or 0) / 1000, 1), "trimp": _r(r[3] or 0.0),
+                "run_km": _r((r[2] or 0) / 1000, 1),
+                "trimp": _r(r[3] or 0.0) if r[8] == r[0] else None, "sessions_with_load": r[8],
                 "garmin_load": _r(r[4] or 0.0), "zone_s": [r[5] or 0, r[6] or 0, r[7] or 0]}
 
     week, prev4 = agg(start, end), agg(prev_start, prev_end)
-    avg_prev = {k: _r(prev4[k] / 4, 1) for k in ("sessions", "hours", "run_km", "trimp")}
+    avg_prev = {k: _r(prev4[k] / 4, 1) if prev4[k] is not None else None
+                for k in ("sessions", "hours", "run_km", "trimp")}
+    avg_prev["sessions_with_load"] = _r(prev4["sessions_with_load"] / 4, 1)
     z = week["zone_s"]
-    tz = sum(z) or 1
+    tz = sum(z)
     fit = conn.execute("SELECT ctl, atl, tsb, ramp, monotony, strain FROM fitness WHERE day=?",
                        (end,)).fetchone()
     longest = conn.execute(
@@ -483,10 +486,11 @@ def weekly_review(conn: sqlite3.Connection, end: str | None = None) -> dict[str,
         (start, end)).fetchone()
     trend = recovery.recovery_trend(conn, end, 7)["days"]
     sleep_vals = [d["sleep_h"] for d in trend if d["sleep_h"]]
-    change = (week["trimp"] / avg_prev["trimp"] - 1) * 100 if avg_prev["trimp"] else None
+    change = ((week["trimp"] / avg_prev["trimp"] - 1) * 100
+              if week["trimp"] is not None and avg_prev["trimp"] else None)
     return {
         "week": {"from": start, "to": end, **week,
-                 "intensity_pct": [round(100 * x / tz) for x in z],
+                 "intensity_pct": [round(100 * x / tz) for x in z] if tz else None,
                  "polarization_index": loads.polarization_index(*z)},
         "previous_4wk_weekly_avg": avg_prev,
         "load_change_pct": _r(change, 0) if change is not None else None,

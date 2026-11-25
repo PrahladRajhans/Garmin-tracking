@@ -140,7 +140,8 @@ def training_load(days: int = 42, end: str | None = None) -> dict[str, Any]:
                 "thresholds": loads.thresholds(c, e),
                 "meaning": "CTL = long-term load (fitness), ATL = 7-day load (fatigue), "
                            "TSB = CTL - ATL (form, yesterday's values). Units: Banister TRIMP. "
-                           "TSB bands are heuristics, not validated thresholds."}
+                           "Missing daily load means a recorded workout lacked usable inputs. "
+                           "The smoothed curves use measured load. TSB bands are heuristics."}
 
     return _with_db(run)
 

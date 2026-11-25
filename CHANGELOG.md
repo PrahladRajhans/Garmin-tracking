@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-25
+
+- Estimate running grade over a continuous distance window. Equivalent fast and slow
+  recording rates now agree on hill-adjusted pace, effort, form comparisons, and graded load.
+- Require measured coverage for sustained threshold pulse. Carry unknown workout load
+  through daily strain, weekly totals, charts, load flags, and model evidence.
+- Use actual local finish dates for training patterns, honor recorded timestamp offsets,
+  and isolate import attempts from earlier logs. Keep identical snapshot replays idempotent.
+- Use independently dated range payloads when tracing resting pulse and show disagreements.
+  Base owner coverage on usable signal dates, including sleep-only archives.
+- Choose the intraday pulse feed with better time coverage and omit malformed History values.
+- Announce committed chart taps and offer on-demand exact readings with active overlays.
+- Validate race goals consistently when saving or opening them.
+
 ## [0.31.0] - 2026-11-25
 
 - Add a reviewed Sleep interpretation with linked evidence. Distinguish model-written

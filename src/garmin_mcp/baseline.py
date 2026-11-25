@@ -1,5 +1,6 @@
 """Dated archive coverage and descriptive references for dashboard readings."""
 
+import json
 import math
 import statistics
 from datetime import date
@@ -83,3 +84,27 @@ def collect(conn, end):
         archive_start = min(archive_start or hrv_start, hrv_start)
         series["hrv"] = nightly_hrv(conn, hrv_start, end)
     return archive_start, series
+
+
+def resting_pulse_sources(conn, first, end):
+    """Collect independently dated Garmin resting estimates and preserve source conflicts."""
+    from garmin_mcp.normalize import daily_from_summary
+
+    datasets = ("pa_daily_summary", "user_summary", "ex_daily_summary")
+    rows = conn.execute(
+        "SELECT day,day,dataset,payload FROM raw_daily WHERE day BETWEEN ? AND ? "
+        "AND dataset IN (?,?,?) UNION ALL "
+        "SELECT start_day,end_day,dataset,payload FROM raw_range WHERE start_day<=? AND end_day>=? "
+        "AND dataset IN (?,?,?)", (first, end, *datasets, end, first, *datasets))
+    result = {}
+    for start, stop, dataset, payload in rows:
+        try:
+            records = daily_from_summary(json.loads(payload), exported=dataset == "ex_daily_summary")
+            for day, readings in records:
+                if max(first, start) <= day <= min(end, stop):
+                    value = readings.get("resting_hr")
+                    if _within(value, 1, 300):
+                        result.setdefault(day, {}).setdefault(dataset, set()).add(value)
+        except (TypeError, ValueError):
+            continue
+    return result
