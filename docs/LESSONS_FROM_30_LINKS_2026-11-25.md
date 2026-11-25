@@ -32,7 +32,8 @@ than repeating it.
 7. **Process: documentation and version numbers are growing faster than the product.** 8,359 lines
    of Markdown against 17,578 lines of Python source, and 23 version numbers (0.17.0 to 0.33.0) in about two days.
 8. **A Grok UI/UX brief agrees on the main product gap** (data and honesty are strong; the daily "what do I do?" layer is weak) **but ignores that the dashboard is a static file with no write path.** See [section 12](#12-second-opinion-groks-uiux-brief).
-9. **Small safety gaps:** workout deletion is protected only by a sentence in a tool description;
+9. **Second pass on UI/UX and AI outputs ([section 14](#14-second-pass-uiux-and-ai-outputs))** adds three keystone items (a facts registry, a shared language system and a posture engine), twelve AI-output items and fifteen UI items, with a combined order that starts by measuring before changing wording.
+10. **Small safety gaps:** workout deletion is protected only by a sentence in a tool description;
    the Personal API key has no expiry reminder; the repository holds personal details (private
    today, which matters if it is ever shared).
 
@@ -445,7 +446,102 @@ Reuse the five-second Today test from [PRODUCT_REVIEW_2026-11.md](PRODUCT_REVIEW
 section 5 on the real phone, and add Grok's checks: **time to decision**, **whether the primary action
 was accepted**, **whether "Show the facts" was opened**, and **zero strong claims resting on HRV alone**.
 
-## 13. Open questions and limits of this review
+## 14. Second pass: UI/UX and AI outputs
+
+Added 25 Nov 2026 at the owner's request ("especially improve the UI/UX and AI outputs"). **Proposals
+only.** Evidence base, stated plainly: my earlier screenshots of v0.17 to v0.21 builds, Grok's
+description of the v0.33 snapshot ([verbatim](external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md)),
+and the code. **I did not look at fresh v0.33 screens or at real model output from the owner's Mac
+in this pass**, so a few items below say "verify on the phone".
+
+### 14.1 What both reviews missed
+
+| Gap | Why it matters |
+|---|---|
+| **My list (sections 6 and 12) was infrastructure-heavy and light on the experience.** It had no content standards, no AI quality measurement and no definition of "decisive but safe". | The owner's complaint is about what they see and read, not about the architecture. |
+| **Grok's list is long (14 phases' worth) and assumes a 07:00 morning.** The owner's data shows sleep near 02:30 and waking late morning. | A "morning card" shown at the wrong time of day is wasted. Today should follow the owner's real day. |
+| **Neither says how to measure whether the AI text is any good.** | Without a measure, every wording change is opinion. This is a one-person product, so A/B tests are impossible; use fixed test cases and the owner's ratings. |
+| **Neither defines one shared language.** The same state appears as "recovered", "within your usual range", "normal" and "fresher than usual" in different places. | Inconsistent words make the product feel random, which is the owner's word for Trends. |
+| **Neither notes the latency budget.** The local model must finish each item in about 20 seconds on a 3 to 4 billion parameter model. | Any richer output contract has to fit that budget. |
+| **Neither treats trust failures as the top UX risk.** An unexplained reading (the 44 bpm question) costs more than any polish gains. | A visible "does this match Garmin" reconciliation belongs in the product, not only in the verify command. |
+
+### 14.2 Keystone items (do first; the rest depend on them)
+
+| ID | Item | What it is | Effort | Depends on |
+|---|---|---|---|---|
+| **K1** | **Facts registry** | Every number or claim shown anywhere (card, chart caption, AI sentence, MCP answer, future message) is a typed fact: id, value, unit, as-of date, window, source, sample size, coverage. One definition feeds the UI, the AI, chart text alternatives, tests and Claude. Generalises G11. Start with Today only. | Medium | none to start; M4 helps later |
+| **K2** | **Language system** | One `vocabulary` module: posture words, recovery-band words, confidence words, trend words (improving, steady, slipping), data-state words (fresh, older, partial, building up). Plus number-format rules (see 14.3). Plus a **copy lint** test over the rendered fixture HTML and all rule-based text: banned patterns, jargon list (TRIMP, CTL, z-score, decoupling and so on), sentence length, reading level. | Quick to medium | none |
+| **K3** | **Posture engine** | The decisive recommendation as an explicit decision table with four postures: **go as planned**, **go easier**, **move but don't train**, **rest**. Inputs: recovery state, sleep shortfall, load, knee check-in, illness flag, data freshness. Output: one posture, a default action, an alternative if the user feels off, the signals used. Rules: low confidence downgrades to "as planned, check how you feel"; it never says "go harder" with an illness flag, a knee rating of 4 or more, or a large sleep shortfall. Tested as a truth table. Replaces today's soft "Follow your planned effort if you feel well." | Quick to medium | K2 |
+
+### 14.3 AI output items
+
+| ID | Item | Detail | Effort | Depends on |
+|---|---|---|---|---|
+| A1 | **Output contract** | Every insight is a typed object: *observation* (facts), *interpretation* (the personal comparison), *suggestion* (one action, optional alternative), *confidence*, *as-of date*, *kind*. The model fills wording only; the renderer builds the card from the object, so a user can reject the suggestion without rejecting the data. | Medium | K1 |
+| A2 | **Confidence computed by rule** | High, medium or low from signals agreeing, data coverage, baseline length, sample size and recency, with fixed phrases. The model can never raise it. | Quick to medium | K1 |
+| A3 | **Mixed-signal handling** | An explicit disagreement table (for example HRV up but sleep short) producing a fixed "signals are mixed" template and what would settle it ("check tomorrow's resting pulse"). | Quick | K1 |
+| A4 | **Ranking, repetition control and decay** | An insight history. Show "new today" versus "still true"; suppress a repeat unless a value changed; cap Today at three; rank in Python by impact, actionability, novelty and recency. The model may only break ties. | Medium | K1 |
+| A5 | **"What changed since yesterday" line** | A one-line diff of posture, signals and insights at the top of Today. v0.24 already shows a changed decision; extend it. | Quick | K3 |
+| A6 | **Personal rules of thumb with their limits** | "+5.7 readiness per extra hour of sleep, 232 days, range 4.3 to 7.2", labelled as an association from this person's data. Recomputed weekly; retired when the interval crosses zero. | Quick to medium | K1 |
+| A7 | **Fixed-template safety tier** | Anything near a symptom (very low or high resting pulse, illness flag, knee at 4 or more, sustained short sleep) is always worded by rules, never rewritten by a model, with a non-diagnostic "when to talk to a professional" line. Tests forbid diagnostic words. | Quick | K2 |
+| A8 | **Evaluation harness** | About 30 fixed scenarios (short sleep with normal HRV; HRV drop with good sleep; detraining; knee flag; stale sync; sparse running; a travel gap and others), each with the expected posture, required facts and forbidden claims. Run on rule text in CI; run on each model through `garmin-mcp-narrator --eval`; record acceptance rate and latency. **Build this before changing any wording**, so changes can be measured. | Medium | none for rule text |
+| A9 | **Owner feedback capture** | `rate_insight(id, useful / not useful / wrong, note)` through Claude now; dashboard buttons only once a write path exists (G8). Ratings tune ranking and prompts; they never loosen safety. A 60-second weekly review through Claude. | Quick | K1 |
+| A10 | **Ask-Claude bridge** | Each insight carries a "copy this question" button with a prefilled prompt that includes its fact ids, plus an MCP tool that returns the facts, method and alternatives for an insight id. Connects the dashboard to the deep-question tool without any server. | Quick to medium | K1 |
+| A11 | **Weekly story with continuity** | The Sunday summary references last week's focus and what happened, ties to experiments, one lever, about 120 words. A Sunday summary exists; add continuity and closure. | Quick | A4 |
+| A12 | **Pre-formatted numbers in prompts** | Pass display strings ("6 h 18 min", "5:54 per km") as facts so the model copies instead of formatting, and the validator checks the copy. Cuts rejections and false precision. | Quick | K2 |
+
+**Number and wording standards (part of K2):**
+- **Round to what the sensor can support:** pulse and HRV as whole numbers, sleep to the nearest 5 minutes, pace as m:ss, scores with no decimals. Grok's sample shows "96.0" and "99 min per usable night"; both are false precision.
+- **Numbers first, then words.** Every number carries its unit and what is normal for the owner.
+- **Short:** at most 20 words per sentence, at most 2 sentences per insight before "Show the facts", reading grade about 8.
+- **Observation, then personal baseline, then implication, then optional action** (Grok's pattern, adopted).
+- **One confidence ladder** (A2) with the same phrases everywhere.
+
+### 14.4 UI and UX items
+
+| ID | Item | Detail | Effort | Depends on |
+|---|---|---|---|---|
+| U1 | **Time-aware Today** | The page reads the device clock and the owner's configured wake and bed times. Morning shows readiness and the plan; daytime shows progress against the plan and the movement floor; evening shows wind-down, the bedtime target and a tomorrow preview. Variants are precomputed, so it works offline. | Medium | K3 |
+| U2 | **Decision-surface budget as a release gate** | At 390 by 844: one hero sentence of 20 words or fewer, one primary action, three tiles at most, about 60 words above the fold. Checked automatically in the browser test, then by the owner's five-second test on the phone each release. | Quick | none |
+| U3 | **State matrix for every card** | Fresh, older, partial, none, building up, error: fixed wording and look for each, with fixture screenshots. Today these states are ad hoc. | Medium | K2 |
+| U4 | **"Building up" progress strip** | Replace hidden or empty cards with one strip of progress meters ("Similar runs 1 of 3 · Bedtime trial 2 of 7 nights · Patterns need 30 days"). Honest and motivating; refines the earlier "hide empty cards" rule. | Quick | U3 |
+| U5 | **Range bars as the default metric visual** | In Coach mode, show where a value sits within the owner's usual range, with a last-week marker, instead of a line chart. Line charts stay in Detail mode. | Medium | G5 |
+| U6 | **Chart recipes tied to questions** | One question per surface. Before-versus-after dumbbell for experiments; calendar heat map for consistency; waterfall for sleep debt; sparkline with band for tiles; small multiples for sleep stages. At most one new chart type per release, and each must state the question it answers. | Medium | none |
+| U7 | **Chart text from facts** | One generated sentence per chart used as the screen-reader label, the visible caption in Coach mode and the AI's input. Same source as K1. | Medium | K1 |
+| U8 | **Gap-aware "welcome back"** | Detect missing days or a sync lapse; say what is missing and what changed, without scolding. | Quick | U3 |
+| U9 | **Night-friendly display** | A dim, warm theme from the configured evening time. A sleep product should not flash bright white at 2 am. Respects reduced motion and contrast. | Quick | none |
+| U10 | **Performance budget** | Set a target for first paint and time to interact on the owner's phone. Options: skip rendering off-screen pages with CSS `content-visibility` (**support on the owner's iOS version not verified**), and build each page's charts from compact data when it is first opened. | Medium | M3 helps |
+| U11 | **Accessibility gate** | Automated checks on fixture states (contrast in both themes, 44-pixel targets, focus order, reduced motion), plus a VoiceOver pass on the phone each release. | Medium | none |
+| U12 | **Visual regression gate** | Screenshots at 390, 768 and 1200 pixels in light and dark on the fixture, reviewed as a diff before each merge and kept as build artifacts, not committed. | Medium | none |
+| U13 | **Settings that matter** | Wake time, bedtime target, units, default mode and detail level (concise or fuller) in the athlete config; detail level sets the length cap for generated text. | Quick | none |
+| U14 | **Week card for sharing** | One printable page for a coach or clinician, generated from facts (Grok's export idea). | Quick | K1 |
+| U15 | **Visible data check** | In Detail mode, a short "does this match Garmin" panel summarising the reconciliations the verify command already runs. Protects trust. | Quick | none |
+
+### 14.5 Measurement (no A/B tests with one user)
+- **Time to decision:** the five-second Today test, each release.
+- **Within-person comparisons:** run a change on, off, on (ABA) and compare ratings.
+- **Weekly 60-second review through Claude:** "Did you follow Tuesday's suggestion? Did it feel right?" plus the A9 ratings.
+- **Hard checks that never rely on opinion:** the A8 scenarios, the copy lint, the truth table, and zero strong claims resting on HRV alone.
+
+### 14.6 Updated combined order (supersedes the order in 12.5)
+
+| Wave | Items | Why this order |
+|---|---|---|
+| **0, days, no dependencies** | **A8 (rule-text scenarios first), K2, K3**, then G1 (hero), G2, A5, U2, A12, U13; Q1, Q2, Q4 | Measure before changing; fix the language and the decision logic once, then everything built on them is consistent |
+| **1** | K1 (Today first), A1, A2, A3, A7, U3, U4, G9, Trends board (Q5) | The contract and the facts layer that the rest reuse |
+| **2** | A4, A6, A9, A10, U1, U5, U6, U7, U9, G5, G6, G7 | The experience changes the owner will feel |
+| **3** | A11, U8, U10, U11, U12, U14, U15, M1 | Quality gates and the standalone decision |
+| **4 (after the hosting decision)** | G8, G12, G13, J1 and the items that need a write path | Depend on infrastructure that does not exist yet |
+
+### 14.7 Ownership and conflict notes
+- K1 and K2 add new modules (facts and vocabulary); they should be owned by one agent at a time so
+  wording and facts do not drift between parallel changes.
+- `dashboard.py` is still the hot file; apply U-items through small components after the split (M3)
+  where possible, and sequence them between ChatGPT's PRs.
+- All A-items must fit the local model's roughly 20-second budget per item; where they do not, the
+  rule-based text is the fallback and must itself meet the standards above.
+
+## 15. Open questions and limits of this review
 
 - I read READMEs, not source code, and ran none of the projects. Claims about breakage (11, 16) and
   performance (3) are the projects' own.
@@ -455,4 +551,5 @@ was accepted**, **whether "Show the facts" was opened**, and **zero strong claim
 - Token-cost figures are estimates (characters ÷ 4).
 - The database sizes come from a 23 Nov cloud copy, not from the owner's Mac.
 - Nothing here was tested on the owner's devices.
+- Section 14 is based on earlier screenshots, Grok's description and the code, not on a fresh look at v0.33 screens or real Mac model output; CSS `content-visibility` support on the owner's iOS version was not verified.
 - Section 12: I did not read every one of Grok's 36 sections in depth (I read sections 0 to 5, 13, 22 to 24, 32 to 33 and 35); the audit covers its claims about this product and the two citations I could check.

@@ -1,6 +1,6 @@
 # Handover: Garmin-tracking (state at v0.32.0, 2026-11-25)
 
-> **Latest independent review (25 Nov 2026):** [docs/LESSONS_FROM_30_LINKS_2026-11-25.md](docs/LESSONS_FROM_30_LINKS_2026-11-25.md) holds a prioritised improvement backlog (quick, medium, major, with dependencies), the standalone/no-Mac analysis and Trends page options. It also audits Grok's UI/UX brief ([stored verbatim](docs/external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md)) and merges both into one priority list (§12). Proposals only; pick items from there.
+> **Latest independent review (25 Nov 2026):** [docs/LESSONS_FROM_30_LINKS_2026-11-25.md](docs/LESSONS_FROM_30_LINKS_2026-11-25.md) holds a prioritised improvement backlog (quick, medium, major, with dependencies), the standalone/no-Mac analysis and Trends page options. It also audits Grok's UI/UX brief ([stored verbatim](docs/external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md)) and merges both into one priority list (§12). §14 is a second pass on UI/UX and AI outputs with a wave order (start with measurement and language, then the facts layer). Proposals only; pick items from there.
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 

@@ -1,5 +1,7 @@
 # Local Ollama narrator
 
+> **Proposed output standards and evaluation:** [Lessons document §14](../docs/LESSONS_FROM_30_LINKS_2026-11-25.md#14-second-pass-uiux-and-ai-outputs) proposes a typed insight contract, rule-computed confidence, a fixed-template safety tier, pre-formatted numbers in prompts and a 30-scenario evaluation harness (items A1 to A12). Proposals only; this page describes what is built.
+
 The narrator is off by default. Enable it on the Mac using [Mac setup](../MAC_SETUP.md#local-ai-narrator-optional).
 Python calculates the numbers and training guidance, qualifies findings for the dashboard, and
 checks the model's response. The saved dashboard can be read on a phone. Ollama runs on the
