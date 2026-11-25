@@ -46,6 +46,9 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
    `~/Library/LaunchAgents/com.garmin-mcp.sync.plist` running
    `/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp-sync --days 3`, StartInterval 10800,
    stdout/stderr to `~/.garmin-mcp/sync.log`; then `launchctl load` it.
+   Intraday Stress and Body Battery need the Connect timeline. Garmin returned none for dates
+   older than a few months, so after first setup (or after upgrading from before v0.32.1) run
+   once: `.venv/bin/garmin-mcp-sync --days 180 --force`.
 7. **Updates later**: `git pull && .venv/bin/pip install -e .`, then restart the Claude
    desktop app. The dashboard is at `~/.garmin-mcp/dashboard/index.html` (rebuilt after each
    sync; `open` it).
@@ -79,7 +82,14 @@ background against the existing archive after enabling, dashboard builds, and sc
    curl --noproxy '*' -fsS http://localhost:11434/api/status
    ```
 
-   If this endpoint is unavailable, update Ollama. The narrator requires this confirmation
+   In the Ollama app, keep **Expose Ollama to the network** off. This should show
+   `127.0.0.1:11434`, not `*:11434`:
+
+   ```bash
+   lsof -nP -iTCP:11434 -sTCP:LISTEN
+   ```
+
+   If the status endpoint is unavailable, update Ollama. The narrator requires this confirmation
    before it sends any facts. See [Ollama's local-only settings](https://docs.ollama.com/faq#how-do-i-disable-ollama-cloud-features).
 3. Pull the default local model. From the updated repo, reinstall the package and enable the narrator:
 

@@ -50,6 +50,13 @@ the activity as handled. The next successful sync repairs activities within its 
 window. Run an explicit older date window if an older activity needs recovery. Already stored
 details and raw revisions stay in place.
 
+## Tests and temporary data folders
+
+The test suite runs with a temporary home folder. When running commands by hand against a copy of
+the archive, note that `GARMIN_DATA_DIR` does not redirect the iCloud mirror: a dashboard build
+into that folder's default location still writes `iCloud Drive/Garmin/dashboard.html`. Also set
+`HOME` to a temporary folder, or pass a separate output directory.
+
 ## Code-update failure
 
 The updater saves a per-checkout pending-install marker in the data directory before changing
