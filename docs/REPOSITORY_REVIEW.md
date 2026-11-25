@@ -128,3 +128,52 @@ has an explicit [MIT license and author attribution](../LICENSE).
 
 The release check passed 289 tests and the 36-month synthetic replay. The Mac archive,
 physical iPhone and the wider manual audit are separate from this release check.
+
+## 25 November continuation audit
+
+The inventory is pinned to release commit `569eedf8325a50c32199cc5c51cca35cc2502ea5`
+(v0.29.0). All 173 tracked paths were reconciled against the existing register. The preceding
+register covered 172 of them. The missing `tests/test_archive_audit.py` is now recorded. All
+85 Python files, totaling 19,858 lines, parsed as Python. The eight package console-script
+targets resolve to functions, and the server declares 57 MCP tools. The 289 relative Markdown
+file-link occurrences resolve within the pinned tree. The automated pass covers syntax, paths,
+and registration. It does not establish behavior of all branches or verify external link
+availability and Markdown anchors.
+
+| Pinned code reviewed | Caller, behavior and verification |
+|---|---|
+| [Auto-update, lines 24–110](../src/garmin_mcp/autoupdate.py#L24) | The sync CLI honors no-update and repair status. The updater checks tracked edits and ancestry, pulls with fast-forward only, persists a pending-install marker before changing the checkout, and retains the marker on install failure. Targeted tests cover the disabled, diverged, failed-install, and subsequent retry paths. The real launchd checkout and package environment remain open. |
+| [Sync, lines 70–429](../src/garmin_mcp/sync.py#L70) | Scheduled, forced, historical and skipped-fetch paths share the refresh path. Incomplete source or derived-load results preserve the retry flag. Fetch success can still mean a source returned no measurement. The dashboard refresh can retry on a skipped fetch. Targeted tests cover both retry paths and day boundaries. |
+| [Archive import, lines 122–318](../src/garmin_mcp/importer.py#L122), [FIT retention and write, lines 42–105 and 208–223](../src/garmin_mcp/fit.py#L42) | The import keeps existing API activity summaries, matches activity FIT by unique nearest start time, retains changed bytes by hash, and uses a write savepoint for decoded activity data. Monitoring messages need a separate preview and source reconciliation. Imports commit completed phases, so an uncaught error need not undo earlier successful phases. |
+| [Normalization, lines 144–213 and 408–493](../src/garmin_mcp/normalize.py#L144), [SQLite store, lines 159–264](../src/garmin_mcp/db.py#L159) | Reviewed dated versus rolling resting pulse, raw-row upserts and field-by-field source precedence. A synthetic SQLite authorizer denied a replacement insert and reproduced loss of the prior first normalized table despite rollback. The new savepoint protects all normalized table replacements. Regression checks deny writes into the first and a later table, confirm the previous rows survive, then verify a successful retry. |
+| [Archive audit, lines 12–67](../src/garmin_mcp/archive_audit.py#L12), [CSV, lines 24–110](../src/garmin_mcp/archive_export.py#L24), [Verifier, lines 210–344](../src/garmin_mcp/verify.py#L210) | Traced stored versus usable wellness days, recorded FIT reference versus reachability and decode status, new-file-only export, temporary replay and default verifier behavior. Explicit audit, replay and CSV inputs are read-only. The default verifier opens the configured database normally and rebuilds tables. Fixtures use generated records. |
+| [Pages publishing, lines 35–234](../src/garmin_mcp/publish.py#L35), [MCP workout paths, lines 315–357](../src/garmin_mcp/server.py#L315) | The opt-in publisher validates production and preview Access policy, checks anonymous redirects and stages the latest HTML under a lock. Fake-provider tests cover successful guarded upload, unsafe configuration, retries, publication ordering and deduplication. Workout list/delete and explicit upload use Garmin Connect. This continuation did not deploy a snapshot or mutate Garmin. |
+
+The independent baseline operations run passed 63 tests across self-update, publishing, archive
+audit/export, import, storage history and sync. The normalized-table fix covers its own writes.
+Derived activity-load and fitness tables still rebuild as the next operation under their existing
+commit behavior. Guaranteeing atomic replacement for that separate generation needs its own
+review, including settings reads that can invoke SQLite `executescript`.
+
+The current release also received a focused manual trace of the following paths.
+
+| Release code reviewed | Caller, behavior and verification |
+|---|---|
+| [Dashboard output and recommendation history](../src/garmin_mcp/dashboard.py#L3174), [evidence and comparison](../src/garmin_mcp/coach_review.py#L9) | Dashboard build uses the snapshot lock during replacement and records the current guidance after the ordinary build succeeds. It skips partial and historical builds and keeps background narration rebuilds out of guidance history. Local and iCloud copies are separate atomic replacements. Four fixtures cover recommendation changes, unavailable readings, wellness evidence and cadence follow-up. |
+| [Ollama item selection and transport](../src/garmin_mcp/narrator.py#L523), [detached worker](../src/garmin_mcp/narrator.py#L845) | Post-run, Running, daily and Sunday requests have separate evidence and cache identity. Selection, drafted text and fixed fallbacks remain distinguishable. Superseded or retrying syncs cannot replace a newer dashboard. Mac timing, failure recovery and prose quality are owner acceptance. |
+| [Chart interaction](../src/garmin_mcp/dashboard_interaction.py#L8) | HTML contains the responsive chart drawings. JavaScript initializes visible charts near the viewport or on keyboard focus, retaining the eager fallback without `IntersectionObserver`. The HTML still contains the underlying drawings and data and needs physical iPhone performance measurements. |
+
+The exhaustive manual review of remaining analytics, renderer, prompt, and legacy branches is
+open. The earlier register preserves past review evidence, and the pinned inventory and code
+paths above identify the additional coverage for this release. Owner acceptance also remains
+open for the private archive, Mac-scheduled operations, live Garmin, and the physical iPhone.
+
+## v0.30.0 release check
+
+Ruff and all 311 tests passed. The 36-month synthetic replay found zero broken
+fragment links or duplicate IDs and preserved the source database hash. Eight
+Chromium/WebKit integrated layouts passed. The live structured coaching evaluation
+accepted the expected model topic in two of three eligible examples. A grounded
+rule replaced the lower-value third choice. See
+[the 14-item execution status](../ROADMAP.md#25-november-execution-status) for
+the separate checks on private data, devices and the remaining manual branches.

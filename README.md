@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.29.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.30.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -23,6 +23,7 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 | [HANDOVER.md](HANDOVER.md) | **Start here:** goal, story, every formula with file and source, how ours differs from Garmin and the apps, known issues, what's left |
 | [docs/CHATGPT_HANDOVER_PROMPT.md](docs/CHATGPT_HANDOVER_PROMPT.md) | Ready-to-paste prompt for handing the project to ChatGPT |
 | [Independent review guide](docs/REVIEW_START_HERE.md) | Follow each reading from Garmin to the dashboard and model, with fixture and account-specific checks |
+| [Owner acceptance](docs/OWNER_ACCEPTANCE.md) | Verify private archive, dated pulse and local model support on the Mac |
 | [Garmin ecosystem review](docs/GARMIN_ECOSYSTEM_REVIEW.md) | 40 reviewed repository links, public forum evidence, decisions and tradeoffs |
 | [Garmin source register](docs/GARMIN_DATA_REVIEW.md) | Device and API evidence, research citations, and opportunities requiring archive verification |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |

@@ -43,6 +43,7 @@ from garmin_mcp import (
     narrator,
     norms,
     readiness_benchmark,
+    reading_availability,
     recovery,
     route_review,
     run_evidence,
@@ -52,6 +53,7 @@ from garmin_mcp import (
     signal_context,
     sleep_review,
     trials,
+    wellness_review,
 )
 from garmin_mcp.dashboard_interaction import CONTENT_POLICY, SCRIPT
 
@@ -86,6 +88,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     if not _has(conn, "daily") or not insights._latest_day(conn):
         return {"available": False, "reason": "No Garmin data is available yet. Sync or import "
                 "your history on the Mac to build your dashboard."}
+    explicit_date = end is not None
     end = end or insights._latest_day(conn)
     e = date.fromisoformat(end)
     zone = engine._tz(conn)
@@ -131,10 +134,15 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     sleep_data = sleep_review.collect(conn, end, zone, need_h)
     if runs:
         runs[0]["route_review"] = route_review.compare(conn, runs[0])
+    brief = insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"])
+    retry = conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone() is not None
+    availability_day = end if explicit_date else datetime.now(zone).date().isoformat()
+    availability = reading_availability.collect(conn, availability_day, zone, brief=brief, retry=retry)
     return {
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
         "sleep_review": sleep_data,
         "sleep_shortfall": recovery.sleep_shortfall_review(conn, end),
+        "wellness_review": wellness_review.collect(conn, end),
         "bedtime_experiment": bedtime_experiment.status(conn, end, sleep_data, need_h),
         "wake_followup": coach_loop.wake_followup(sleep_data["nights"], end),
         "rested_review": coach_loop.rested_review(conn, end),
@@ -143,7 +151,9 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "movement": coach_loop.movement(conn, end),
         "older_snapshot": e != datetime.now(zone).date(),
         "history": scores.history(conn, end, 14),
-        "brief": insights.daily_brief(conn, end, signals=signals, patterns=explore["pairs"]),
+        "brief": brief,
+        "reading_availability": availability,
+        "guidance_evidence": coach_review.decision_evidence(end, brief, signals),
         "night": health.sleep_breakdown(conn, night) if night else None,
         "night_summary": night_summary,
         "bedroom_conditions": environment_review.bedroom(conn, end),
@@ -172,22 +182,13 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
         "explore": explore,
         "tests": running.test_runs(conn, read_metrics=read_run, end=end),
         "vo2_reference": norms.comparison(conn, end),
-        "sync_retry_required": conn.execute("SELECT 1 FROM meta WHERE key='sync_retry_required'").fetchone()
-        is not None,
+        "sync_retry_required": retry,
     }
 
 
 def _last_full_sync(conn: sqlite3.Connection, zone) -> str | None:
-    row = conn.execute("SELECT value FROM meta WHERE key='last_full_sync'").fetchone()
-    if not row or not row[0]:
-        return None
-    try:
-        timestamp = datetime.fromisoformat(row[0])
-    except ValueError:
-        return None
-    if timestamp.tzinfo is None or timestamp > datetime.now(UTC):
-        return None
-    return timestamp.astimezone(zone).strftime("%-d %b %Y, %H:%M %Z")
+    timestamp = reading_availability.complete_sync(conn, datetime.now(UTC))
+    return timestamp.astimezone(zone).strftime("%-d %b %Y, %H:%M %Z") if timestamp else None
 
 
 def _has(conn: sqlite3.Connection, t: str) -> bool:
@@ -714,6 +715,18 @@ def _overview_tile(label: str, value: str, note: str, target: str, symbol: str) 
             f'<small>{_e(note)}</small></a>')
 
 
+def _nap_note(review):
+    if not review or not review["nap_days"]:
+        return ""
+    today = review["latest_nap_s"]
+    current = f'{_sleep_time(today / 3600)} of naps recorded for {_date_label(review["end"])}. ' if today else (
+        "Garmin reported zero nap minutes for the snapshot date. " if today == 0 else "")
+    return (f'<p>{_e(current)}'
+            f'{review["nap_positive_days"]} of {review["nap_days"]} dates with an explicit nap total had naps. '
+            f'These {review["nap_days"]} dates come from the last 29 calendar days. '
+            'Nightly sleep and nap totals are shown separately.</p>')
+
+
 def _sleep_time(hours: float) -> str:
     minutes = round(hours * 60)
     h, m = divmod(minutes, 60)
@@ -734,8 +747,66 @@ def _sunday_story(d: dict) -> str:
     plan = d["brief"]["week_ahead"]
     basis = f'<p class="sub">{_e(plan["basis"])}</p>' if plan.get("basis") else ""
     return _card("Sunday review", intro + f'<p><strong>Next focus</strong> · {_e(plan["plan"])}</p>'
-                 f'{basis}'
+                 f'{basis}{_weekly_cue_review(d)}'
                  f'<a class="flow-link" href="#training">Review the week{icon("chev")}</a>', wide=True)
+
+
+def _weekly_cue_review(d):
+    trial = d.get("trial") or {}
+    if (d.get("older_snapshot") or d.get("sync_retry_required") or not trial.get("active")
+            or trial.get("trial", {}).get("kind") != "cadence"):
+        return ""
+    attempts = trial.get("attempts", ())
+    measured = sum(any(change["metric"] == "efficiency_factor" for change in a.get("changes", ()))
+                   for a in attempts)
+    next_step = trial["next"]
+    if d["brief"].get("knee_pause") or d["brief"]["focus"]["title"] in {
+            "Pause training today.", "Rest today or choose very easy movement."}:
+        next_step = "Pause the experiment. See today’s guidance before planning another attempt."
+    return (f'<p><strong>Cadence experiment</strong> · {len(attempts)} recorded '
+            f'attempt{"s" if len(attempts) != 1 else ""} · {measured} with a comparable effort reading.</p>'
+            f'<p>{_e(next_step)}</p>')
+
+
+def _reading_availability_card(d, *, compact=False):
+    info = d.get("reading_availability")
+    if not info:
+        return ""
+    states = {"recorded": "Recorded for this date", "awaiting_sync": "Awaiting a complete sync",
+              "incomplete": "Incomplete night", "absent": "No usable reading for this date"}
+    rows = []
+    for metric in info["rows"].values():
+        note = (f'Latest usable reading {_date_label(metric["latest"])}.'
+                if metric["latest"] else "No earlier usable reading in this archive.")
+        rows.append(_row(metric["label"], _e(states[metric["state"]]), note))
+    if not info["published_guidance"]:
+        headline = "Guidance for today is waiting for a current, completed sync."
+    elif info["score_available"]:
+        headline = f'Recovery calculation uses {len(info["usable"])} measures.'
+    else:
+        headline = (f'{len(info["usable"])} recovery measures have enough coverage. '
+                    f'The score needs at least {info["minimum"]}.')
+    used = (f'<p class="sub">{_e(", ".join(info["usable"]))}.</p>' if info["usable"] else "")
+    details = used + f'<ul class="rows">{"".join(rows)}</ul>'
+    if compact:
+        missing = sum(row["state"] != "recorded" for row in info["rows"].values())
+        details = (f'<details><summary>{missing} reading{"s" if missing != 1 else ""} '
+                   f'missing or incomplete</summary>{details}</details>')
+    return _card("Which readings are available?", f'<p>{_e(headline)}</p>{details}',
+                 f'For {_date_label(info["day"])}', wide=True)
+
+
+def _decision_sources(d):
+    evidence = d.get("guidance_evidence", ())
+    if not evidence:
+        return ""
+    rows = "".join(_row(row["label"], "", row["detail"]) for row in evidence)
+    previous = (d.get("guidance_change") or {}).get("previous", {})
+    earlier = "".join(_row(row["label"], "", row["detail"]) for row in previous.get("evidence", ()))
+    return ('<details><summary>Readings behind this recommendation</summary>'
+            f'<ul class="rows">{rows}</ul>'
+            + (f'<p>Behind the previous recommendation</p><ul class="rows">{earlier}</ul>' if earlier else "")
+            + '</details>')
 
 
 def page_today(d: dict[str, Any]) -> str:
@@ -778,7 +849,7 @@ def page_today(d: dict[str, Any]) -> str:
         width = "" if has_activity else " wide"
         body += (f'<section class="card today-focus{width}"><p class="focus-label">{label}</p>{previous}'
                  f'<h3>{_e(focus["title"])}</h3>'
-                 f'{detail}{more}</section>')
+                 f'{detail}{more}{_decision_sources(d)}</section>')
         body += _resting_pulse_card(snapshot.get("resting_pulse_check"), flagged_only=True)
     if training_n:
         rows = [_record_link(_workout_name(a),
@@ -790,6 +861,9 @@ def page_today(d: dict[str, Any]) -> str:
                       f'<ul class="record-list">{"".join(rows)}</ul>', wide=not has_activity)
     body += ('<section class="overview wide" aria-label="Today’s readings">'
              f'<h3>Health &amp; activity</h3><div class="overview-tiles">{tiles}</div></section>')
+    availability = d.get("reading_availability", {})
+    if any(metric["state"] != "recorded" for metric in availability.get("rows", {}).values()):
+        body += _reading_availability_card(d, compact=True)
 
     anchor = d.get("sleep_review", {}).get("anchor", {})
     bedtime_plan = d.get("bedtime_experiment", {})
@@ -1099,6 +1173,8 @@ def page_sleep(d: dict[str, Any]) -> str:
                       f'{_f(dip["sleep_mean_hr"])} bpm asleep.</p>', wide=True)
     body += _sleep_journal(d)
     body += _bedroom_card(d["bedroom_conditions"])
+    if note := _nap_note(d.get("wellness_review")):
+        body += _card("Recorded naps", note, wide=True)
     return _page("sleep", "Sleep", "", body)
 
 
@@ -1166,6 +1242,32 @@ def _hrv_summary(context: dict[str, Any]) -> str:
             f'{context["nights_in_7d"]}/7 nights{delta}</p><p class="sub">{note}</p>')
 
 
+def _wellness_recovery_card(review):
+    if not review:
+        return ""
+    rows = []
+    for key, label in (("charge", "Charge"), ("drain", "Drain")):
+        if total := review[key]:
+            rows.append(_row(label, _e(f"{total[0]:g} points"), f"Daily median · {total[1]} recorded days"))
+    if match := review["sleep_compare"]:
+        rows.append(_row("Charge and overnight sleep", _e(f'{match["first"]:g} vs {match["second"]:g} points'),
+                         f'Below Garmin sleep target ({match["first_count"]} days) vs '
+                         f'met target ({match["second_count"]} days).'))
+    if match := review["run_compare"]:
+        rows.append(_row("Drain on days with a recorded run", _e(f'{match["second"]:g} vs {match["first"]:g} points'),
+                         f'{match["second_count"]} dates with a run vs '
+                         f'{match["first_count"]} dates without a recorded run.'))
+    if match := review.get("nap_compare"):
+        rows.append(_row("Drain on dates with recorded naps", _e(f'{match["second"]:g} vs {match["first"]:g} points'),
+                         f'{match["second_count"]} dates with naps vs '
+                         f'{match["first_count"]} dates with an explicit zero nap total.'))
+    if not rows:
+        return ""
+    return _card("Body Battery over 28 days", f'<ul class="rows">{"".join(rows)}</ul>',
+                 "Garmin’s daily point totals before the snapshot date. The comparisons describe "
+                 "recorded days. Other activity and conditions can affect the totals.", wide=True)
+
+
 def page_recovery(d: dict[str, Any]) -> str:
     hv = [(x["day"], x.get("hrv_7d_ms")) for x in d["hrv"]]
     bands = [tuple(x["hrv_band_ms"]) if x.get("hrv_band_ms") else None for x in d["hrv"]]
@@ -1194,6 +1296,8 @@ def page_recovery(d: dict[str, Any]) -> str:
         score += f'<details class="recovery-history"><summary>Last 14 days</summary>{chart}</details>'
     body = (_resting_pulse_card(d["calendar"]["days"].get(d["end"], {}).get("resting_pulse_check"),
                                 flagged_only=True) + _card("Recovery score", score, wide=True)
+            + _reading_availability_card(d)
+            + _wellness_recovery_card(d.get("wellness_review"))
             + _card("Heart rate variability", _hrv_summary(d["hrv_context"]) + hrv_chart,
                   "HRV measures variation in time between heartbeats. Compare the seven-day average "
                   "with your usual range.", wide=True)
@@ -1343,6 +1447,8 @@ def page_training(d: dict[str, Any]) -> str:
         plan = _card("Planned and done", guidance + (f'<ul class="record-list">{rows}</ul>' if rows else ""),
                      wide=True)
     body = plan + week_card
+    if cue_review := _weekly_cue_review(d):
+        body += _card("Coaching follow-up", cue_review, wide=True)
     run_ids = {r["activity_id"] for r in d["runs"]}
     calendar = d["calendar"]
     entries = []
@@ -1551,7 +1657,7 @@ def _form_reference():
 
 def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
              summary: dict | None = None, *, run_ids: set[int] | None = None,
-             run_check: int | None = None) -> str:
+             run_check: int | None = None, post_run: dict | None = None) -> str:
     rows = ""
     units = {"cadence_spm": " steps/min", "step_length_m": " m", "ground_contact_ms": " ms",
              "vertical_oscillation_cm": " cm", "vertical_ratio_pct": "%"}
@@ -1601,7 +1707,17 @@ def page_run(r: dict[str, Any], d_trial: dict[str, Any] | None = None,
               '<p class="legend"><i class="mk"></i>This run <i class="mk2"></i>Your usual at this pace</p>'
               f'{_form_reference()}</section>')
     comparison = r["comparable_effort"]
-    if next_step := coach_review.after_run(comparison):
+    if post_run:
+        source_rows = "".join(f'<li><a class="source-link" href="#{_e(row["page"])}">{_e(row["text"])}</a></li>'
+                              for row in post_run["readings"])
+        label = "Selected by local AI" if post_run["mode"] == "selected_post_run" else "Recorded comparison"
+        body = (f'<section class="coach-change wide"><h3>Post-run review</h3>'
+                f'<p class="insight-label">{label}</p><p class="say">{_e(post_run["observation"])}</p>'
+                f'<p><b>Another explanation</b> · {_e(post_run["alternative"])}</p>'
+                f'<p><b>Next comparable run</b> · {_e(post_run["question"])}</p>'
+                f'<details><summary>Recorded evidence</summary><ul>{source_rows}</ul></details>'
+                f'</section>') + body
+    elif next_step := coach_review.after_run(comparison):
         options = coach_review.run_questions(r)
         selected = ""
         if type(run_check) is int and 1 <= run_check <= len(options):
@@ -2976,11 +3092,15 @@ def render(d: dict[str, Any]) -> str:
         pages = [page_today(d), page_sleep(d), page_recovery(d), page_training(d), page_trends(),
                  page_running(d), page_body(d), page_months(d), page_patterns(d), page_history_week(d)]
         run_ids = {r["activity_id"] for r in d["runs"]}
-        for r in d["runs"]:
-            summary = d.get("narration", {}).get(f'run-{r["activity_id"]}')
+        post_run = deep_insight.post_run_fallback(d)
+        for index, r in enumerate(d["runs"]):
+            narration = d.get("narration", {})
+            summary = narration.get(f'run-{r["activity_id"]}')
             check = d.get("narration", {}).get(f'run-check-{r["activity_id"]}', {})
             pages.append(page_run(r, d.get("trial"), summary, run_ids=run_ids,
-                                  run_check=check.get("choice")))
+                                  run_check=check.get("choice"),
+                                  post_run=(narration.get(f'post-run-insight-{r["activity_id"]}') or post_run)
+                                  if index == 0 else None))
         pages.extend(_workout_page(workout, d.get("narration", {}).get(f'workout-{workout["id"]}'))
                      for workout in d.get("workouts", []))
         calendar = d["calendar"]
@@ -3120,14 +3240,16 @@ def build(conn: sqlite3.Connection, out_dir: Path | None = None, *,
         ):
             return path
         if data.get("available", True) and not (data["older_snapshot"] or data["sync_retry_required"]):
-            data["guidance_change"] = coach_review.guidance(conn, data["end"], data["brief"]["focus"])
+            data["guidance_change"] = coach_review.guidance(
+                conn, data["end"], data["brief"]["focus"], evidence=data["guidance_evidence"])
         data["narrator_enabled"] = narrator.settings(conn)["enabled"]
         data["narration"], pending = narrator.cached(conn, data)
         data["narrator_status"] = narrator.snapshot_status(conn, data, data["narration"], pending)
         _write_copies(path, icloud, _compact(render(data)))
         if only_if_snapshot is None and data.get("available", True) and not (
                 data["older_snapshot"] or data["sync_retry_required"]):
-            coach_review.guidance(conn, data["end"], data["brief"]["focus"], save=True)
+            coach_review.guidance(conn, data["end"], data["brief"]["focus"],
+                                  evidence=data["guidance_evidence"], save=True)
         snapshot = (_snapshot_id(path) if queue_narration and pending
                     and only_if_snapshot is None and not narrator._sync_in_progress(conn) else b"")
     if snapshot:

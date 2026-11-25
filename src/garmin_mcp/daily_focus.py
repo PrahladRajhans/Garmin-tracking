@@ -84,35 +84,42 @@ def daily_focus(readiness: dict, signals: dict, suggestion: dict, *,
     level = (readiness.get("garmin") or {}).get("level")
     rough_day = readiness["illness_flag"]["raised"] or state == "well below usual"
     focus = {"title": "Follow your planned effort if you feel well.",
-             "detail": "", "target": "training", "findings": findings}
+             "detail": "", "target": "training", "findings": findings,
+             "evidence_keys": ("score",)}
     if status:
         focus.update(title="Pause training today.",
                      detail=f"You marked today as {status}. See how you feel before resuming.",
-                     target=None)
+                     target=None, evidence_keys=("activity_status",))
     elif rough_day or level == "POOR":
         detail = ("Several recovery readings have shifted." if readiness["illness_flag"]["raised"]
                   else "Garmin marked readiness Poor today." if level == "POOR"
                   else "Today’s recovery score is low.")
+        drivers = ("illness",) if readiness["illness_flag"]["raised"] else (
+            ("garmin",) if level == "POOR" else ("score",))
         focus.update(title="Rest today or choose very easy movement.", detail=detail,
-                     target="recovery")
+                     target="recovery", evidence_keys=drivers)
     elif pulse and (sleep or hrv):
         second = ("You also slept less." if sleep else "Your heart rate variability is also below usual.")
         focus.update(title="Keep today’s effort easy.", detail=f"{pulse_text} {second}",
-                     target="recovery")
+                     target="recovery", evidence_keys=("pulse_week", "sleep_week" if sleep else "hrv_week"))
         # The lead already explains these readings. Keep a linked sleep follow-up if useful.
         focus["findings"] = [item for item in findings if item["title"] !=
                              "Your resting heart rate was higher"]
     elif state == "below usual" or level == "LOW":
         focus.update(title="Keep today’s effort easy.", detail=pulse_text or sleep_text
                      or ("Garmin marked readiness Low today." if level == "LOW"
-                         else "Today’s recovery is below your usual level."), target="recovery")
+                         else "Today’s recovery is below your usual level."), target="recovery",
+                     evidence_keys=((("pulse_week",) if pulse_text else ("sleep_week",) if sleep_text else ())
+                                    + (("score",) if state == "below usual" else ("garmin",))))
     elif state == "calibrating":
         focus.update(title="Start gently if you feel well.",
                      detail="There aren’t enough recent readings for a recovery score yet.",
                      target="recovery")
     elif pulse or sleep:
-        focus.update(detail=pulse_text or sleep_text, target="recovery" if pulse else "sleep")
+        focus.update(detail=pulse_text or sleep_text, target="recovery" if pulse else "sleep",
+                     evidence_keys=("pulse_week" if pulse else "sleep_week",))
     elif suggestion.get("suggest") == "follow your planned session if you feel well":
-        focus.update(detail="Both your Garmin reading and your recovery score support your plan.")
+        focus.update(detail="Both your Garmin reading and your recovery score support your plan.",
+                     evidence_keys=("garmin", "score"))
     focus["findings"] = focus["findings"][:3]
     return focus

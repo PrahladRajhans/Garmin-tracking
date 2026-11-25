@@ -79,6 +79,72 @@ def test_running_evidence_keeps_pace_direction_and_matched_cadence_context():
     assert cadence.page == "run-1-form"
 
 
+@pytest.mark.parametrize("case", deep_insight.FICTIONAL_POST_RUN_CASES)
+def test_post_run_reference_outputs(case):
+    data, expected = deep_insight.FICTIONAL_POST_RUN_CASES[case]
+    result = deep_insight.post_run_fallback(data)
+    if expected is None:
+        assert result is None
+        return
+    assert result["mode"] == "rule_post_run" and result["topic"] == expected
+    assert result["readings"][0]["text"] == result["observation"]
+    assert result["alternative"] and result["question"].endswith("?")
+
+
+def test_post_run_cue_and_matching_stay_compact_and_private():
+    from copy import deepcopy
+
+    data, _ = deep_insight.FICTIONAL_POST_RUN_CASES["post-run-cue"]
+    data = deepcopy(data)
+    data["trial"]["attempts"][0]["your_notes"] = {"note": "PRIVATE"}
+    data["runs"][0]["name"] = "PRIVATE"
+    item = deep_insight.post_run_review(data)
+    packet = json.loads(item.prompt)
+    assert len(packet) == 3 and "PRIVATE" not in item.prompt and "2026-11-25" not in item.prompt
+    assert "activity_id" not in item.prompt and "run-101" not in item.prompt
+    assert packet[0]["match"] == "pace and grade" and packet[0]["matched_seconds_per_half"] == 420
+    assert packet[2]["minutes_above_and_recorded"] == {"this_run": [8, 27], "earlier_attempt": [5, 25]}
+    assert packet[2]["target_steps_per_min"] == 174 and packet[2]["at_least_steps_per_min"] == 172
+    assert "8 of 27" in item.assess('{"check":3}')[0]["observation"]
+    assert all(item.assess(raw)[0] is None for raw in
+               ('{"check":true}', '{"check":0}', '{"check":4}', '{"check":2,"observation":"new claim"}'))
+    data["trial"]["attempts"][0]["date"] = "2026-11-26"
+    assert len(deep_insight.post_run_review(data).checks) == 2
+    assert deep_insight.post_run_review({**data, "sync_retry_required": True}) is None
+
+
+def test_post_run_requests_one_non_thinking_choice_and_caches_exact_reading(conn, monkeypatch):
+    data, _ = deep_insight.FICTIONAL_POST_RUN_CASES["post-run-outlier"]
+    narrator.configure(conn, True, "test:4b", True)
+    monkeypatch.setattr(narrator, "items", lambda _: {})
+    monkeypatch.setattr(narrator, "_cloud_disabled", lambda _: True)
+    monkeypatch.setattr(narrator, "_warm", lambda *_: None)
+    monkeypatch.setattr(narrator, "_model_profile",
+                        lambda *_: {"thinking": True, "text_generation": True, "num_ctx": 4096})
+    calls = []
+
+    def request(method, path, deadline, body):
+        calls.append(body)
+        assert body["think"] is False and body["format"]["required"] == ["check"]
+        return {"done": True, "response": '{"check":2}'}
+
+    monkeypatch.setattr(narrator, "_request", request)
+    assert narrator.generate(conn, data, time.monotonic() + 60)
+    summaries, pending = narrator.cached(conn, data)
+    assert not pending and len(calls) == 1
+    result = summaries["post-run-insight-101"]
+    assert result["mode"] == "selected_post_run" and result["topic"] == "moving pulse"
+    assert result["readings"][0]["page"] == "run-101-compare"
+    assert result["observation"] == result["readings"][0]["text"]
+
+
+def test_post_run_rejects_stable_choice_beside_a_measured_cadence_change():
+    data, _ = deep_insight.FICTIONAL_POST_RUN_CASES["post-run-form"]
+    item = deep_insight.post_run_review(data)
+    assert item.assess('{"check":2}') == (None, "low_signal_choice")
+    assert deep_insight.post_run_fallback(data)["topic"] == "late cadence"
+
+
 def test_sunday_review_keeps_plan_and_links_checked_evidence(conn):
     data = {"end": "2026-11-22",
             "weekly_review": {"week": {"sessions": 3}},

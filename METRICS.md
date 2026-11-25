@@ -733,3 +733,23 @@ API series require their own confirmed mapping. [Source evidence](docs/GARMIN_EC
   acute biomechanics outcomes, which are distinct from a universal step-rate goal.
   [Garmin FR955 running dynamics](https://www8.garmin.com/manuals/webhelp/GUID-9D99A9D4-467A-4F1A-A0EA-023184FEA3DD/EN-US/GUID-62A09512-518A-424A-8491-FE2B80CD2091.html)
   · [Heiderscheit et al.](https://pubmed.ncbi.nlm.nih.gov/20581720/)
+
+## Dated inputs, naps and Body Battery review
+
+Today's availability checks the expected local date independently of the dated snapshot.
+It marks an absent reading as pending when a current complete sync is missing or a sync
+must retry. This is a sync state rather than proof the watch has a reading. Prior archived
+measurements retain their last observed date. An incomplete night remains separate.
+The readiness method and its minimum input count are unchanged.
+
+Nap coverage reads only explicit `napTimeSeconds` from dated original Garmin sleep summaries.
+Use the established source priority. A missing field stays unknown and an explicit zero
+counts as a dated observation. Nap totals are separate from overnight sleep and schedule
+recommendations. [Garmin nap tracking](https://support.garmin.com/en-US/?faq=2icqqZFq3YAX5K9VGU2CQ9)
+· [Dated nap field](https://github.com/abrander/garmin-connect/blob/master/SleepSummary.go)
+
+Body Battery charge and drain are Garmin's recorded daily point totals, with medians over the
+28 dates before the snapshot. Split charge on whether overnight sleep met an explicit Garmin
+target. Split drain on recorded run presence and, separately, explicit positive versus zero
+nap totals. Each arm needs at least four paired dates. These are descriptive calendar-day
+comparisons. No timing within a day or effect of a run or nap is inferred.

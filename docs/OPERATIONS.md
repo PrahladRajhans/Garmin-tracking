@@ -151,3 +151,10 @@ The export reads SQLite without changing the archive. Activities use stable IDs 
 two workouts on the same day are preserved. Wellness joins dated readings and leaves
 missing values blank. The fixed schemas exclude names, routes, credentials and notes.
 The CSV still contains personal measurements. Share or upload it only as needed.
+
+## Use the owner acceptance and preview commands
+
+Start with the [Mac acceptance report](OWNER_ACCEPTANCE.md) when investigating an archive,
+resting estimate or local model. To inspect a monitoring file before deciding whether its
+readings are useful, use the [wellness FIT preview](WELLNESS_PREVIEW.md). Review a workout's
+compiled steps and compatibility caveats with the [workout preview](WORKOUT_PREVIEW.md).

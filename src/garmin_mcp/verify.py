@@ -272,12 +272,18 @@ def main() -> None:
                         help="Compare stored FIT recordings with watch summaries by year, read-only.")
     modes.add_argument("--replay-dashboard", action="store_true",
                         help="Check monthly dashboard snapshots without changing the archive.")
+    modes.add_argument("--preview-wellness-fit", type=Path, metavar="FILE",
+                       help="Compare a monitoring FIT file with saved wellness readings without importing.")
     modes.add_argument("--export-csv", choices=("activities", "wellness"),
                        help="Export a selected local archive date range as CSV.")
     parser.add_argument("--from-date", type=date.fromisoformat, help="First local date (YYYY-MM-DD).")
     parser.add_argument("--to-date", type=date.fromisoformat, help="Last local date (YYYY-MM-DD).")
     parser.add_argument("--output", type=Path, help="New private CSV file (default: standard output).")
+    parser.add_argument("--include-dates", action="store_true",
+                        help="Show local dates for wellness FIT preview counts.")
     args = parser.parse_args()
+    if args.include_dates and args.preview_wellness_fit is None:
+        parser.error("--include-dates requires --preview-wellness-fit.")
     if args.export_csv:
         from garmin_mcp.archive_export import export_file, write_csv
 
@@ -300,6 +306,20 @@ def main() -> None:
         return
     if args.from_date is not None or args.to_date is not None or args.output is not None:
         parser.error("Date and output options require --export-csv.")
+    if args.preview_wellness_fit:
+        from garmin_mcp.monitoring_preview import preview
+
+        path = db_path()
+        if not path.is_file():
+            parser.error("No stored Garmin database. Run this where your archive is stored.")
+        try:
+            report = preview(path, args.preview_wellness_fit, include_dates=args.include_dates)
+        except sqlite3.Error:
+            parser.error("Could not read the expected Garmin archive tables.")
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
+        print(json.dumps(report, indent=2))
+        return
     if args.archive_audit:
         from garmin_mcp.archive_audit import audit
 

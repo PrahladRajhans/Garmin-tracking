@@ -32,7 +32,9 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 ## Data flow and timing
 1. **launchd** runs `garmin-mcp-sync --days 3` every 3 hours on the Mac.
 2. **Gate** (`sync.gate`): full sync only if ≥ 11 h since the last good sync, or today's activity list (1 cheap call) has a new activity. The user syncs the phone about twice a day, so this catches both.
-3. **Self-update** (`autoupdate.py`) fast-forwards the repo to `origin/main` before syncing, and reinstalls if `pyproject.toml` changed. **Settings** are seeded from `config/athlete.json`.
+3. **Self-update** (`autoupdate.py`) fast-forwards eligible checkouts to `origin/main`, reinstalls
+   the package when the commit changes or a pending install needs repair, then restarts sync.
+   Settings are seeded from `config/athlete.json`.
 4. **Store raw first**: saved JSON keys keep the latest payload in the raw tables and retain changed
    predecessors in `raw_payload_history`. FIT bytes are kept on disk, with distinct revisions by hash.
    Decoding loads the full available records into `fit_*` tables. Timeline sampling happens in the renderer.
@@ -68,7 +70,7 @@ An optional Cloudflare Pages copy can be enabled explicitly after Access setup; 
 | `dashboard.py`, `dashboard_interaction.py` | Single offline HTML dashboard with SVG charts and a hash-allowed inline script for chart controls, active navigation and theme |
 | `norms.py` | Exact FRIEND 2015 age/sex reference lookup and comparison; no inferred profile or percentile interpolation |
 | `publish.py` | Opt-in Pages upload, Access checks, check-only CLI; no account configuration writes |
-| `server.py` | MCP server: every tool reads the local DB; only `refresh_data` calls Garmin |
+| `server.py` | MCP server. Most analysis is local. `refresh_data` syncs Garmin. Workout upload, listing and deletion use Garmin Connect. The optional dashboard publisher uses Cloudflare. |
 | `verify.py`, `autoupdate.py` | Checks; self-update |
 
 ## Design principles
@@ -204,3 +206,12 @@ analysis. `archive_export.py` exports fixed-schema local summaries via the verif
 without mutating the archive. The narrator can select a fixed evidence pair when
 reviewed prose is unavailable. The dashboard distinguishes pair selection from prose.
 [Review index](docs/REVIEW_START_HERE.md)
+
+## Owner acceptance and coaching evidence
+
+Only successful foreground dashboard publication records the daily decision and its evidence
+in the local archive. The bounded history is separate from optional model prose. Today and
+Recovery read date coverage independently of the score calculation. The newest detailed run
+gets a small set of validated follow-up options. A rule-written choice is usable when local
+inference is disabled, unavailable or rejected. The weekly view revisits tracked experiment
+attempts. [Acceptance and access boundaries](docs/OWNER_ACCEPTANCE.md)

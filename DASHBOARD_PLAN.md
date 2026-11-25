@@ -337,3 +337,11 @@ use the run's median as the zero reference, show elapsed labels for short runs,
 and expose every full split in an expandable list. The running-form guide appears
 beside the values and timeline tools, with examples, comparisons and colour bounds.
 [Metric definitions](METRICS.md#interpreting-running-form-and-kilometre-bars)
+
+## Dated inputs and review decisions
+
+Today shows a compact availability disclosure when recent inputs are incomplete. Recovery
+shows the last observed dates by signal and separates usable score inputs from availability.
+Current guidance links its rule inputs and displays the previous decision's evidence where
+recorded. Post-run review leads with an observation, an alternative explanation and one
+measurement check. Training and Sunday review revisit the logged cadence experiment.
