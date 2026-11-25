@@ -220,6 +220,8 @@ Items marked ⚠ touch `dashboard.py`, where ChatGPT is also working; coordinate
 
 ## 7. The standalone direction (no Mac)
 
+> A larger question, a multi-user app for other people's Garmin accounts, is discussed separately and parked: [PRODUCTISATION_OPTIONS_2026-11-25.md](PRODUCTISATION_OPTIONS_2026-11-25.md).
+
 ### What the Mac does today
 A scheduler (launchd), storage (SQLite and FIT files), analytics (Python), the unofficial login,
 local AI (Ollama), delivery (the HTML file, the iCloud copy, the MCP server for Claude Desktop).
