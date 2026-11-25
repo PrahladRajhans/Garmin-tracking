@@ -1,5 +1,7 @@
 # Owner acceptance on the Garmin Mac
 
+The latest run and what is still open: [results](OWNER_ACCEPTANCE_RESULTS.md).
+
 Run this from the Garmin Tracking checkout on the machine holding the private archive.
 Replace the placeholder with the exact day shown for the Garmin Connect resting-pulse value.
 

@@ -6,6 +6,12 @@ Read this first if you are a person or an AI (ChatGPT, Claude) picking up the pr
 
 ## Latest changes for reviewers
 
+- **v0.32.1:** first acceptance run on the owner's Mac. Fixed the missing intraday stress
+  download, cadence precision, watch-timezone dating, daily distance, weekly Garmin load, bedtime
+  validation and a test suite that could overwrite the iCloud dashboard. Open items and what was
+  not verified: [owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md) and
+  [roadmap](ROADMAP.md#open-after-the-mac-acceptance-run-v0321).
+
 - **v0.32.0:** sample-rate-independent grade estimates, pulse coverage gates, missing-load
   propagation, dated source and import corrections, and on-demand chart readings. See
   [formulas](METRICS.md), [repository review](docs/REPOSITORY_REVIEW.md), and

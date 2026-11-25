@@ -250,6 +250,15 @@ The small benchmark is a compatibility check, with Mac and other model tags stil
 
 ## Verification
 
+On 25 November 2026 the owner's Mac (Apple M5, Ollama 0.40.17, Qwen3.5 4B) ran the fictional and
+dated archive cases. Direct drafts took 4–15 seconds. Sleep and Today produced reviewed prose on
+real records; Running and the weekly review mostly fell back to exact readings. See the
+[per-path table](OWNER_ACCEPTANCE_RESULTS.md#ai-results-by-path).
+
+The Ollama macOS app has an **Expose Ollama to the network** setting. Keep it off. `--check` talks
+to loopback and cannot detect it; use `lsof -nP -iTCP:11434 -sTCP:LISTEN` and expect
+`127.0.0.1:11434`.
+
 On 24 November 2026, Ollama 0.40.17 and the local Qwen2.5 3B Instruct model accepted every
 eligible item from a synthetic archive built via MCP (20 of 20). The saved snapshot matched its
 simulated iCloud copy. Disabling removed the AI results from both files. A separate fixture
