@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+- Remove the split-times dropdown and redundant chart-data disclosures across page composition, including weekly totals, efforts and raw readings.
+
 ### Added (docs only)
 - [`docs/PRODUCTISATION_OPTIONS_2026-11-25.md`](docs/PRODUCTISATION_OPTIONS_2026-11-25.md): open, parked discussion of turning the project into a multi-user app (Garmin data-access gate, data-ownership models, five architectures compared, recommended shape, security, economics, staged plan, decisions needed). Not scheduled.
 - Lessons document section 14: second pass on UI/UX and AI outputs (keystones K1–K3, AI items A1–A12, UI items U1–U15, measurement without A/B tests, and a wave order). Proposals only.

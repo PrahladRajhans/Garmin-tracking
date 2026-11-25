@@ -643,6 +643,10 @@ def _page(pid: str, title: str, lede: str, body: str, back: str = "#today") -> s
     parent = parent or ("Run overview" if back.startswith("#run-") else "Month")
     nav = ("" if pid == "today" else f'<a class="back" href="{back}">{icon("back")}'
            f'<span>{parent}</span></a>')
+    body = re.sub(
+        r'<details[^>]*><summary>(?:All \d+ split times|Weekly totals|\d+ recorded efforts|'
+        r'All recorded values|Recorded nights|Reviewed nights|Which nights\?|'
+        r'\d+ timed source windows)</summary>.*?</details>', "", body, flags=re.DOTALL)
     intro = f'<p class="lede">{lede}</p>' if lede else ""
     return (f'<article class="page" id="{pid}" aria-labelledby="heading-{pid}">{nav}'
             f'<header class="ph"><h2 id="heading-{pid}" tabindex="-1">{_e(title)}</h2>'
@@ -1934,10 +1938,8 @@ def _split_chart(splits):
     if not splits:
         return '<p class="empty">No full kilometre recorded.</p>'
     reference = median(seconds for _, seconds in splits)
-    rows = "".join(_row(label, _e(_split_elapsed(seconds))) for label, seconds in splits)
     return (f'<p class="chart-note">Median {_split_elapsed(reference)} · above is slower · below is faster.</p>'
-            + both(_split_bars, splits, reference)
-            + f'<details><summary>All {len(splits)} split times</summary><ul class="rows">{rows}</ul></details>')
+            + both(_split_bars, splits, reference))
 
 
 def _run_pacing(r: dict[str, Any]) -> str:
