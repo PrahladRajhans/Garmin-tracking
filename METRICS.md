@@ -723,6 +723,13 @@ averages are descriptive. A comparison for a metric needs three readings in each
   windows include the missing date ranges and do not display a numeric baseline. See
   [Garmin sources and independent research](docs/GARMIN_DATA_REVIEW.md).
 
+## Daily distance
+
+`daily.distance_m` is walking and running distance in metres. The Personal API reports it as step
+distance. The export and Connect summaries use `wellnessDistanceMeters`, falling back to
+`totalDistanceMeters` only when it is absent. Before v0.32.1 the export used the total, which also
+counts rides and swims. Rides and swims keep their own distance on each activity.
+
 ## Intraday Stress and Body Battery
 
 Connect stores epoch-millisecond Stress and Body Battery entries in the daily stress response.

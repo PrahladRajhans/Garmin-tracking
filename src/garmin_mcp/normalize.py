@@ -190,7 +190,10 @@ def daily_from_summary(payload: Any, *, exported=False) -> Rows:
         else:  # export UDS file / unofficial user summary (same flat field names)
             yield day, {
                 "steps": _num(rec.get("totalSteps")),
-                "distance_m": _num(_first(rec.get("totalDistanceMeters"),
+                # wellness = walking and running distance, as the Personal API reports it;
+                # totalDistanceMeters also counts rides and swims.
+                "distance_m": _num(_first(rec.get("wellnessDistanceMeters"),
+                                          rec.get("totalDistanceMeters"),
                                           rec.get("totalDistance"))),
                 "floors_up_m": _num(rec.get("floorsAscendedInMeters")),
                 # export UDS: restingHeartRate is a 7-day value; the day's own is currentDay...
