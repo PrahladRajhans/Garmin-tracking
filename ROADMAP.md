@@ -32,6 +32,24 @@ Qwen2.5 smoke test is useful historical evidence. It does not verify the v0.26.1
 
 ## Detailed execution queue
 
+### Garmin ecosystem review and implementation
+
+1. Open all 40 supplied entries in order, resolving duplicates and recording terminal states,
+   upstream revisions, source links and licensing. Confirm the promising behavior in code or
+   tests. Read public community discussions for questions real users ask, with repository
+   evidence for each technical decision.
+2. Compare adoption candidates against the current on-device archive, regular sync, read-only
+   analysis and offline dashboard. Rank by value to the athlete, source coverage, reversibility
+   and verification cost. Keep data transport, ingestion and derived analytics distinct.
+3. Implement the highest-ranked changes through normal entry points. Require dated evidence,
+   explicit unavailability and a focused test for each new failure mode.
+4. Review what was adopted and why, run the end-to-end suite once, and merge the tested commit.
+   Record which checks depend on the owner's archive or live Garmin access.
+
+The first two decisions shipped in v0.28.0. The owner's Mac audit is the next gate for
+confirmed coverage and visible day charts. Only then compare wellness FIT reconciliation,
+local CSV and AI coaching benchmarks using the [decision log](docs/GARMIN_ECOSYSTEM_REVIEW.md).
+
 ### Evidence-first health dashboard
 
 1. **Research first.** Trace the 955 manual, Garmin Health/FIT surfaces, Garmin's measure
@@ -193,6 +211,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.28.0 | Ecosystem review, archive audit and intraday wellness charts | Implemented |
 | 0.27.4 | Dated health evidence, sleep shortfall and archive windows | Implemented |
 | 0.1.0 | Scaffold, 4 live tools | done |
 | 0.2.0 | Phase 1: SQLite sync engine, FIT parsing, official + unofficial sources | done |

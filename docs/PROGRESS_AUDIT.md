@@ -136,3 +136,11 @@ Mac archive validation, device checks and model quality.
 | Sleep shortfall and dated trends | Dated targets, coverage, average shortfall comparison and duration and score trends | Owner target coverage and browser pass on physical iPhone |
 | Three baseline horizons | 28 days, 90 days and all earlier retained records on nine health metrics, with missing-date coverage | Test the owner archive after a full sync rebuilds the RHR mapping |
 | Patterns and local thinking | Plain-language association followed by its evidence, and qualified sleep and pulse observations | Owner Qwen acceptance and usefulness in regularly synced dashboards |
+
+## Garmin ecosystem review, v0.28.0
+
+- Reviewed every supplied link in the original sequence. The evidence and license scope,
+  implementation choices and deferrals are in the [decision log](GARMIN_ECOSYSTEM_REVIEW.md).
+- Shipped aggregate archive inspection and timestamped wellness UI without new collection
+  or model inference. Actual payload coverage and FIT file availability on the owner's Mac
+  are independent acceptance checks. The Ollama output issue from the previous release is open.

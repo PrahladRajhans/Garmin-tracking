@@ -320,3 +320,11 @@ in a separate disclosure. History opens records with the readings that stood out
 review and intraday context before the raw readings. Week History includes coverage and baselines
 for the retained archive. Patterns starts with the association and puts the scatter and
 uncertainty underneath. See [the validation record](docs/UI_REVIEW.md#dated-health-review).
+
+## Intraday wellness
+
+On recent History day pages, Stress and Body Battery follow the pulse chart. Each has one
+responsive plot, a 0–100 scale and the same local clock axis. Compare side by side on a wider
+screen or vertically on a phone. The panel states when one stream is missing and breaks lines
+across empty windows. Together they show what was observed and how much evidence supports it.
+[Metric definitions](METRICS.md#intraday-stress-and-body-battery)

@@ -311,3 +311,16 @@ chart marks workout starts, then exposes precise counts and ranges by point. The
 separates gaps in recording from changes in pulse. The resting estimate has its own section,
 away from the intraday curve. Owner differences with the Garmin app and a physical iPhone
 remain checks for the private environment. [Review guide](REVIEW_START_HERE.md)
+
+## Intraday wellness layout, v0.28.0
+
+On a generated seven-day archive, the Stress and Body Battery panels shared local-clock
+ticks and a comparable display scale. In 12 responsive Chromium and WebKit checks they
+stacked at 320/390 px, sat side by side at 1,200 px, supported point selection with mouse or
+touch, and displayed a missing-stream message. In two no-script checks the charts remained
+visible. Both themes were checked. No physical device or owner's live sample was used.
+
+Self-review: the charts exclude vendor sentinels and do not infer durations or a recovery
+score from shared inputs. Using one drawing per panel limits duplicate markup. Dense
+seven-day detail still adds about 346 KB uncompressed in the synthetic fixture, so the
+real-archive iPhone performance and total snapshot size targets remain open.

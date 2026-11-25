@@ -185,3 +185,13 @@ recent raw pulse windows. [Sleep review](src/garmin_mcp/sleep_review.py) and
 uses those same datasets. [Local AI evidence](src/garmin_mcp/deep_insight.py) takes qualified
 comparisons only. The dated data, symptom guidance and source provenance render independently
 of the model. See [the reviewer guide](docs/REVIEW_START_HERE.md) for verification.
+
+## Intraday wellness and archive audit
+
+The existing Connect adapter stores the daily stress payload as `raw_daily/stress`.
+[Wellness decoding](src/garmin_mcp/wellness_timeline.py) interprets its timestamped arrays
+for recent History day pages. Storage and download behavior stay the same.
+[Archive audit](src/garmin_mcp/archive_audit.py) opens SQLite without applying schema updates,
+checks database structure and current FIT file references, and reuses timeline validation
+for date coverage on all retained Connect stress rows. It does not send data to Ollama.
+[Source evidence](docs/GARMIN_ECOSYSTEM_REVIEW.md#implementation-evidence)

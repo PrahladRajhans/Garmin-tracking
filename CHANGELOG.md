@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-25
+
+- Review 40 supplied Garmin ecosystem links, recording 38 distinct source revisions,
+  community findings, licensing and adoption decisions.
+- Add a read-only archive audit showing SQLite integrity, active FIT references and usable
+  Stress and Body Battery timeline dates and gaps without displaying personal readings.
+- Display already saved Garmin Connect Stress and Body Battery on aligned day charts with
+  sample counts, gaps and first/last readings. Keep the existing sync and archive format.
+
 ## [0.27.4] - 2026-11-25
 
 - Add a resting pulse check with source readings, a personal reference and awake verification

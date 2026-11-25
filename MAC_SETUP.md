@@ -215,6 +215,10 @@ Investigate large residuals alongside a few corresponding Garmin Connect activit
 
 ### Check the private archive and pulse source
 
+For a path-free report of current FIT references and Garmin Connect Stress/Body Battery
+coverage, run `.venv/bin/garmin-mcp-verify --archive-audit`. It opens the archive read-only
+and emits only aggregate counts and dates. [Interpreting the report](docs/OPERATIONS.md#read-only-archive-audit)
+
 After the next full sync, Trends → History → What your archive can tell you shows the
 preceding 28-day, 90-day and all-earlier reference windows. Open the date of a concerning
 Garmin reading and expand the source and coverage disclosures on Resting pulse check.

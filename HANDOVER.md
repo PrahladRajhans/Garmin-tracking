@@ -1,10 +1,16 @@
-# Handover: Garmin-tracking (state at v0.27.4, 2026-11-25)
+# Handover: Garmin-tracking (state at v0.28.0, 2026-11-25)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.28.0:** a revision-pinned review of 40 ecosystem links, an aggregate read-only
+  archive audit, and recent Stress and Body Battery charts from Connect payloads already
+  saved on the Mac. The audit distinguishes file reachability from decoding status and
+  stored payload days from usable dates. Start with the [ecosystem decision log](docs/GARMIN_ECOSYSTEM_REVIEW.md)
+  and [local verification](docs/OPERATIONS.md#read-only-archive-audit).
 
 - **v0.27.4:** daily pulse evidence, shortfall and sleep trends, interpretation before
   the Patterns plot, and 28-day, 90-day and all-earlier archive baselines. The dated

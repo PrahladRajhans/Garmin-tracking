@@ -50,8 +50,11 @@ def ensure(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
 
 
-def get(conn: sqlite3.Connection, key: str) -> Any:
-    ensure(conn)
+def get(conn: sqlite3.Connection, key: str, *, ensure_schema: bool = True) -> Any:
+    if ensure_schema:
+        ensure(conn)
+    elif not _has(conn, "athlete_settings"):
+        return None
     row = conn.execute("SELECT value FROM athlete_settings WHERE key=?", (key,)).fetchone()
     return json.loads(row[0]) if row and row[0] is not None else None
 

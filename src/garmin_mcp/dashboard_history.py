@@ -9,7 +9,7 @@ import statistics
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
 
-from garmin_mcp import baseline, health, insights, normalize, recovery
+from garmin_mcp import baseline, health, insights, normalize, recovery, wellness_timeline
 
 
 def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo) -> dict[str, dict]:
@@ -150,6 +150,8 @@ def collect(conn: sqlite3.Connection, end: str, zone: tzinfo) -> dict[str, Any]:
     week_start = (last - timedelta(days=6)).isoformat()
     for day, pulse in _intraday_pulse(conn, week_start, end, zone).items():
         days.setdefault(day, {})["intraday_hr"] = pulse
+    for day, wellness in wellness_timeline.collect(conn, week_start, end, zone):
+        days.setdefault(day, {})["intraday_wellness"] = wellness
     archive_start, series = baseline.collect(conn, end)
     pulse_checks = resting_pulse_checks(conn, days, detail_start, end, archive_start, series["resting_hr"])
     coverage = {key: baseline.windows(values, end, archive_start) for key, values in series.items()}
