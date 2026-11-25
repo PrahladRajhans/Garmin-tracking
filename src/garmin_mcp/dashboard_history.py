@@ -28,6 +28,7 @@ def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo
             payload = json.loads(raw)
         except (TypeError, json.JSONDecodeError):
             continue
+        local_zone = wellness_timeline.device_zone(payload, zone)
         unique: dict[float, float] = {}
         samples = payload.get("heartRateValues", []) if isinstance(payload, dict) else []
         if not isinstance(samples, list):
@@ -40,14 +41,14 @@ def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo
                        for v in (stamp, bpm)):
                 continue
             try:
-                local = datetime.fromtimestamp(stamp / 1000, zone)
+                local = datetime.fromtimestamp(stamp / 1000, local_zone)
             except (ValueError, OSError, OverflowError):
                 continue
             if bpm <= 300 and local.date().isoformat() == day:
                 unique.setdefault(stamp, bpm)
         buckets: dict[float, list[float]] = {}
         for stamp, bpm in sorted(unique.items()):
-            local = datetime.fromtimestamp(stamp / 1000, zone)
+            local = datetime.fromtimestamp(stamp / 1000, local_zone)
             start_slot = local.replace(minute=local.minute // 15 * 15, second=0, microsecond=0)
             buckets.setdefault(start_slot.timestamp(), []).append(bpm)
         if buckets:
@@ -58,7 +59,7 @@ def _intraday_pulse(conn: sqlite3.Connection, start: str, end: str, zone: tzinfo
                 continue
             slots = []
             for stamp, values in buckets.items():
-                local = datetime.fromtimestamp(stamp, zone)
+                local = datetime.fromtimestamp(stamp, local_zone)
                 label = local.strftime("%H:%M")
                 if local.replace(fold=0).utcoffset() != local.replace(fold=1).utcoffset():
                     label += local.strftime(" %z")
