@@ -226,6 +226,20 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   premises in the model's follow-up question and can replace that question with a repeat check
   from its cited signals. A separate review checks the observation and final question, including
   after a single correction. Training decisions and source values stay in Python.
+- Direct drafts for the Running and weekly reviews are two clauses, one per cited reading. Before
+  the model review, `clauses.py` requires each clause to name its own measure, state the recorded
+  direction (or pace and pulse directions), and name only that reading's comparison period. For
+  week and four-week periods the earlier period has to follow a comparison word, so this week's
+  value cannot be moved onto last week. It rejects negation, load, volume, intensity, distance,
+  fitness or recovery wording, mismatched comparison words, questions, and figures or number words
+  absent from the cited reading. Unlisted wording is rejected and falls back to exact readings.
+  Python joins the clauses with "while". Readings without such a contract (aerobic decoupling) are
+  left out of drafting and stay available to the exact-reading selection. Spelled fractions and
+  amounts such as "half an hour" are rejected in every written observation unless the cited
+  reading contains them. Observations that say "trend" are rejected, since no reading covers more
+  than two periods. Thinking drafts keep the free-observation path and do not get clause checks.
+- The matched-effort follow-up asks where pulse falls against the earlier range. It does not assume
+  the latest run was inside it.
 
 ## Outdoor conditions and following recovery
 

@@ -51,19 +51,26 @@ coverage from the earlier queue as regression checks where affected.
    wait on a hosting decision.
 4a. **Code, from the [AI verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness):** do not ask
    whether a within-noise "difference" repeats; set a recency limit on the post-run review; make the
-   selection fallback prefer the largest change; reject trend wording from one weekly step; date the
-   latest resting estimate.
-5. **Code:** Running and weekly AI reviews usually fail the direction check and fall back to exact
-   readings. Improve the evidence wording or the prompt, and measure on dated cases.
+   selection fallback prefer the largest change; date the
+   latest resting estimate. (Done: written observations that call one step a trend are rejected.)
+5. **Done in code:** Running and weekly direct drafts are now clause-by-clause with a Python
+   direction and period check ([cause and measurements](docs/OLLAMA.md#running-and-weekly-direct-drafts)).
+   **Still to do:** measure on the dated cases and re-judge usefulness. The checks make the prose
+   accurate and plain; they do not make a small change worth reading (item 4a).
 6. **Code:** the dashboard file is about 4.9 MB against the 600 KB target. Most is inline SVG in
    collapsed detail sections.
 7. **Code:** bedtime, experiments and event timing still use the configured timezone on travel
    days.
 8. **Code:** import of monitoring FIT stays disabled until Body Battery message types, conflicts
    and rollback are validated.
-9. **Code:** one AI pass right after a long sync ended incomplete and the next build finished it.
-   Record why a pass is incomplete so this can be diagnosed.
+9. **Done:** the incomplete pass after the long sync coincided with Ollama updating and restarting
+   itself ([evidence](docs/OLLAMA.md#why-a-worker-pass-ends-incomplete)). `--check` now reports
+   `last_incomplete_reasons`.
 10. **Code:** wider repository audit (separate task, step 14 below).
+11. **Code:** the model review of free-form observations (Today, Sleep, thinking drafts) passed
+    reversed directions and swapped periods in a fictional labelled set
+    ([result](docs/OLLAMA.md#how-reliable-the-model-review-is)). Give those readings the same
+    checkable contract.
 
 ### 25 November execution status
 

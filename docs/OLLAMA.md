@@ -105,6 +105,40 @@ An earlier retry had attempted an uncited number and used exact-reading fallback
 seconds. The final pass shows that a checked written observation can survive a thinking timeout.
 The thinking draft itself remains unverified on this case.
 
+### Running and weekly direct drafts
+
+**Why these two mostly fell back (found 25 November 2026, fictional inputs, Qwen3.5 4B):**
+
+- One sentence had to cover two readings with different baselines (workouts against four weeks,
+  sleep against last week; a running block against one run). Drafts merged the periods, or
+  rounded a figure into words ("about half an hour" for 48 minutes), which the digit check missed.
+- At temperature 0 the correction often produced the same draft again.
+- On a six-reading running packet the correction added a "check…" sentence and ran past 55 words
+  (`unsupported_wording`). The running lens asks for a question; the direct schema has no field for one.
+- The review also reads Python's follow-up question. "Does moving pulse stay in the same range…"
+  after a pulse above the range drew `wrong_comparison` on a correct observation.
+
+**What happens now.** The drafter gets, for each reading, the measure, direction, period and
+ending in words, and writes one clause per reading. Python checks every clause against that
+reading before the model review, then joins the two
+([rules](../METRICS.md#optional-local-narration-v0220)). The model review is unchanged.
+
+**What this means for the prose.** It is accurate, plain and close to the supplied words. The
+model mainly chooses which two readings to put side by side. It does not explain why they matter.
+
+### How reliable the model review is
+
+Qwen3.5 4B judged 32 hand-labelled one-reading statements with invented values: all 13 correct
+ones passed, and it rejected only 11 of 19 wrong ones. Accepted mistakes included "higher" for a
+lower workout count and a four-week period for a week-on-week sleep change. Its verdict on a
+correct sentence could also change with the wording of the follow-up question. The clause check
+accepts those 13 and rejects those 19. It was adjusted while looking at the same set, so that is
+a regression test, not an accuracy estimate.
+
+**Today, Sleep and thinking drafts still rely on the model review for direction and period.**
+The fictional `sleep-written` case falls back to exact readings (3 of 3 runs, and the same on the
+unchanged code).
+
 ### Post-run evidence check
 
 The latest detailed run has a separate review when qualified measurements are available.
@@ -253,7 +287,8 @@ The small benchmark is a compatibility check, with Mac and other model tags stil
 On 25 November 2026 the owner's Mac (Apple M5, Ollama 0.40.17, Qwen3.5 4B) ran the fictional and
 dated archive cases. Direct drafts took 4–15 seconds. Sleep and Today produced reviewed prose on
 real records; Running and the weekly review mostly fell back to exact readings. See the
-[per-path table](OWNER_ACCEPTANCE_RESULTS.md#ai-results-by-path).
+[per-path table](OWNER_ACCEPTANCE_RESULTS.md#ai-results-by-path). Those two now draft
+[clause by clause](#running-and-weekly-direct-drafts).
 
 The Ollama macOS app has an **Expose Ollama to the network** setting. Keep it off. `--check` talks
 to loopback and cannot detect it; use `lsof -nP -iTCP:11434 -sTCP:LISTEN` and expect
@@ -289,6 +324,45 @@ The selected statements retained the sleep shortfall, usable-night counts, and t
 resting-pulse baseline. The test establishes availability of the checked fallback.
 Acceptance of freeform thinking prose and performance on the owner's Mac remain
 separate checks.
+
+### Running and weekly measurements
+
+25 November 2026, owner's Mac (Apple M5), Ollama 0.40.18, Qwen3.5 4B, `--no-thinking`, fictional
+inputs, model unloaded between two rounds of five:
+
+| Case | Reviewed prose | Stages | Median seconds |
+|---|---|---|---|
+| `running-block` | 10 of 10, first draft | review supported | 7.3 |
+| `sunday-review` | 10 of 10, first draft | review supported | 6.7 |
+| `today-written` (unchanged path) | 3 of 3 | review supported | 5.3 |
+| `sleep-written` (unchanged path) | 0 of 3 | exact readings | 8.5 |
+
+Temperature is 0, so the ten runs of a case returned identical text. That shows the result is
+stable, not that other data will pass. Five further invented packets (pulse above and below its
+range, and weeks with workouts and sleep down, mixed or unchanged) each gave reviewed prose in
+3 of 3 runs. These packets were used while developing the checks. **The dated cases on the owner's
+records have not been re-run**, and the thinking draft was not measured.
+
+### Why a worker pass ends incomplete
+
+`incomplete` means at least one item got no answer and stays pending for the next build.
+`--check` now shows `last_incomplete_reasons` as counts:
+
+| Reason | Meaning |
+|---|---|
+| `unreachable` | Nothing answered on loopback: Ollama quit, restarting or updating |
+| `server_error` | Ollama returned an error status, for example when stopped mid-request |
+| `timed_out` | A request or an item's time budget ran out |
+| `reply_truncated` | The reply hit its token limit |
+| `snapshot_changed` | A newer build or a sync replaced the data while an item was running |
+| `pass_deadline` | The whole pass ran out of time before the routine summaries |
+| `unverified_reply` | The reply could not be read or the review verdict was malformed |
+
+The pass that ended incomplete after the 180-day sync matched **Ollama updating itself**. Its log
+shows the upgrade starting at 16:27:29 on 25 November, the pass's fourth request returning 500 at
+16:27:45, and the server back at 16:27:48 on 0.40.18. Requests in that gap fail at once, so the
+rest of the pass stayed pending, and the 16:29 build finished it. This is an inference from
+timestamps; the worker recorded no reason then. A sync does not cause it.
 
 ## Changes to review
 

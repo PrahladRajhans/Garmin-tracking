@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ INSIGHT_DIRECT_SECONDS = 75
 INSIGHT_REVIEW_SECONDS = 40
 INSIGHT_SELECTION_SECONDS = 45
 INSIGHT_THINKING_TOKENS = 2450
+INSIGHT_PARTS_TOKENS = 160  # two clauses with their evidence IDs
 # Allow two direct draft/review attempts and reserve a final short evidence selection.
 INSIGHT_OVERHEAD_SECONDS = 2 * (INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS) + INSIGHT_SELECTION_SECONDS
 PORT = 11434
@@ -413,9 +415,12 @@ def _worker_status(conn, model):
     return json.loads(row[0]) if row else {}
 
 
-def _record_worker(conn, model, outcome, accepted=False, *, insights=None):
+def _record_worker(conn, model, outcome, accepted=False, *, insights=None, reasons=None):
     state = _worker_status(conn, model)
     state["outcome"] = outcome
+    state.pop("incomplete_reasons", None)
+    if reasons:
+        state["incomplete_reasons"] = dict(reasons)
     if insights:
         state.setdefault("insights", {}).update(insights)
     if accepted:
@@ -448,6 +453,14 @@ def snapshot_status(conn, data, summaries, pending):
 class OllamaUnavailable(Exception):
     """Local server could not verify or finish the request."""
 
+    def __init__(self, reason="unverified_reply"):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _failure(error):
+    return "timed_out" if isinstance(error, TimeoutError) else error.reason
+
 
 def _timed_out(_signum, _frame) -> None:
     raise TimeoutError("Ollama request timed out")
@@ -467,7 +480,7 @@ def _request(method: str, path: str, deadline: float, body: dict | None = None) 
                      headers=headers)
         response = client.getresponse()
         if response.status != 200:
-            raise OllamaUnavailable
+            raise OllamaUnavailable("server_error")
         limit = (256 * 1024 if path == "/api/show" else
                   64 * 1024 if body and body.get("think") else _RESPONSE_LIMIT)
         data = response.read(limit + 1)
@@ -477,7 +490,11 @@ def _request(method: str, path: str, deadline: float, body: dict | None = None) 
         if not isinstance(value, dict):
             raise OllamaUnavailable
         return value
-    except (OSError, http.client.HTTPException, ValueError) as exc:
+    except TimeoutError as exc:
+        raise OllamaUnavailable("timed_out") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise OllamaUnavailable("unreachable") from exc
+    except ValueError as exc:
         raise OllamaUnavailable from exc
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
@@ -559,7 +576,7 @@ def _deep_key(item, state):
     else:
         content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
                          deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
-                         item.concise_system, item.concise_schema,
+                         item.concise_system, item.concise_schema, item.concise_prompt, _PART_CORRECTIONS,
                          deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS, deep_insight.SELECT_COMPARISON])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
@@ -591,6 +608,15 @@ _CORRECTIONS = {
 }
 
 
+# Clause drafting has its own hints, because its rejections name a different mistake.
+_PART_CORRECTIONS = {
+    "wrong_comparison": "Write measure, was, direction, period, ending for each reading, copying direction "
+                        "and ending exactly. Avoid the word not.",
+    "uncited_number": "Write no numbers, in digits or in words.",
+    "unsupported_wording": "One short clause per reading, with no questions or second sentence.",
+}
+
+
 def _deep_request(model, profile, item, deadline, *, still_current=None, think_first=True,
                   thinking_seconds=DEFAULT_THINKING_MINUTES * 60, attempts=None, selection_only=False):
     """Review written prose, or use model-selected readings with exact source wording."""
@@ -598,8 +624,10 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
     options = {"num_ctx": profile["num_ctx"], "temperature": 0, "presence_penalty": 0}
 
     def current():
-        if time.monotonic() >= deadline or (still_current is not None and not still_current()):
-            raise OllamaUnavailable
+        if time.monotonic() >= deadline:
+            raise OllamaUnavailable("timed_out")
+        if still_current is not None and not still_current():
+            raise OllamaUnavailable("snapshot_changed")
 
     def complete(system, prompt, schema, thinking, budget, tokens, *, selection=False):
         current()
@@ -610,7 +638,7 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
             "options": {**options, "num_predict": tokens},
         })
         if reply.get("done") is not True or reply.get("done_reason") == "length":
-            raise OllamaUnavailable
+            raise OllamaUnavailable("reply_truncated")
         return reply.get("response")
 
     if isinstance(item, deep_insight.PostRunInsight):
@@ -647,15 +675,17 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
 
     def try_draft(mode, correction=None):
         thinking = mode == "thinking"
-        system, schema = ((item.system, item.schema) if thinking else (item.concise_system, item.concise_schema))
+        system, schema, prompt = ((item.system, item.schema, item.prompt) if thinking else
+                                  (item.concise_system, item.concise_schema, item.concise_prompt))
         stage = "draft"
         question_reframed = False
         if correction:
-            system += " Revise the approach. " + _CORRECTIONS[correction]
+            hints = {**_CORRECTIONS, **(_PART_CORRECTIONS if not thinking and item.by_parts else {})}
+            system += " Revise the approach. " + hints[correction]
         try:
-            raw = complete(system, item.prompt, schema, thinking,
+            raw = complete(system, prompt, schema, thinking,
                            thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS,
-                           INSIGHT_THINKING_TOKENS if thinking else 100)
+                           INSIGHT_THINKING_TOKENS if thinking else INSIGHT_PARTS_TOKENS if item.by_parts else 100)
             draft, reason = item.assess(raw, repair_question=True, concise=not thinking)
             question_reframed = reason == "question_reframed"
             if draft:
@@ -735,7 +765,7 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
     except (OllamaUnavailable, TimeoutError):
         return _record_worker(conn, model, "unavailable")
     accepted = False
-    incomplete = False
+    reasons = Counter()  # why items stayed pending, as counts without item names or content
     insight_attempts = {}
     for name, insight in insights.items():
         if settings(conn) != state or (still_current is not None and not still_current()):
@@ -749,8 +779,8 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
             draft = _deep_request(model, profile, insight, min(deadline, time.monotonic() + item_budget),
                                   still_current=still_current, think_first=use_thinking,
                                   thinking_seconds=seconds, attempts=attempts)
-        except (OllamaUnavailable, TimeoutError):
-            incomplete = True
+        except (OllamaUnavailable, TimeoutError) as exc:
+            reasons[_failure(exc)] += 1
         else:
             if settings(conn) != state or (still_current is not None and not still_current()):
                 return False
@@ -765,22 +795,22 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
         if settings(conn) != state or (still_current is not None and not still_current()):
             return accepted
         if time.monotonic() >= deadline:
-            incomplete = True
+            reasons["pass_deadline"] += 1
             break
         try:
             text, outcome = _infer(model, profile, item, deadline)
-        except (OllamaUnavailable, TimeoutError):
-            incomplete = True
+        except (OllamaUnavailable, TimeoutError) as exc:
+            reasons[_failure(exc)] += 1
             continue
         if outcome == "incomplete":
-            incomplete = True
+            reasons["reply_truncated"] += 1
             continue
         with conn:
             conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES (?,?)",
                          ("narrator:" + item.key(model), _json(text)))
         accepted |= text is not None
-    result = "incomplete" if incomplete else "ready" if accepted else "withheld"
-    return _record_worker(conn, model, result, accepted, insights=insight_attempts)
+    result = "incomplete" if reasons else "ready" if accepted else "withheld"
+    return _record_worker(conn, model, result, accepted, insights=insight_attempts, reasons=reasons)
 
 
 def _sync_in_progress(conn: sqlite3.Connection) -> bool:
@@ -837,6 +867,7 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
     return {**state, "ollama": service, "coverage": coverage, "model_profile": profile, "snapshot_status": status,
             "last_eval": json.loads(report[0]) if report else None,
             "last_insight_attempts": _worker_status(conn, state["model"]).get("insights", {}),
+            "last_incomplete_reasons": _worker_status(conn, state["model"]).get("incomplete_reasons", {}),
             "thinking_minutes": _thinking_seconds(state) // 60,
             "prompt_profile": deep_insight.writing_style(conn, "daily")[2],
             "cache_matches_dashboard": applied, "sync_incomplete": _sync_in_progress(conn)}

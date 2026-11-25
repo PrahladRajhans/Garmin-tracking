@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+- Running and weekly direct reviews write one clause per reading, and Python checks each clause's
+  measure, direction, comparison period and amounts before the model review. The model review had
+  accepted reversed directions and rejected correct sentences (`clauses.py`, `deep_insight.py`,
+  `narrator.py`). Saved written reviews are regenerated once (insight contract 5).
+- Reject spelled-out amounts such as "half an hour" that the cited readings do not contain.
+- Written AI observations can no longer call a two-period comparison a trend, and the running-days
+  reading says "1 day".
+- The matched-effort question no longer assumes pulse stayed in its earlier range.
+- Record why an AI pass stays incomplete; `garmin-mcp-narrator --check` shows
+  `last_incomplete_reasons`. The unexplained pass of 25 November matched an Ollama self-update.
+
 - Record an AI-judged usefulness review of the dated archive cases and the defects it found
   ([verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness)). No code change yet.
 

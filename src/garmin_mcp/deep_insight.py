@@ -4,14 +4,15 @@ import json
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from itertools import combinations
 from pathlib import Path
 
+from garmin_mcp import clauses
 from garmin_mcp.config import data_dir
 
-INSIGHT_CONTRACT = 4
+INSIGHT_CONTRACT = 5
 POST_RUN_CONTRACT = 1
 
 
@@ -21,6 +22,7 @@ class Evidence:
     text: str
     page: str
     previous: bool = False
+    claim: clauses.Claim | None = field(default=None, compare=False)
 
 
 def _number(value):
@@ -118,8 +120,11 @@ def sunday_review(data):
     count = review["week"]["sessions"]
     average = (review.get("previous_4wk_weekly_avg") or {}).get("sessions")
     training = f"Recorded workout count with load data was {count} this week"
+    trend = window = None
     if _number(average):
         training += f" versus {average:g} per week on average over the previous four weeks"
+        trend, window = clauses.trend_of(count - average), "blocks"
+    workouts = clauses.Claim("workouts", r"\b(?:workouts?|sessions?|training frequency)\b", trend, window)
     sleep_text = f'Sleep averaged {sleep["hours"]:.1f} hours across {sleep["nights"]} nights'
     change = sleep_review.get("week_change_min")
     if change:
@@ -130,9 +135,13 @@ def sunday_review(data):
     anchor = sleep_review.get("anchor") or {}
     if not (_number(average) or _number(change) or anchor):
         return ()
-    rows = [Evidence("training", training + ".", "training"), Evidence("sleep", sleep_text + ".", "sleep")]
+    slept = clauses.Claim("sleep", r"\bsle(?:ep|pt)", None if change is None else clauses.trend_of(change),
+                          None if change is None else "week")
+    rows = [Evidence("training", training + ".", "training", claim=workouts),
+            Evidence("sleep", sleep_text + ".", "sleep", claim=slept)]
     if anchor:
-        rows.append(Evidence("sleep", f'Wake times varied by {anchor["spread"]} min.', "sleep"))
+        rows.append(Evidence("sleep", f'Wake times varied by {anchor["spread"]} min.', "sleep",
+                             claim=clauses.Claim("wake", r"\bw[ao]k")))
     return tuple(rows)
 
 
@@ -143,8 +152,10 @@ def running_review(data):
     recent, previous = block.get("recent", {}), block.get("previous", {})
     rows = []
     if recent.get("runs") and previous.get("runs"):
-        rows.append(Evidence("consistency", f'Recorded runs occupied {recent["days"]} days in the last four '
-                             f'completed weeks versus {previous["days"]} in the four before.', "running-block"))
+        rows.append(Evidence("consistency", f'Recorded runs occupied {recent["days"]} day{"" if recent["days"] == 1 else "s"} in the last four '
+                             f'completed weeks versus {previous["days"]} in the four before.', "running-block",
+                             claim=clauses.Claim("runs", r"\b(?:runs?|ran|running)\b",
+                                                 clauses.trend_of(recent["days"] - previous["days"]), "blocks")))
     if block.get("median_decoupling") is not None:
         rows.append(Evidence("endurance", f'Median second-half change in grade-adjusted speed per heartbeat '
                              f'was {block["median_decoupling"]:+g}% decoupling across '
@@ -158,7 +169,10 @@ def running_review(data):
         relation = "below" if pulse < low else "above" if pulse > high else "within"
         rows.append(Evidence("matched effort", f'Latest run moving heart rate was {pulse:g} bpm, {relation} '
                              f'the {low:g} to {high:g} bpm span of earlier comparable runs.',
-                             f'run-{run["activity_id"]}-compare'))
+                             f'run-{run["activity_id"]}-compare',
+                             claim=clauses.Claim("pulse", r"\b(?:heart rate|pulse)\b",
+                                                 {"below": "down", "above": "up", "within": "same"}[relation],
+                                                 "runs")))
     if halves := run.get("pacing", {}).get("effort_halves"):
         a, b = halves
         pace_a, pace_b = a["pace_s_per_km"], b["pace_s_per_km"]
@@ -166,19 +180,26 @@ def running_review(data):
         rows.append(Evidence("pacing", f'The latest single run was {change} in the second moving half '
                              f'({pace_a:g} to {pace_b:g} seconds per kilometre). Pulse went from '
                              f'{a["hr"]:g} to {b["hr"]:g} bpm.',
-                             f'run-{run["activity_id"]}-pacing'))
+                             f'run-{run["activity_id"]}-pacing',
+                             claim=clauses.Claim("pace", r"\b(?:faster|slower|quicker|slowed|sped|speed\w*|pace)\b",
+                                                 clauses.trend_of(b["hr"] - a["hr"]), "halves",
+                                                 change if change != "the same" else "same")))
     if measured := run.get("late_form", {}).get("cadence_spm"):
         rows.append(Evidence("matched mechanics", f'At similar pace and grade within the latest run, cadence '
                              f'was {measured["early"]:g} steps per minute early versus {measured["late"]:g} late, '
                              f'with {measured["matched_s"]} matched seconds in each half.',
-                             f'run-{run["activity_id"]}-form'))
+                             f'run-{run["activity_id"]}-form',
+                             claim=clauses.Claim("cadence", r"\bcadence\b",
+                                                 clauses.trend_of(measured["late"] - measured["early"]), "halves")))
     cadence = run.get("form", {}).get("cadence_spm", {})
     if span := cadence.get("matched_range"):
         measured = cadence["value"]
         if not span[0] <= measured <= span[1]:
             rows.append(Evidence("running form", f'Latest cadence was {measured:g} steps per minute '
                                  f'against an observed matched span of {span[0]:g} to {span[1]:g}.',
-                                 f'run-{run["activity_id"]}-form'))
+                                 f'run-{run["activity_id"]}-form',
+                                 claim=clauses.Claim("cadence", r"\bcadence\b",
+                                                     "up" if measured > span[1] else "down", "runs")))
     return tuple(rows) if len(rows) >= 2 else ()
 
 
@@ -438,12 +459,11 @@ FICTIONAL_CASES = {
         }),
     ),
     "sunday-review": (
-        "sunday_review", (
-            Evidence("training", "Recorded workout count with load data was 3 this week versus 2 per week "
-                     "on average over the previous four weeks.", "training"),
-            Evidence("sleep", "Sleep averaged 7.2 hours across 5 nights, 21 min less per night than last week.",
-                     "sleep"),
-        ),
+        "sunday_review", sunday_review({
+            "end": "2026-11-22",
+            "weekly_review": {"week": {"sessions": 3}, "previous_4wk_weekly_avg": {"sessions": 2}},
+            "sleep_review": {"windows": {7: {"nights": 5, "hours": 7.2}}, "week_change_min": -21},
+        }),
     ),
     "running-block": (
         "running_review", running_review({
@@ -499,6 +519,14 @@ CONCISE_SYSTEM = (
     "Use plain language and omit numbers unless useful. Avoid causes, advice and forecasts. "
     "Return only the observation and the two cited evidence IDs."
 )
+PARTS_SYSTEM = (
+    "Write two short clauses about two readings from different domains, one reading per clause. "
+    "Build each clause from its reading's own fields, in this order: measure, was, direction, period, "
+    "ending. Copy ending whole. The direction belongs to period, never to the ending. Never borrow the "
+    "other reading's fields. When a reading has no direction, state only what was measured. Use plain "
+    "everyday words, under twenty words per clause, with no figures or amounts. No causes, advice, "
+    "questions or forecasts. Do not start with while, and or but. Return each clause with its evidence ID. The program joins them and adds the question."
+)
 REVIEW_REASONS = ("supported", "wrong_comparison", "unsupported_claim", "advice_or_prediction")
 REVIEW = (
     "Compare each factual statement in the proposed observation and any premise in its question "
@@ -547,9 +575,30 @@ class Insight:
         return f"{SYSTEM} Voice: {self.voice} Focus: {self.focus}"
 
     @property
+    def checkable(self):
+        """IDs of current readings that a single clause can be verified against."""
+        return tuple(i for i, row in enumerate(self.rows, 1) if row.claim and not row.previous)
+
+    @property
+    def by_parts(self):
+        return len({self.rows[i - 1].domain for i in self.checkable}) >= 2
+
+    @property
     def concise_system(self):
         voice = f" Voice: {self.voice}" if self.voice != DEFAULT_VOICE else ""
+        if self.by_parts:
+            # The built-in running lens asks for a question, which this schema has no place for.
+            focus = self.focus.replace(" Ask what pattern is worth checking on the next comparable run.", "")
+            return f"{PARTS_SYSTEM}{voice} Focus: {focus}"
         return f"{CONCISE_SYSTEM}{voice} Focus: {self.focus}"
+
+    @property
+    def concise_prompt(self):
+        if not self.by_parts:
+            return self.prompt
+        return json.dumps([{"id": i, "domain": self.rows[i - 1].domain, "reading": self.rows[i - 1].text,
+                            **clauses.guide(self.rows[i - 1].claim)} for i in self.checkable],
+                          ensure_ascii=False, separators=(",", ":"))
 
     @property
     def prompt(self):
@@ -570,6 +619,12 @@ class Insight:
 
     @property
     def concise_schema(self):
+        if self.by_parts:
+            part = {"type": "object", "additionalProperties": False, "required": ["evidence", "text"],
+                    "properties": {"evidence": {"type": "integer", "enum": list(self.checkable)},
+                                   "text": {"type": "string"}}}
+            return {"type": "object", "additionalProperties": False, "required": ["parts"],
+                    "properties": {"parts": {"type": "array", "minItems": 2, "maxItems": 2, "items": part}}}
         schema = self.schema
         schema["required"].remove("question")
         del schema["properties"]["question"]
@@ -608,7 +663,8 @@ class Insight:
             for domain, question in (
                 ("matched mechanics", "Does cadence change similarly on another run at comparable pace and grade?"),
                 ("pacing", "Do pace and pulse follow the same pattern on your next comparable run?"),
-                ("matched effort", "Does moving pulse stay in the same range on another run at a similar pace?"),
+                ("matched effort", ("Where does moving pulse fall against your earlier range on another run at "
+                                    "a similar pace?")),
                 ("running form", "Does a run at a similar pace show the same cadence pattern?"),
             ):
                 if domain in domains:
@@ -629,6 +685,8 @@ class Insight:
             data = json.loads(raw)
         except (TypeError, ValueError):
             return None, "invalid_response"
+        if concise and self.by_parts:
+            return self._assess_parts(data)
         keys = {"observation", "evidence"} if concise else {"observation", "question", "evidence"}
         if not isinstance(data, dict) or data.keys() != keys:
             return None, "invalid_response"
@@ -644,11 +702,13 @@ class Insight:
         observation = _plain(data["observation"], 9, 55)
         if not observation:
             return None, "unsupported_wording"
-        if _UNMEASURED.search(observation):
+        # Every reading compares at most two periods, which cannot show a trend.
+        if _UNMEASURED.search(observation) or re.search(r"\btrend\w*\b", observation, re.IGNORECASE):
             return None, "unsupported_claim"
         pattern = r"[+−-]?\d+(?:[.:/]\d+)*"
         allowed = {n for i in ids for n in re.findall(pattern, self.rows[i - 1].text)}
-        if not set(re.findall(pattern, observation)) <= allowed:
+        if (not set(re.findall(pattern, observation)) <= allowed
+                or clauses.loose_amount(observation, " ".join(self.rows[i - 1].text for i in ids))):
             return None, "uncited_number"
         if concise:
             return {"observation": observation, "question": self._repeat_question(ids),
@@ -661,3 +721,37 @@ class Insight:
             return {"observation": observation, "question": self._repeat_question(ids),
                     "evidence": ids}, "question_reframed"
         return {"observation": observation, "question": question, "evidence": ids}, "valid"
+
+    def _assess_parts(self, data):
+        """Check each clause against its own reading, then join the two."""
+        parts = data.get("parts") if isinstance(data, dict) and data.keys() == {"parts"} else None
+        if (not isinstance(parts, list) or len(parts) != 2
+                or not all(isinstance(part, dict) and part.keys() == {"evidence", "text"} for part in parts)):
+            return None, "invalid_response"
+        ids = [part["evidence"] for part in parts]
+        if (not all(type(i) is int and i in self.checkable for i in ids)
+                or len({self.rows[i - 1].domain for i in ids}) < 2):
+            return None, "missing_citations"
+        written = []
+        for number, part in zip(ids, parts, strict=True):
+            text = _plain(part["text"], 4, 24)
+            text = re.sub(r"^(?:while|and|but|meanwhile|whereas),?\s+", "", text or "", flags=re.IGNORECASE)
+            text = text.rstrip(" .,;")
+            if not text or re.search(r"[?!;]|\.(?!\d)", text):
+                return None, "unsupported_wording"
+            if _UNMEASURED.search(text):
+                return None, "unsupported_claim"
+            row = self.rows[number - 1]
+            pattern = r"\d+(?:[.:/]\d+)*"
+            if (not set(re.findall(pattern, text)) <= set(re.findall(pattern, row.text))
+                    or clauses.uncited_quantity(text, row.text)):
+                return None, "uncited_number"
+            if reason := clauses.check(text, row.claim):
+                return None, reason
+            written.append(text)
+        first, second = written
+        second = second[0].lower() + second[1:] if second[1:2].islower() or second[1:2] == " " else second
+        observation = _plain(f"{first[0].upper()}{first[1:]}, while {second}.", 9, 55)
+        if not observation:
+            return None, "unsupported_wording"
+        return {"observation": observation, "question": self._repeat_question(ids), "evidence": ids}, "valid"
