@@ -78,3 +78,18 @@ def test_rebuild_fitness_series(conn):
     assert rows[-1][4] == pytest.approx(round(rows[-2][2] - rows[-2][3], 1), abs=0.11)
     z = conn.execute("SELECT z1_s, z2_s, z3_s FROM activity_load LIMIT 1").fetchone()
     assert sum(z) == pytest.approx(1799, abs=2)
+
+
+def test_thresholds_skips_fit_zone_records_without_maximum_pulse(conn):
+    configured = [188, None, 255, math.inf]
+    for aid, configured_max in enumerate(configured, 1):
+        day = f"2026-11-{aid + 19}"
+        conn.execute("INSERT INTO activities(activity_id, type, start_time_local, max_hr, "
+                     "updated_at) VALUES (?, 'running', ?, 179, 'x')", (aid, f"{day} 07:00:00"))
+        conn.execute("INSERT INTO fit_zones(activity_id,max_hr) VALUES (?,?)", (aid, configured_max))
+
+    thresholds = loads.thresholds(conn, "2026-11-23")
+    assert thresholds["garmin"]["hr_max_setting"] == 188
+    assert thresholds["hr_max"] == 179
+    conn.execute("DELETE FROM fit_zones WHERE activity_id=1")
+    assert loads.thresholds(conn, "2026-11-23")["garmin"]["hr_max_setting"] is None

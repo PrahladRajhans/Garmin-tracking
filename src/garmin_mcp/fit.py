@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from hashlib import sha256
 from os import fsync, link
@@ -39,12 +40,28 @@ class FitDecodeError(ValueError):
     pass
 
 
+def is_running_activity(activity_type: str | None) -> bool:
+    return "run" in (activity_type or "").lower()
+
+
 def cadence_units(activity_type: str | None) -> tuple[int, str | None]:
     """Scale one-foot running cadence to steps; keep cycling pedal revolutions as read."""
-    kind = activity_type or ""
-    if "run" in kind:
+    if is_running_activity(activity_type):
         return 2, "steps/min"
-    return 1, "rev/min" if "cycl" in kind else None
+    return 1, "rev/min" if "cycl" in (activity_type or "").lower() else None
+
+
+def session_messages(payload: str | None) -> list[dict[str, Any]]:
+    """Read the stored FIT session list, including a single-session object."""
+    try:
+        messages = json.loads(payload) if payload else []
+    except (TypeError, ValueError):
+        return []
+    if isinstance(messages, dict):
+        return [messages]
+    if isinstance(messages, list) and all(isinstance(message, dict) for message in messages):
+        return messages
+    return []
 
 
 def retain_file(directory: Path, activity_id: int, data: bytes) -> Path:

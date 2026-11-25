@@ -28,7 +28,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence, running
-from garmin_mcp.fit import cadence_units
+from garmin_mcp.fit import cadence_units, is_running_activity, session_messages
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
 RUN_IN = ",".join("?" * len(RUN_TYPES))
@@ -307,6 +307,8 @@ def run_analysis(conn: sqlite3.Connection, aid: int) -> dict[str, Any]:
                      "summary FROM activities WHERE activity_id=?", (aid,)).fetchone()
     if not a:
         return {"error": f"activity {aid} not found"}
+    if not is_running_activity(a[1]):
+        return {"error": "This activity is not a run."}
     m = run_metrics(conn, aid)
     if not m:
         return {"error": "not enough moving data in the FIT file for running analysis"}
@@ -524,7 +526,10 @@ def session_unit_check(conn: sqlite3.Connection, limit: int = 30) -> dict[str, A
             f"SELECT s.activity_id, s.payload FROM fit_sessions s JOIN activities a "
             f"USING(activity_id) WHERE a.type IN ({RUN_IN}) ORDER BY a.start_time_local DESC "
             f"LIMIT ?", (*RUN_TYPES, limit)):
-        g = (json.loads(payload) or [{}])[0]
+        sessions = session_messages(payload)
+        if not sessions:
+            continue
+        g = sessions[0]
         m = run_metrics(conn, aid)
         if not m:
             continue

@@ -111,7 +111,7 @@ to Garmin when requested. `build_dashboard` can publish the HTML when private ho
 | `start_experiment(kind='cadence', title?, target_spm?)` | Start one small experiment (default: knee-friendly cadence +5 %) |
 | `log_experiment(knee_during?, knee_next_morning?, felt?, effort?, note?)` | Record how the latest attempt felt; Garmin's own feel/effort answers are read automatically |
 | `experiment_status()` / `end_experiment(note?)` | Each attempt versus your comparable runs before the experiment, the verdict so far and the next step; close it |
-| `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs; off by default; sends only rounded location (~1 km) and date |
+| `weather_retrieval(enable?, fetch_now=False)` | Opt-in Open-Meteo weather and AQI for outdoor runs. Off by default. Sends rounded location (~1 km) and the UTC dates needed for the query. |
 | `outdoor_conditions_patterns(end?)` | Local paired comparisons of weather and AQI against moving heart rate and following sleep, HRV, and resting heart rate. Includes the runs and sample sizes behind eligible results |
 | `ai_narrator(enable?, model?, thinking?, thinking_minutes?)` | Show or change optional local Ollama insights. Ollama can summarize checked facts and prioritize a supported daily follow-up |
 | `bedtime_plan(day?, accept?, bedtime?)` | Review a weekly target or save the proposal with `accept=True`. An explicit target uses `HH:MM`. |

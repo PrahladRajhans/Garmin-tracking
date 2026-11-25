@@ -97,6 +97,14 @@ recorded sleep with lower HRV respectively. Running's first draft contrasted mor
 days with a latest run whose moving pulse stayed in its earlier matched range. All three
 produced reviewed prose with synthetic inputs. The owner's archive and Mac were unavailable.
 
+The same Sleep case with `--thinking --thinking-minutes 1` ran the configured thinking request
+before retrying. The initial thinking draft did not finish. The final concise retry asked for
+measured directions without figures, passed the review with the sleep-duration and HRV contrast,
+and returned `mode: direct_retry` and `reviewed_prose: true` in 111.35 seconds after warm-up.
+An earlier retry had attempted an uncited number and used exact-reading fallback in 98.20
+seconds. The final pass shows that a checked written observation can survive a thinking timeout.
+The thinking draft itself remains unverified on this case.
+
 ### Post-run evidence check
 
 The latest detailed run has a separate review when qualified measurements are available.

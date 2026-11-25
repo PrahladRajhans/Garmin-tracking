@@ -693,7 +693,7 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         direct_budget = INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS + INSIGHT_SELECTION_SECONDS
         if think_first and deadline - time.monotonic() > direct_budget:
             try:
-                draft, reason = try_draft("direct_retry")
+                draft, reason = try_draft("direct_retry", "uncited_number")
             except (OllamaUnavailable, TimeoutError):
                 pass
             else:

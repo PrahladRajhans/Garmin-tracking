@@ -262,9 +262,10 @@ def hrv_rows_wrapped(payload: Any) -> Rows:
 def health_status_rows(payload: Any) -> Rows:
     for rec in _as_list(payload):
         day = _calendar_day(_g(rec, "calendarDate"))
-        if not day:
+        metrics = _g(rec, "metrics")
+        if not day or not isinstance(metrics, list):
             continue
-        m = {x.get("type"): x for x in rec.get("metrics", []) if isinstance(x, dict)}
+        m = {x.get("type"): x for x in metrics if isinstance(x, dict)}
         yield day, {
             "hrv": _num(_g(m, "HRV", "value")),
             "hrv_low": _num(_g(m, "HRV", "baselineLowerLimit")),

@@ -279,3 +279,32 @@ def test_verifier_and_normalizer_choose_same_overlapping_range_and_daily_revisio
     rebuild(conn)
     assert tuple(conn.execute("SELECT last_night_avg,weekly_avg,status FROM hrv").fetchone()) == (57, 40, "balanced")
     assert verify._collect(conn, dataset)[DAY]["last_night_avg"] == 57
+
+
+
+def test_null_health_status_metrics_do_not_block_rebuild(conn):
+    second = "2026-11-21"
+    db.put_daily(conn, "ex_daily_summary", DAY, "export", {"calendarDate": DAY, "totalSteps": 30})
+    db.put_daily(conn, "ex_health_status", DAY, "export", {"calendarDate": DAY, "metrics": None})
+    db.put_daily(conn, "ex_health_status", second, "export",
+                 {"calendarDate": second, "metrics": [{"type": "HRV", "value": 42}]})
+    assert rebuild(conn)["health_status"] == 1
+    assert conn.execute("SELECT steps FROM daily WHERE day=?", (DAY,)).fetchone()[0] == 30
+    assert tuple(conn.execute("SELECT day, hrv FROM health_status").fetchone()) == (second, 42)
+    payload = conn.execute(
+        "SELECT payload FROM raw_daily WHERE dataset='ex_health_status' AND day=?", (DAY,)
+    ).fetchone()[0]
+    assert json.loads(payload)["metrics"] is None
+
+
+def test_default_verifier_rejects_missing_archive(tmp_path, monkeypatch, capsys):
+    from garmin_mcp import verify
+
+    archive = tmp_path / "missing.db"
+    monkeypatch.setenv("GARMIN_DB_PATH", str(archive))
+    monkeypatch.setattr("sys.argv", ["garmin-mcp-verify"])
+    with pytest.raises(SystemExit) as exc:
+        verify.main()
+    assert exc.value.code == 2
+    assert "No stored Garmin database" in capsys.readouterr().err
+    assert not archive.exists()

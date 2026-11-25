@@ -148,12 +148,15 @@ def seed_from_file(conn: sqlite3.Connection, path: str | None = None) -> list[st
         return []
     try:
         data = json.loads(p.read_text())
-    except ValueError:
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
         return []
     ensure(conn)
     applied = []
     for key, value in data.items():
-        if key in PLACEHOLDERS and value is not None and get(conn, key) is None:
+        if (key in PLACEHOLDERS and value is not None and not validate_setting(key, value)
+                and get(conn, key) is None):
             set_value(conn, key, value, "seeded from config/athlete.json")
             applied.append(key)
     return applied

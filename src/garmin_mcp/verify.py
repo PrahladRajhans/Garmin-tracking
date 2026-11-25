@@ -167,6 +167,7 @@ def run(conn: sqlite3.Connection) -> dict[str, Any]:
 def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Per-year paired watch/stream residuals from stored outdoor runs."""
     from garmin_mcp.coaching import run_metrics
+    from garmin_mcp.fit import session_messages
     from garmin_mcp.loads import RUN_TYPES
 
     groups: dict[str, dict[str, Any]] = {}
@@ -181,7 +182,7 @@ def run_timing(conn: sqlite3.Connection) -> dict[str, Any]:
         if metrics is None:
             continue
         year["runs_usable"] += 1
-        sessions = json.loads(payload) if payload else []
+        sessions = session_messages(payload)
         session = sessions[0] if len(sessions) == 1 else {}
         for name, measured, watch in (
             ("record_span_minus_watch_elapsed_s", metrics["recorded_elapsed_s"],
@@ -347,7 +348,10 @@ def main() -> None:
             print(json.dumps(run_timing(read_only), indent=2))
         return
 
-    conn = db.connect(db_path())
+    path = db_path()
+    if not path.is_file():
+        parser.error("No stored Garmin database. Run this where your archive is stored.")
+    conn = db.connect(path)
     N.rebuild(conn)
     result = run(conn)
     print(json.dumps({k: result[k] for k in ("ok", "problems", "known_upstream_differences")},

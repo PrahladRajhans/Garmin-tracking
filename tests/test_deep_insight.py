@@ -416,6 +416,7 @@ def test_full_thinking_timeout_can_salvage_a_concise_checked_draft(packet, monke
     result = narrator._deep_request("test:4b", {"num_ctx": 4096}, packet, time.monotonic() + 300, attempts=attempts)
     assert result["mode"] == "direct_retry" and result["observation"] == answer["observation"]
     assert [call["mode"] for call in attempts] == ["thinking", "direct_retry"]
+    assert "Use no figures" in requests[1]["system"]
     assert attempts[-1]["outcome"] == "supported" and requests[-1]["format"]["required"] == ["verdict"]
 
 

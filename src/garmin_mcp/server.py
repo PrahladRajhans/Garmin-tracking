@@ -766,7 +766,8 @@ def outdoor_conditions_patterns(end: str | None = None) -> dict[str, Any]:
 def weather_retrieval(enable: bool | None = None, fetch_now: bool = False) -> dict[str, Any]:
     """Opt-in weather and air quality for outdoor runs from Open-Meteo (free, no account).
     Off by default. enable=True/False turns it on or off; fetch_now fills the last 14 days.
-    When on, only each run's start position rounded to ~1 km and its date are sent."""
+    When on, sends the start position rounded to ~1 km and the run's UTC date range.
+    The weather query can include the next UTC date for a midnight rain reading."""
     from garmin_mcp import weather_fetch
 
     def run(c: sqlite3.Connection) -> dict[str, Any]:
