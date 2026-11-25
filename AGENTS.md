@@ -24,3 +24,5 @@ Want to suggest dashboard improvements? Start with `DASHBOARD_PLAN.md` §6–8 (
 When narration scope, prompts, validation or Ollama support changes, update [docs/OLLAMA.md](docs/OLLAMA.md) alongside the changelog and metrics rules.
 
 The owner explicitly rejects Chart readings dropdowns across all pages. Keep direct chart selection and accessible announcements. Do not reintroduce a separate list of plotted readings.
+
+Every chart must answer a useful question with comparable evidence, interpretation and coverage. Avoid raw metric-versus-date plots that connect unrelated runs or long data gaps. Running form must account for pace, terrain and measurement availability. Prefer a clear supported comparison and next check when a plot adds no insight.

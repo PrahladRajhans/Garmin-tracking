@@ -400,3 +400,18 @@ def test_form_boundaries_and_context_are_shared_with_mcp_glossary():
     assert ranges[2] == ("green", "164 to under 174")
     assert running.rate("cadence_spm", 173.9)["colour"] == "green"
     assert running.rate("cadence_spm", 174)["colour"] == "blue"
+
+
+def test_running_form_review_requires_comparable_evidence():
+    run = {"date": "2026-11-20", "pace": "6:00", "activity_id": 7, "work_on": ["Check another similar run."],
+           "form": {"step_length_m": {"label": "Stride length", "value": 1.01,
+                   "meaning": "Distance per step.", "check": "Compare at the same pace."}}}
+    text = dashboard._running_form_review([run])
+    assert "More comparable earlier runs" in text and "#run-7" in text
+    assert "data-chart=" not in text and "Check another similar run." in text
+
+
+def test_readiness_plot_explains_both_relationship_directions():
+    base = {"available": True, "pairs": [], "paired_days": 20, "interpretation": "Descriptive."}
+    assert "lower pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": -0.4}, set())
+    assert "higher pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": 0.4}, set())

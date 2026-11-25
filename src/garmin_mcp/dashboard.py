@@ -1364,7 +1364,8 @@ def _readiness_benchmark(b: dict, run_ids: set[int]) -> str:
     chart = both(scatter, points, "Garmin readiness", "Heart rate vs matched runs", None,
                  x_unit="0–100", y_unit="bpm", absolute_x=True)
     note = (f'{b["paired_days"]} paired days · rank correlation {rho:+.2f}. '
-            "Below zero means higher scores tended to accompany lower heart rates on similar runs."
+            + ("Higher readiness tended to accompany lower pulse on matched runs. Check conditions before using the score to plan effort."
+             if rho < 0 else "Higher readiness accompanied higher pulse on matched runs. These records do not support expecting a lower exercise pulse from a higher score.")
             if rho else f'{b["paired_days"]} paired days · no rank association in these records.')
     rows = []
     for p in reversed(b["pairs"]):
@@ -1572,7 +1573,7 @@ def _running_block(d: dict[str, Any]) -> str:
     efforts = block["efforts"]
     points = [(row["day"], row["pace_s_per_km"], row["pulse"]) for row in efforts]
     chart = both(scatter, points, "Pace", "Moving heart rate", None, x_unit="min/km", y_unit="bpm",
-                 absolute_x=True, absolute_y=True, x_format=_run_pace, dense=True)
+                 absolute_x=True, absolute_y=True, x_format=_run_pace)
     run_ids = {r["activity_id"] for r in d["runs"]}
     evidence = []
     for row in efforts:
@@ -1598,8 +1599,34 @@ def _running_block(d: dict[str, Any]) -> str:
              f'<p class="sub">{len(efforts)} qualifying steady outdoor runs from '
              f'{block["sampled"]} reviewed FIT recordings. Each dot is one run. '
              'Faster paces are on the left. Compare similar terrain and conditions.</p>'
+             f'<p class="sub">Faster pace usually raises pulse. These dots describe recorded effort; '
+             'progress is assessed against matched runs on each run’s detail page.</p>'
              f'{chart}{detail}{drift}</section>')
     return body
+
+
+def _running_form_review(runs):
+    if not runs:
+        return '<p class="empty">Record a run to compare your running form.</p>'
+    latest = runs[0]
+    rows = []
+    for key, measured in latest["form"].items():
+        value = measured["value"]
+        unit = running.FORM_UNITS[key]
+        reference = measured.get("your_usual_at_this_pace")
+        if reference is None:
+            context = "More comparable earlier runs are needed to assess a change."
+        else:
+            delta = measured["vs_usual_pct"]
+            direction = "above" if delta > 0 else "below" if delta < 0 else "equal to"
+            context = (f'{abs(delta):g}% {direction} your pace-adjusted reference '
+                       f'of {reference:g} {unit} from {measured["reference_runs"]} earlier runs.')
+        rows.append(_row(measured["label"], _e(f"{value:g} {unit}"),
+                         measured["meaning"] + " " + context + " " + measured["check"]))
+    actions = "".join(f'<li>{_e(text)}</li>' for text in latest.get("work_on", []))
+    return (f'<p><b>{_e(_date_label(latest["date"]))} · {_e(latest["pace"])}/km</b></p>'
+            f'<ul class="rows">{"".join(rows)}</ul><ul>{actions}</ul>'
+            f'<a class="flow-link" href="#run-{latest["activity_id"]}">Review this run{icon("chev")}</a>')
 
 
 def page_running(d: dict[str, Any]) -> str:
@@ -1633,28 +1660,13 @@ def page_running(d: dict[str, Any]) -> str:
                   f'<p class="sub">You average {ms["weekly_km_avg"]} km per week. The model '
                   f'compares that with a reference of about {ms["weekly_km_target"]:.0f} km '
                   f'per week and long runs of {ms["long_run_target_km"]:.0f} km.</p>')
-    fs = d["form"]["series"]
-    cad = both(line_chart, [(s["date"], s["cadence_spm"]) for s in fs], " spm",
-               y_label="Cadence (steps/min)")
-    dynamics = []
-    for key, title, unit, decimals in (
-        ("step_length_m", "Stride length", "m", 2),
-        ("ground_contact_ms", "Ground contact time", "ms", 0),
-        ("vertical_oscillation_cm", "Vertical oscillation", "cm", 1),
-        ("vertical_ratio_pct", "Vertical ratio", "%", 1),
-    ):
-        points = [(s["date"], s.get(key)) for s in fs if s.get(key) is not None]
-        if points:
-            chart = both(line_chart, points, f" {unit}", nd=decimals, y_label=f"{title} ({unit})")
-            dynamics.append(_card(title, chart, running.FORM_GUIDE[key][0], wide=True))
-    extra_form = ('<details class="wide secondary-metrics"><summary>Stride and contact trends</summary>'
-                  f'<div class="grid">{"".join(dynamics)}</div></details>' if dynamics else "")
+    form_review = _running_form_review(runs)
     body = (_running_block(d)
             + f'<nav class="card tiles wide" aria-label="Recent runs"><h3>Recent runs</h3>'
             f'{lst or "<p class=empty>No runs with detail yet.</p>"}</nav>'
             + _card("Steady run efficiency over time", _tests(d["tests"]),
                     "Similar-distance outdoor runs · grade-adjusted speed per heartbeat", wide=True)
-            + _card("Running dynamics", cad + _form_reference() + extra_form, running.FORM_GUIDE["cadence_spm"][0],
+            + _card("Running dynamics", form_review + _form_reference(), "Compare your latest run at a similar pace",
                     wide=True)
             + '<details class="card wide secondary-metrics"><summary>Race planning estimates</summary>'
             + '<div class="grid">'
@@ -1668,7 +1680,7 @@ def _tests(t: dict[str, Any]) -> str:
     if not t.get("runs"):
         return f'<p class="empty">{_e(t.get("reason"))}</p>'
     chart = both(line_chart, [(r["date"], r["ef"]) for r in t["runs"]], nd=2,
-                 y_label="Speed per heartbeat", x_label="Run date")
+                 y_label="Speed per heartbeat", x_label="Run date", connect_points=False)
     head = ""
     if t.get("available"):
         ch = t["ef_change_per_90d_pct"]
@@ -2650,7 +2662,7 @@ def page_months(d: dict[str, Any]) -> str:
     c = d["calendar"]
     history = c["months"]
     hours = [(date.fromisoformat(m["month"] + "-01").strftime("%b %y"),
-              m["values"]["avg_sleep_h"]) for m in history]
+              m["values"]["avg_sleep_h"] if m["coverage"]["sleep_nights"] >= 14 else None) for m in history]
     chart = both(bar_chart, hours, " h", nd=1, x_label="Month", y_label="Average sleep (h)")
     rows = []
     for month in reversed(history):

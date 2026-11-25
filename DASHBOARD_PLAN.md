@@ -352,3 +352,5 @@ shows the last observed dates by signal and separates usable score inputs from a
 Current guidance links its rule inputs and displays the previous decision's evidence where
 recorded. Post-run review leads with an observation, an alternative explanation and one
 measurement check. Training and Sunday review revisit the logged cadence experiment.
+
+Running overview now leads with the latest dated form review, pace-adjusted references, comparison counts and existing next-run checks. Sparse raw dynamics timelines were removed because pace and long gaps prevent a meaningful visual trend. Charts should answer a concrete question supported by comparable readings.

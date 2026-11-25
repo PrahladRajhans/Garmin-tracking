@@ -13,6 +13,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [0.33.1] - 2026-11-25
 
+- Gate monthly sleep bars on recorded coverage, clarify pace/pulse and readiness interpretations, and show independent efficiency observations.
+- Replace sparse running-form timelines with a dated latest-run review, pace-adjusted references, coverage and next checks.
 - Remove the Chart readings dropdown across every dashboard page and record the owner’s explicit preference in AGENTS.md.
 
 ## [0.33.0] - 2026-11-25

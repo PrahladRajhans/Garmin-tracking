@@ -373,3 +373,9 @@ listed in [owner acceptance](OWNER_ACCEPTANCE.md).
 ## Owner correction
 
 Chart readings dropdowns were removed globally in v0.33.1 at the owner’s explicit request. Direct point selection, overlays and live announcements remain available.
+
+Running overview now leads with the latest dated form review, pace-adjusted references, comparison counts and existing next-run checks. Sparse raw dynamics timelines were removed because pace and long gaps prevent a meaningful visual trend. Charts should answer a concrete question supported by comparable readings.
+
+## Chart purpose review
+
+Running form timelines were removed because pace and gaps confound comparisons. The replacement uses the latest run and its established pace reference, count, and next check. Efficiency history now uses independent points because recorded runs do not establish continuous change. Pace versus pulse explains its descriptive purpose and directs progress checks to matched runs, with larger sparse points. Readiness versus matched pulse now states what the observed direction implies. Monthly sleep bars require fourteen recorded nights per month to avoid presenting a few nights as a month’s sleep. Sleep duration/score, recovery vital references, weekly training load, intraday signals, route distance comparisons, and baseline-adjusted Patterns retain their distinct questions and coverage rules. Physical display and real-archive interpretation remain owner acceptance.
