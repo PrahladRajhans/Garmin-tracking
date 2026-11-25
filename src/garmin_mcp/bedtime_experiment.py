@@ -1,6 +1,7 @@
 """Save an accepted sleep target for a week and compare the dated results."""
 
-from datetime import date, time, timedelta
+import re
+from datetime import date, timedelta
 from statistics import fmean
 
 from garmin_mcp import recovery, sleep_review
@@ -12,10 +13,11 @@ def _week(end):
 
 
 def _minutes(value):
-    if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
+    # time.fromisoformat is too lenient here: Python 3.14+ accepts "24:00" and "T1234".
+    match = isinstance(value, str) and re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", value)
+    if not match:
         raise ValueError("Use HH:MM for the bedtime target.")
-    parsed = time.fromisoformat(value)
-    return 60 * parsed.hour + parsed.minute
+    return 60 * int(match[1]) + int(match[2])
 
 
 def _overnight(value):

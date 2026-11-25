@@ -110,7 +110,7 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Efficiency factor | Minetti-graded speed (m/min) ÷ average HR |
 | Decoupling (Pa:HR) | (EF 1st half − EF 2nd half) / EF 1st half × 100; < 5 % = Friel heuristic |
 | HR drift | average HR 2nd half − 1st half (steady runs) |
-| Cadence | FIT one-foot running cadence × 2 (steps/min). Cycling streams and workout details keep the recorded revolutions per minute. |
+| Cadence | FIT one-foot running cadence **plus its fractional part** (`fractional_cadence`), × 2 (steps/min). Before v0.32.1 the fraction was dropped, which read about 0.9 spm below the watch. Cycling streams and workout details keep the recorded revolutions per minute. |
 | Vertical ratio | vertical oscillation / step length × 100 (matches Garmin's session value) |
 | Matched-pace norm | median of runs within ±15 s/km (widened to ±30 if < 3 runs) in 180 days |
 | Form trends | monthly medians within your median pace ± 30 s/km |

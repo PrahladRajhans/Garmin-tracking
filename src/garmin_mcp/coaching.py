@@ -28,7 +28,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from garmin_mcp import conditions, environment_review, run_evidence, running
-from garmin_mcp.fit import cadence_units, is_running_activity, session_messages
+from garmin_mcp.fit import RECORD_CADENCE_SQL, cadence_units, is_running_activity, session_messages
 from garmin_mcp.grade import MAX_SAMPLE_GAP_S, interval_grades
 from garmin_mcp.loads import RUN_TYPES, _hms, minetti_cost
 
@@ -49,7 +49,7 @@ def _pace(speed: float | None) -> str | None:
 
 def _rows(conn: sqlite3.Connection, aid: int) -> list[dict[str, Any]]:
     cur = conn.execute(
-        "SELECT ts, heart_rate, speed, altitude, distance, cadence, step_length, stance_time, "
+        f"SELECT ts, heart_rate, speed, altitude, distance, {RECORD_CADENCE_SQL} AS cadence, step_length, stance_time, "
         "vertical_oscillation, power, temperature FROM fit_records WHERE activity_id=? ORDER BY ts",
         (aid,))
     cols = [c[0] for c in cur.description]
@@ -532,7 +532,8 @@ def session_unit_check(conn: sqlite3.Connection, limit: int = 30) -> dict[str, A
                  "ground_contact_ms": (m["ground_contact_ms"], g.get("avg_stance_time")),
                  "step_length_m": (m["step_length_m"],
                                    (g.get("avg_step_length") or 0) / 1000 or None),
-                 "cadence_spm": (m["cadence_spm"], (g.get("avg_running_cadence") or 0) * 2
+                 "cadence_spm": (m["cadence_spm"], ((g.get("avg_running_cadence") or 0)
+                                 + (g.get("avg_fractional_cadence") or 0)) * 2
                                  or None)}
         for k, (ours, theirs) in pairs.items():
             if ours and theirs:

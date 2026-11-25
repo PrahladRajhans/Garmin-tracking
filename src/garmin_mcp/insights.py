@@ -14,7 +14,7 @@ import statistics
 from datetime import date, timedelta
 from typing import Any
 
-from garmin_mcp.fit import cadence_units
+from garmin_mcp.fit import LAP_CADENCE_SQL, RECORD_CADENCE_SQL, cadence_units
 from garmin_mcp.normalize import TABLES
 
 
@@ -278,7 +278,7 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
     summary = json.loads(a.pop("summary") or "{}")
     cadence_scale, cadence_unit = cadence_units(a["type"])
     laps = [dict(r) for r in conn.execute(
-        "SELECT lap_index, timer_s, distance_m, avg_hr, max_hr, avg_speed, avg_cadence, "
+        f"SELECT lap_index, timer_s, distance_m, avg_hr, max_hr, avg_speed, {LAP_CADENCE_SQL} AS avg_cadence, "
         "avg_power FROM fit_laps WHERE activity_id=? ORDER BY lap_index", (activity_id,))]
     for lap in laps:
         sp = lap.pop("avg_speed")
@@ -287,7 +287,7 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
         lap["avg_cadence_spm"] = cad * cadence_scale if cad is not None else None
         lap["cadence_unit"] = cadence_unit
     stream = conn.execute(
-        "SELECT COUNT(*), AVG(heart_rate), AVG(cadence), AVG(power), AVG(vertical_oscillation),"
+        f"SELECT COUNT(*), AVG(heart_rate), AVG({RECORD_CADENCE_SQL}), AVG(power), AVG(vertical_oscillation),"
         " AVG(stance_time), AVG(step_length), MAX(altitude)-MIN(altitude), AVG(temperature) "
         "FROM fit_records WHERE activity_id=?", (activity_id,)).fetchone()
     form = None
