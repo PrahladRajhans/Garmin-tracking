@@ -726,6 +726,9 @@ averages are descriptive. A comparison for a metric needs three readings in each
 ## Intraday Stress and Body Battery
 
 Connect stores epoch-millisecond Stress and Body Battery entries in the daily stress response.
+Garmin files each reading under the **watch's** local date. When a stored day records a different
+UTC offset (travel), the day filter and the clock labels use that offset; otherwise they use the
+configured timezone. The same applies to the intraday pulse chart.
 Both `--source both` (default) and `--source garminconnect` download it. Before v0.32.1 the
 default mode skipped it, so those archives have no intraday timeline for earlier days until a
 forced sync covers them.

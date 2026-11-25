@@ -35,7 +35,9 @@ Snapshot Body Battery message decoded by the Garmin SDK. Proprietary and unknown
 left alone.
 
 Resting pulse compares only FIT `current_day_resting_heart_rate` against the normalized archive
-reading for the configured local date. FIT `resting_heart_rate` is a separate value and is excluded.
+reading for the day it closes. The watch writes it at its own midnight, so the date is taken one
+second earlier, on the watch's clock (from `monitoring_info.local_timestamp`, else the configured
+timezone). Other dates in the report use the same watch clock. FIT `resting_heart_rate` is a separate value and is excluded.
 The preview cannot confirm which archive source produced the reported 44 bpm. Use the
 [owner acceptance command](OWNER_ACCEPTANCE.md) for source reconciliation on that date.
 

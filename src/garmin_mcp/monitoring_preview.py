@@ -5,7 +5,7 @@ import math
 import sqlite3
 from collections import defaultdict
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from hashlib import sha256
 from os import fsync, link
 from tempfile import NamedTemporaryFile
@@ -39,6 +39,17 @@ def _day(stamp, zone):
     return stamp if isinstance(stamp, str) else datetime.fromtimestamp(stamp, zone).date().isoformat()
 
 
+def _watch_zone(messages, home):
+    """The offset the watch was using, from its own local timestamp, else the configured zone."""
+    for row in messages.get("monitoring_info_mesgs", ()):
+        stamp, local = _epoch(row.get("timestamp")), row.get("local_timestamp")
+        if stamp is not None and type(local) is int:
+            offset = timedelta(seconds=round(local + FIT_EPOCH - stamp))
+            if abs(offset) <= timedelta(hours=14):
+                return timezone(offset)
+    return home
+
+
 def _fit_signals(messages, zone):
     points = {metric: defaultdict(set) for metric in LIMITS}
     latest_full = None
@@ -48,7 +59,8 @@ def _fit_signals(messages, zone):
             if stamp is not None:
                 latest_full = max(latest_full if latest_full is not None else stamp, stamp)
             if metric == "resting_pulse" and stamp is not None:
-                stamp = _day(stamp, zone)
+                # Written at the watch's midnight for the day that is ending.
+                stamp = _day(stamp - 1, zone)
             _add(points, metric, stamp, row.get(value_key))
 
     # The 16-bit field is relative to the FIT epoch. A preceding timestamp anchors
@@ -82,12 +94,11 @@ def _pulse_rows(payload):
     try:
         content = json.loads(payload) if payload else None
     except (TypeError, ValueError):
-        return
-    rows = content.get("heartRateValues") if isinstance(content, dict) else None
-    if isinstance(rows, list):
-        for row in rows:
-            if isinstance(row, list) and len(row) >= 2:
-                yield row[0], row[1]
+        content = None
+    content = content if isinstance(content, dict) else {}
+    rows = content.get("heartRateValues")
+    rows = rows if isinstance(rows, list) else []
+    return content, [(row[0], row[1]) for row in rows if isinstance(row, list) and len(row) >= 2]
 
 
 def _archive_signals(conn, start, end, zone):
@@ -96,12 +107,14 @@ def _archive_signals(conn, start, end, zone):
         "SELECT day, payload FROM raw_daily WHERE day BETWEEN ? AND ? "
         "AND dataset IN ('heart_rate','pa_heart_rate')", (start, end)
     ):
-        for ms, bpm in _pulse_rows(raw):
+        content, rows = _pulse_rows(raw)
+        local_zone = wellness_timeline.device_zone(content, zone)
+        for ms, bpm in rows:
             if type(ms) not in (int, float) or not math.isfinite(ms) or ms <= 0:
                 continue
             stamp = ms / 1000
             try:
-                local_day = _day(stamp, zone)
+                local_day = _day(stamp, local_zone)
             except (ValueError, OSError, OverflowError):
                 continue
             if day == local_day:
@@ -173,7 +186,7 @@ def preview(database_path, fit_path, *, include_dates=False, retain_directory=No
         conn.execute("BEGIN")
         if not conn.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='raw_daily'").fetchone():
             raise ValueError("This database has no Garmin wellness archive schema.")
-        zone = engine._tz(conn)
+        zone = _watch_zone(messages, engine._tz(conn))
         incoming, unanchored = _fit_signals(messages, zone)
         days = {_day(stamp, zone) for values in incoming.values() for stamp in values}
         if days:

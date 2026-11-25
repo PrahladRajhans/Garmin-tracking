@@ -161,3 +161,23 @@ def test_retain_is_explicit_private_idempotent_and_requires_valid_input(tmp_path
     with pytest.raises(ValueError, match="monitoring FIT"):
         monitoring_preview.preview(database, activity, retain_directory=rejected)
     assert not rejected.exists()
+
+
+def test_end_of_day_resting_estimate_belongs_to_the_day_it_closes(tmp_path, monkeypatch):
+    """The watch writes it at its own midnight, which may differ from the configured zone."""
+    database = tmp_path / "archive.db"
+    monkeypatch.setenv("GARMIN_TZ", "Asia/Kolkata")
+    conn = db.connect(database)
+    normalize.rebuild(conn)
+    conn.execute("INSERT INTO daily(day,resting_hr) VALUES ('2026-06-10',52)")
+    conn.commit()
+    conn.close()
+    start = datetime(2026, 6, 9, 23, 0, tzinfo=UTC)  # midnight on a watch set to UTC+1
+    local = int(start.timestamp() - monitoring_preview.FIT_EPOCH) + 3600
+    path = _fixture(tmp_path / "monitoring.fit", (
+        ("MONITORING_INFO", {"timestamp": start, "local_timestamp": local}),
+        ("MONITORING_HR_DATA", {"timestamp": start + timedelta(days=1), "current_day_resting_heart_rate": 52}),
+    ))
+    result = monitoring_preview.preview(database, path, include_dates=True)
+    assert result["signals"]["resting_pulse"]["agreements"] == 1
+    assert list(result["signals"]["resting_pulse"]["by_local_date"]) == ["2026-06-10"]

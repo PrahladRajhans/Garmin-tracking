@@ -130,3 +130,21 @@ def test_unknown_battery_descriptors_do_not_mask_stress_or_guess_a_column():
         [{"key": "level", "index": 1}, {"key": "level", "index": 2}],
     )
     assert wellness_timeline.samples(payload, day, UTC) == {"stress": [(instant, 32)]}
+
+
+def test_timelines_use_the_watch_clock_for_days_recorded_away_from_home():
+    """A day recorded at UTC+1 keeps its late-evening samples when home is Asia/Kolkata."""
+    late = datetime(2026, 6, 10, 22, 0, tzinfo=UTC)  # 23:00 on the watch, 03:30 next day in Kolkata
+    payload = {"startTimestampGMT": "2026-06-09T23:00:00.0", "startTimestampLocal": "2026-06-10T00:00:00.0",
+               "stressValuesArray": [[int(late.timestamp() * 1000), 25]]}
+    [(stamp, value)] = wellness_timeline.samples(payload, "2026-06-10", ZoneInfo("Asia/Kolkata"))["stress"]
+    assert (stamp.strftime("%H:%M"), value) == ("23:00", 25)
+
+
+def test_intraday_pulse_uses_the_watch_clock(conn):
+    late = datetime(2026, 6, 10, 22, 0, tzinfo=UTC)
+    db.put_daily(conn, "pa_heart_rate", "2026-06-10", "personal_api", {
+        "startTimestampGMT": "2026-06-09T23:00:00.0", "startTimestampLocal": "2026-06-10T00:00:00.0",
+        "heartRateValues": [[int(late.timestamp() * 1000), 61]]})
+    found = dashboard_history._intraday_pulse(conn, "2026-06-10", "2026-06-10", ZoneInfo("Asia/Kolkata"))
+    assert [slot["time"] for slot in found["2026-06-10"]["slots"]] == ["23:00"]
