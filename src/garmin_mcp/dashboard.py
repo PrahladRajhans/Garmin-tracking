@@ -340,7 +340,9 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
                rate_range: bool = False, zone_metric: str | None = None,
                details: dict[str, str] | None = None, max_gap: float | None = None,
                whiskers: bool = False, weekdays: bool = False, average_label: str = "7-day average",
-               guides: dict[float, str] | None = None) -> str:
+               guides: dict[float, str] | None = None,
+               time_ticks: list[tuple[str, float]] | None = None,
+               value_ticks: tuple[int, ...] = ()) -> str:
     """Date spacing reflects elapsed days. Missing observations stay out of the cursor."""
     bounds = band_series if band_series and len(band_series) == len(points) else [band] * len(points)
     rows = [(label, value, interval) for (label, value), interval in
@@ -363,7 +365,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
     values.extend(averages[d] for d in labels if d in averages)
     if reference is not None:
         values.append(reference)
-    ticks = _ticks(*_scale(values))
+    ticks = value_ticks or _ticks(*_scale(values))
     h = max(h, 184)
     left, right, top, bottom = 51, w - 31, 29, h - 49
     positions = [elapsed[label] for label in labels] if elapsed is not None else days
@@ -381,7 +383,13 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
             return left + (right - left) * ((date.fromisoformat(label).toordinal() - first)
                                            / (last - first) if last > first else .5)
 
+    def elapsed_x(minute):
+        first, last = time_ticks[0][1], time_ticks[-1][1]
+        return left + (right - left) * (minute - first) / (last - first)
+
     def x(i: int) -> float:
+        if time_ticks:
+            return elapsed_x(positions[i])
         if calendar_ticks:
             return calendar_x(labels[i])
         if len(rows) == 1:
@@ -398,7 +406,7 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
         start, end = positions[0], positions[-1]
         for minute, label in guides.items():
             if start <= minute <= end:
-                gx = left + (right - left) * (minute - start) / (end - start)
+                gx = elapsed_x(minute) if time_ticks else left + (right - left) * (minute - start) / (end - start)
                 g.append(f'<line class="timeline-guide" x1="{gx:.2f}" x2="{gx:.2f}" '
                          f'y1="{top}" y2="{bottom}"><title>{_e(label)}</title></line>')
     if band:
@@ -450,7 +458,10 @@ def line_chart(points: list[tuple[str, float]], unit: str = "", band: tuple | No
             marker = f"zone-dot zone-{zone[0]}"
             display += f" · {zone[1]}"
         g.append(_point(x(i), y(value), label, display, marker))
-    if calendar_ticks:
+    if time_ticks:
+        g += [f'<text x="{elapsed_x(minute):.2f}" y="{bottom + 17}" text-anchor="middle" class="tick">'
+              f'{_e(label)}</text>' for label, minute in time_ticks]
+    elif calendar_ticks:
         g += _x_ticks(calendar_ticks, lambda i: calendar_x(calendar_ticks[i]), bottom, w > W, weekdays=True)
     else:
         g += _x_ticks(labels, x, bottom, w > W)
@@ -2272,6 +2283,43 @@ def _intraday_pulse_card(pulse, activities, *, day, zone):
                  + (f'<ul class="rows">{markers}</ul>' if markers else ""), wide=True)
 
 
+def _intraday_wellness_card(wellness, day, zone):
+    start = datetime.fromisoformat(day).replace(tzinfo=zone)
+    time_ticks = [(f"{hour:02}:00", (start + timedelta(hours=hour)).timestamp() / 60)
+                  for hour in (0, 6, 12, 18, 24)]
+    panels = []
+    for metric, title in (("stress", "Garmin stress"), ("battery", "Garmin Body Battery")):
+        series = wellness.get(metric)
+        if not series:
+            panels.append(f'<div><h4>{title}</h4><p class="sub">Timeline unavailable for this date.</p></div>')
+            continue
+        slots = series["slots"]
+        first, last = series["first"], series["last"]
+        if metric == "stress":
+            peak = max((slot for slot in slots if slot["count"] >= 2),
+                       key=lambda slot: slot["value"], default=None)
+            headline = (f'Highest measured 15-minute median · {peak["value"]:g}/100 at {peak["time"]}.'
+                        if peak else "The available windows contain single readings.")
+            ranges = [slot["span"] for slot in slots]
+            method = "Line shows the window median. Bars show the observed low and high."
+        else:
+            headline = (f'{first[1]:g}/100 at {first[0]} → {last[1]:g}/100 at {last[0]}.'
+                        if series["count"] >= 2 else f'{first[1]:g}/100 at {first[0]}.')
+            ranges = None
+            method = "Each window shows its last recorded reading."
+        chart = line_chart([(slot["time"], slot["value"]) for slot in slots], "/100",
+                     nd=1, x_label="Local time", y_label=f"{title} (0–100)",
+                     elapsed={slot["time"]: slot["minute"] for slot in slots}, time_ticks=time_ticks,
+                     value_ticks=(0, 25, 50, 75, 100), break_gaps=True, max_gap=15.1,
+                     band_series=ranges, whiskers=True, band_label="recorded span",
+                     details={slot["time"]: f'{slot["count"]} recorded' for slot in slots})
+        panels.append(f'<div><h4>{title}</h4><p><b>{_e(headline)}</b></p>{chart}'
+                      f'<p class="chart-note">{series["count"]} readings · {method}</p></div>')
+    return _card("Stress and Body Battery", f'<div class="wellness-panels">{"".join(panels)}</div>',
+                 "Garmin Connect · Empty stretches have no usable recordings. "
+                 "The two Garmin estimates share some inputs.", wide=True)
+
+
 def page_history_day(d: dict[str, Any], day: str) -> str:
     row = d["calendar"]["days"][day]
     daily = row.get("daily", {})
@@ -2340,6 +2388,8 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
                       "Compared with your recent recorded days.", wide=True)
     body += _resting_pulse_card(row.get("resting_pulse_check"))
     body += _intraday_pulse_card(row.get("intraday_hr"), row.get("activities", []), day=day, zone=d.get("zone", UTC))
+    if wellness := row.get("intraday_wellness"):
+        body += _intraday_wellness_card(wellness, day, d.get("zone", UTC))
     if readings:
         body += _card("Readings", f'<details><summary>All recorded values</summary>'
                       f'<ul class="rows">{readings}</ul></details>', wide=True)
@@ -2350,7 +2400,7 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         body += _card("Recorded sleep stages", f'<ul class="rows">{"".join(stages)}</ul>')
     if workouts:
         body += _card("Workouts", f'<ul class="record-list">{"".join(workouts)}</ul>', wide=True)
-    if not any((readings, workouts, night, stages, row.get("intraday_hr"))):
+    if not any((readings, workouts, night, stages, row.get("intraday_hr"), wellness)):
         body += _card("Readings", '<p class="empty">No usable readings for this date.</p>')
     return _page(f"day-{day}", _date_label(day), "Garmin records for this date",
                  body, back=f"#month-{day[:7]}")
@@ -2696,6 +2746,10 @@ box-sizing:border-box}
 .chart-layout>.lg{display:none}
 @supports (container-type:inline-size){
 .chart-layout{container-type:inline-size}
+.wellness-panels{display:grid;gap:12px}
+.wellness-panels>div{min-width:0}
+.wellness-panels h4{margin:10px 0 6px}
+@media(min-width:800px){.wellness-panels{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}}
 @container (min-width:600px){
 .chart-layout>.sm{display:none}.chart-layout>.lg{display:block}
 }}

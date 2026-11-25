@@ -121,3 +121,19 @@ or run the model. The original archive stays read-only. See the
 [repository review](REPOSITORY_REVIEW.md) for fixture results and remaining checks.
 This is a structural replay. Some long-term panels read settings or records from the
 current archive, so use a separate as-of dataset for time-isolated model or forecast evaluation.
+
+## Read-only archive audit
+
+Run `garmin-mcp-verify --archive-audit` on the Mac with the scheduler's database path and
+timezone. The JSON shows an SQLite quick check, counts of activities with current FIT
+references and decoded streams, and first/last usable dates and missing dates inside each
+Connect timeline’s observed span. It shows counts and dates without raw measurements,
+credentials, paths, activity IDs or route coordinates. Treat these dates as personal metadata.
+
+A nonzero exit calls out an invalid/unreadable database or a referenced FIT file
+that is gone, empty or unavailable. No current reference may be intentional. The audit
+looks only at the current activity references and does not validate every FIT binary or
+historical revision. Empty wellness coverage alone does not fail the audit. The snapshot
+of SQLite is consistent, but the filesystem can change during a run. Check active paths
+after relocating the archive, and retain the complete FIT directory in backups.
+[Source review](GARMIN_ECOSYSTEM_REVIEW.md)

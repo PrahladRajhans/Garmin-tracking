@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.27.4. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.28.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -23,6 +23,7 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 | [HANDOVER.md](HANDOVER.md) | **Start here:** goal, story, every formula with file and source, how ours differs from Garmin and the apps, known issues, what's left |
 | [docs/CHATGPT_HANDOVER_PROMPT.md](docs/CHATGPT_HANDOVER_PROMPT.md) | Ready-to-paste prompt for handing the project to ChatGPT |
 | [Independent review guide](docs/REVIEW_START_HERE.md) | Follow each reading from Garmin to the dashboard and model, with fixture and account-specific checks |
+| [Garmin ecosystem review](docs/GARMIN_ECOSYSTEM_REVIEW.md) | 40 reviewed repository links, public forum evidence, decisions and tradeoffs |
 | [Garmin source register](docs/GARMIN_DATA_REVIEW.md) | Device and API evidence, research citations, and opportunities requiring archive verification |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |
 | [AGENTS.md](AGENTS.md) | Rules and context for AI assistants (Claude, ChatGPT) working on this repo |
@@ -216,7 +217,8 @@ page can show whether Garmin readiness lined up with lower or higher heart rate 
 runs in your records. See [the method and limits](METRICS.md#matched-run-evidence-and-outdoor-conditions-v0170).
 
 The local archive preserves received FIT files and changed source payloads. Chart sampling
-only affects the dashboard. Include both the database and the FIT directory in backups.
+only affects the dashboard. Recent day pages show recorded Stress and Body Battery when present.
+Run `garmin-mcp-verify --archive-audit` locally for an aggregate archive check. Include both the database and the FIT directory in backups.
 [Storage and restore](docs/OPERATIONS.md#backups-and-rollback)
 
 ### Local workout weather and AQI

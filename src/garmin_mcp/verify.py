@@ -263,11 +263,23 @@ def main() -> None:
     from garmin_mcp.config import db_path
 
     parser = argparse.ArgumentParser(description="Check stored Garmin data.")
-    parser.add_argument("--run-timing", action="store_true",
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--archive-audit", action="store_true",
+                       help="Report local archive integrity, file references and wellness coverage.")
+    modes.add_argument("--run-timing", action="store_true",
                         help="Compare stored FIT recordings with watch summaries by year, read-only.")
-    parser.add_argument("--replay-dashboard", action="store_true",
+    modes.add_argument("--replay-dashboard", action="store_true",
                         help="Check monthly dashboard snapshots without changing the archive.")
     args = parser.parse_args()
+    if args.archive_audit:
+        from garmin_mcp.archive_audit import audit
+
+        path = db_path()
+        if not path.is_file():
+            parser.error("No stored Garmin database. Run this where your archive is stored.")
+        report = audit(path)
+        print(json.dumps(report, indent=2))
+        raise SystemExit(0 if report["ok"] else 1)
     if args.replay_dashboard:
         path = db_path()
         if not path.is_file():

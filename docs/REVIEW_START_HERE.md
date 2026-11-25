@@ -9,6 +9,7 @@ changes. [Garmin sources](GARMIN_DATA_REVIEW.md), [formulas](../METRICS.md) and
 |---|---|
 | Sync and raw provenance | [sync](../src/garmin_mcp/sync.py), [import](../src/garmin_mcp/importer.py), [normalization](../src/garmin_mcp/normalize.py) |
 | Daily pulse and archive coverage | [archive windows](../src/garmin_mcp/baseline.py), [history collection](../src/garmin_mcp/dashboard_history.py), [rendering](../src/garmin_mcp/dashboard.py), [coverage and pulse tests](../tests/test_signal_context.py) |
+| Ecosystem decisions and archive checks | [40-link review](GARMIN_ECOSYSTEM_REVIEW.md), [audit](../src/garmin_mcp/archive_audit.py), [timeline decoder](../src/garmin_mcp/wellness_timeline.py), [tests](../tests/test_archive_audit.py) |
 | Sleep and recovery | [sleep review](../src/garmin_mcp/sleep_review.py), [sleep need and shortfall](../src/garmin_mcp/recovery.py), [tests](../tests/test_recovery.py) |
 | Patterns and reviewed AI | [engine](../src/garmin_mcp/engine.py), [evidence and validation](../src/garmin_mcp/deep_insight.py), [worker](../src/garmin_mcp/narrator.py), [AI configuration](OLLAMA.md) |
 | Rendering and delivery | [dashboard interaction](../src/garmin_mcp/dashboard_interaction.py), [UI review](UI_REVIEW.md), [Mac setup](../MAC_SETUP.md), [publishing](../src/garmin_mcp/publish.py) |

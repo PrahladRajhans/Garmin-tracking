@@ -34,8 +34,8 @@ def _tz(conn: sqlite3.Connection) -> ZoneInfo:
 
     from garmin_mcp import athlete
 
-    name = os.getenv("GARMIN_TZ") or athlete.get(conn, "timezone") or "UTC"
     try:
+        name = os.getenv("GARMIN_TZ") or athlete.get(conn, "timezone", ensure_schema=False) or "UTC"
         return ZoneInfo(name)
     except Exception:  # noqa: BLE001
         return ZoneInfo("UTC")

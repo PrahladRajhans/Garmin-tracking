@@ -165,3 +165,6 @@ tests/test_workouts.py	15	reviewed	1–83	pytest; workouts	Unit conversion, vali
 docs/GARMIN_DATA_REVIEW.md	16	reviewed	all	Hand-off and metrics sources	Documents 955, Garmin Connect and API source boundaries and owner checks.
 docs/REVIEW_START_HERE.md	16	reviewed	all	README and HANDOVER	Indexes the daily pulse, Sleep, Patterns and model paths.
 src/garmin_mcp/baseline.py	16	fixed and verified	all	Dashboard History collection	Read-only archive windows with counts, range and missing dates. Tested with sparse and dated input.
+docs/GARMIN_ECOSYSTEM_REVIEW.md	17	reviewed	all	Roadmap, handover and source review	40 input entries and 38 distinct revisions, three community links and adoption decisions.
+src/garmin_mcp/archive_audit.py	17	fixed and verified	all	Verifier CLI	Read-only file and wellness coverage counts. Empty, missing, unrelated DB and privacy checks.
+src/garmin_mcp/wellness_timeline.py	17	fixed and verified	all	History collection and verifier CLI	Verified known source arrays, missing values, time zones and deduplication. Owner coverage open.

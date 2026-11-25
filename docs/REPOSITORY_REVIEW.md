@@ -109,3 +109,10 @@ The v0.27.4 pass traced sync, normalization, archive windows, Sleep, History, Pa
 and Ollama evidence. It reused chart and inference paths and kept the preserved raw Garmin
 payloads. The [reviewer index](REVIEW_START_HERE.md) records those entry points.
 Further repository-wide formula and deployment review remains open in the [roadmap](../ROADMAP.md).
+
+## Garmin ecosystem pass
+
+[The 40-link review](GARMIN_ECOSYSTEM_REVIEW.md) identifies which findings came from a README,
+which were confirmed in source, and what changed in v0.28.0. Runtime review covered the
+Garmin Connect adapter, read-only SQLite and current FIT references, and the existing
+History rendering path. Live coverage and the full repository line audit remain open.

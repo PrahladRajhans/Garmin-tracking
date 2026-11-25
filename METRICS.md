@@ -699,3 +699,16 @@ averages are descriptive. A comparison for a metric needs three readings in each
   `n//4` and `(n−1)*3//4`). Dates with missing or invalid observations count as gaps. Sparse
   windows include the missing date ranges and do not display a numeric baseline. See
   [Garmin sources and independent research](docs/GARMIN_DATA_REVIEW.md).
+
+## Intraday Stress and Body Battery
+
+Connect stores epoch-millisecond Stress and Body Battery entries in the daily stress response.
+Use the configured local timezone, accept Stress 0–100 and Body Battery 5–100, and keep
+the first usable value at a duplicate timestamp. For each 15-minute window, Stress shows
+the median plus the recorded low and high. The peak summary needs at least two readings
+in that window. Body Battery shows the last recorded value in each window with its first
+and last observed reading as context. Those endpoints may cover only part of the day.
+The plotted full-day axis allows side-by-side comparison, and absent windows break lines.
+The metrics share physiological inputs and the chart supports time comparison without
+inferring causality, duration at a value or a recovery recommendation. Garmin Personal
+API series require their own confirmed mapping. [Source evidence](docs/GARMIN_ECOSYSTEM_REVIEW.md#implementation-evidence)
