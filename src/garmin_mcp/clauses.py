@@ -58,7 +58,7 @@ _WORDS = {
 }
 # Doubled or mismatched comparison words passed every meaning check in live drafts.
 _GARBLED = r"\bthan\s+(?:compared|as)\b|\bas\s+(?:than|compared|in\s+place)\b|\bin\s+place\s+of\b"
-_NEVER = r"\b(?:load|volume|intensity|distance|mileage|quality|score|fitness|recovery|stress|effort level)\b"
+_NEVER = r"\b(?:load|volume|intensity|distance|mileage|quality|score|fitness|recovery|stress|effort level|trend\w*)\b"
 _NEGATION = r"\b(?:not|no|never|without|neither|nor)\b|n['’]t\b"
 _METRICS = {
     "pulse": r"\b(?:heart\s*rate|pulse|bpm)\b",

@@ -51,8 +51,8 @@ coverage from the earlier queue as regression checks where affected.
    wait on a hosting decision.
 4a. **Code, from the [AI verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness):** do not ask
    whether a within-noise "difference" repeats; set a recency limit on the post-run review; make the
-   selection fallback prefer the largest change; reject trend wording from one weekly step; date the
-   latest resting estimate.
+   selection fallback prefer the largest change; date the
+   latest resting estimate. (Done: written observations that call one step a trend are rejected.)
 5. **Done in code:** Running and weekly direct drafts are now clause-by-clause with a Python
    direction and period check ([cause and measurements](docs/OLLAMA.md#running-and-weekly-direct-drafts)).
    **Still to do:** measure on the dated cases and re-judge usefulness. The checks make the prose

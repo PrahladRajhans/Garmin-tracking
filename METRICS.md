@@ -236,7 +236,8 @@ Zones, TRIMP and effective VO2max all depend on it, so the sense check stays fla
   Python joins the clauses with "while". Readings without such a contract (aerobic decoupling) are
   left out of drafting and stay available to the exact-reading selection. Spelled fractions and
   amounts such as "half an hour" are rejected in every written observation unless the cited
-  reading contains them. Thinking drafts keep the free-observation path and do not get clause checks.
+  reading contains them. Observations that say "trend" are rejected, since no reading covers more
+  than two periods. Thinking drafts keep the free-observation path and do not get clause checks.
 - The matched-effort follow-up asks where pulse falls against the earlier range. It does not assume
   the latest run was inside it.
 

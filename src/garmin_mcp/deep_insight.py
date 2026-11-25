@@ -152,7 +152,7 @@ def running_review(data):
     recent, previous = block.get("recent", {}), block.get("previous", {})
     rows = []
     if recent.get("runs") and previous.get("runs"):
-        rows.append(Evidence("consistency", f'Recorded runs occupied {recent["days"]} days in the last four '
+        rows.append(Evidence("consistency", f'Recorded runs occupied {recent["days"]} day{"" if recent["days"] == 1 else "s"} in the last four '
                              f'completed weeks versus {previous["days"]} in the four before.', "running-block",
                              claim=clauses.Claim("runs", r"\b(?:runs?|ran|running)\b",
                                                  clauses.trend_of(recent["days"] - previous["days"]), "blocks")))
@@ -702,7 +702,8 @@ class Insight:
         observation = _plain(data["observation"], 9, 55)
         if not observation:
             return None, "unsupported_wording"
-        if _UNMEASURED.search(observation):
+        # Every reading compares at most two periods, which cannot show a trend.
+        if _UNMEASURED.search(observation) or re.search(r"\btrend\w*\b", observation, re.IGNORECASE):
             return None, "unsupported_claim"
         pattern = r"[+−-]?\d+(?:[.:/]\d+)*"
         allowed = {n for i in ids for n in re.findall(pattern, self.rows[i - 1].text)}

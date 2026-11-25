@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   accepted reversed directions and rejected correct sentences (`clauses.py`, `deep_insight.py`,
   `narrator.py`). Saved written reviews are regenerated once (insight contract 5).
 - Reject spelled-out amounts such as "half an hour" that the cited readings do not contain.
+- Written AI observations can no longer call a two-period comparison a trend, and the running-days
+  reading says "1 day".
 - The matched-effort question no longer assumes pulse stayed in its earlier range.
 - Record why an AI pass stays incomplete; `garmin-mcp-narrator --check` shows
   `last_incomplete_reasons`. The unexplained pass of 25 November matched an Ollama self-update.

@@ -302,3 +302,21 @@ def test_a_clause_cannot_add_an_unchecked_claim_about_another_measure():
         assert assess(packet, good, (i["matched effort"], text)) == (None, "wrong_comparison")
     kept = "latest pulse was higher at a similar pace than earlier comparable runs"
     assert assess(packet, good, (i["matched effort"], kept))[1] == "valid"
+
+
+def test_one_comparison_is_not_called_a_trend():
+    packet = weekly_packet()
+    i = ids(packet)
+    text = "sleep was shorter this week than last week in a downward trend"
+    assert assess(packet, (i["training"], TRUE["training"]), (i["sleep"], text)) == (None, "unsupported_claim")
+    lens, rows = deep_insight.FICTIONAL_CASES["sleep-written"]
+    free = {"evidence": [1, 2], "observation": "Average sleep rose this week while HRV showed a downward trend."}
+    assert deep_insight.Insight(rows, lens).assess(json.dumps(free), concise=True) == (None, "unsupported_claim")
+
+
+def test_a_single_running_day_reads_as_singular():
+    rows = deep_insight.running_review({
+        "running_block": {"recent": {"runs": 1, "days": 1}, "previous": {"runs": 3, "days": 3},
+                          "median_decoupling": 2.0, "decoupling_count": 3},
+    })
+    assert "occupied 1 day in the last four" in rows[0].text and "versus 3 in" in rows[0].text
