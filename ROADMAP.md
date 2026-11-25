@@ -41,8 +41,8 @@ coverage from the earlier queue as regression checks where affected.
 
 [What was checked](docs/OWNER_ACCEPTANCE_RESULTS.md). In priority order:
 
-1. **Owner, security:** turn off Ollama's network exposure and confirm it listens on loopback
-   only. Check data-folder permissions and set up a backup ([operations](docs/OPERATIONS.md#backups-and-rollback)).
+1. **Owner, security:** Ollama's network exposure is off and loopback-only listening was
+   confirmed on 25 November. Still to do: check data-folder permissions and set up a backup ([operations](docs/OPERATIONS.md#backups-and-rollback)).
 2. **Done 25 November:** the stress timeline was backfilled from 1 July 2026. Garmin returned
    nothing for earlier days tried, so older intraday history may only exist in monitoring FIT files.
 3. **Owner:** give the date and label of the 44 bpm reading; review the local AI report.
