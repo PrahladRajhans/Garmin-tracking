@@ -24,6 +24,7 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 | [docs/CHATGPT_HANDOVER_PROMPT.md](docs/CHATGPT_HANDOVER_PROMPT.md) | Ready-to-paste prompt for handing the project to ChatGPT |
 | [Independent review guide](docs/REVIEW_START_HERE.md) | Follow each reading from Garmin to the dashboard and model, with fixture and account-specific checks |
 | [Owner acceptance](docs/OWNER_ACCEPTANCE.md) | Verify private archive, dated pulse and local model support on the Mac |
+| [**Lessons from 30 projects + improvement backlog**](docs/LESSONS_FROM_30_LINKS_2026-11-25.md) | Independent review (25 Nov 2026): login risk, MCP design, standalone/no-Mac options, prioritised backlog with dependencies, Trends page options. Proposals only |
 | [Garmin ecosystem review](docs/GARMIN_ECOSYSTEM_REVIEW.md) | 40 reviewed repository links, public forum evidence, decisions and tradeoffs |
 | [Garmin source register](docs/GARMIN_DATA_REVIEW.md) | Device and API evidence, research citations, and opportunities requiring archive verification |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |

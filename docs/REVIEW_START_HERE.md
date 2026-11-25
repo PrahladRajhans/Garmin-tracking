@@ -9,6 +9,7 @@ changes. [Garmin sources](GARMIN_DATA_REVIEW.md), [formulas](../METRICS.md) and
 |---|---|
 | Sync and raw provenance | [sync](../src/garmin_mcp/sync.py), [import](../src/garmin_mcp/importer.py), [normalization](../src/garmin_mcp/normalize.py) |
 | Daily pulse and archive coverage | [archive windows](../src/garmin_mcp/baseline.py), [history collection](../src/garmin_mcp/dashboard_history.py), [rendering](../src/garmin_mcp/dashboard.py), [coverage and pulse tests](../tests/test_signal_context.py) |
+| Architecture, login risk, standalone options, Trends | [30-link lessons and backlog](LESSONS_FROM_30_LINKS_2026-11-25.md) |
 | Ecosystem decisions and archive checks | [40-link review](GARMIN_ECOSYSTEM_REVIEW.md), [audit](../src/garmin_mcp/archive_audit.py), [timeline decoder](../src/garmin_mcp/wellness_timeline.py), [tests](../tests/test_archive_audit.py) |
 | Running charts and form | [split and form rendering](../src/garmin_mcp/dashboard.py), [form guide](../src/garmin_mcp/running.py), [MCP glossary](../src/garmin_mcp/coaching.py), [dashboard tests](../tests/test_dashboard.py) |
 | Local CSV | [exporter](../src/garmin_mcp/archive_export.py), [verifier command](../src/garmin_mcp/verify.py), [operator examples](OPERATIONS.md#local-csv-exports) |
