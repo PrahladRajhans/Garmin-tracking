@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+from datetime import date
 from typing import Any
 
 from garminconnect import workout as gw
@@ -96,8 +97,12 @@ def validate(spec: dict[str, Any], hr_max: float | None) -> list[str]:
                     problems.append("repeat 'times' must be 1-30")
                 if not s.get("steps"):
                     problems.append("repeat needs steps")
+                if s.keys() & {"duration", "distance_m", "pace", "hr", "hr_zone"}:
+                    problems.append("put duration, distance and targets on the steps inside a repeat")
                 walk(s.get("steps", []), depth + 1)
                 continue
+            if s.keys() & {"times", "steps"}:
+                problems.append("repeat counts and nested steps require a repeat group")
             if "duration" not in s and "distance_m" not in s:
                 problems.append(f"{t} step needs 'duration' or 'distance_m'")
             if "duration" in s and "distance_m" in s:
@@ -177,6 +182,8 @@ def _build_steps(steps: list[dict[str, Any]], order: list[int]) -> tuple[list[An
 def build(spec: dict[str, Any]) -> dict[str, Any]:
     order = [STEP_ORDER_START - 1]
     steps, est = _build_steps(spec["steps"], order)
+    if not math.isfinite(est):
+        raise ValueError("combined workout duration must be finite")
     wk = gw.RunningWorkout(
         workoutName=spec.get("name", "Workout")[:40],
         estimatedDurationInSecs=int(est),
@@ -188,6 +195,79 @@ def build(spec: dict[str, Any]) -> dict[str, Any]:
             workoutSteps=steps)],
     )
     return wk.to_dict()
+
+
+def _preview(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read the serialized workout so preview and upload use the same step meaning."""
+    from garmin_mcp.loads import _hms
+
+    totals = {"encoded_steps": 0, "performed_steps": 0, "repeat_depth": 0,
+              "fixed_time_s": 0.0, "fixed_distance_m": 0.0, "distance_without_pace_m": 0.0}
+    fast_time = slow_time = 0.0
+    has_zone = False
+
+    def walk(steps, multiplier=1, depth=0):
+        nonlocal fast_time, slow_time, has_zone
+        rows = []
+        for s in steps:
+            totals["encoded_steps"] += 1
+            typ = s["stepType"]["stepTypeKey"]
+            row = {"order": s["stepOrder"], "type": typ}
+            rows.append(row)
+            if typ == "repeat":
+                times = s["numberOfIterations"]
+                totals["repeat_depth"] = max(totals["repeat_depth"], depth + 1)
+                row.update(times=times, steps=walk(s["workoutSteps"], multiplier * times, depth + 1))
+                continue
+            totals["performed_steps"] += multiplier
+            end = s["endCondition"]["conditionTypeKey"]
+            value = s["endConditionValue"]
+            key = "duration_s" if end == "time" else "distance_m"
+            row[key] = value
+            totals["fixed_time_s" if end == "time" else "fixed_distance_m"] += value * multiplier
+            if s.get("description"):
+                row["note"] = s["description"]
+            target = (s.get("targetType") or {}).get("workoutTargetTypeKey")
+            low, high = s.get("targetValueOne"), s.get("targetValueTwo")
+            if target == "pace.zone":
+                fast, slow = round(1000 / high), round(1000 / low)
+                row["target"] = {"pace": f"{_hms(fast)}–{_hms(slow)} min/km",
+                                 "faster_s_per_km": fast, "slower_s_per_km": slow}
+                if end == "distance":
+                    fast_time += value * multiplier / high
+                    slow_time += value * multiplier / low
+            else:
+                if end == "distance":
+                    totals["distance_without_pace_m"] += value * multiplier
+                if target == "heart.rate.zone":
+                    if "zoneNumber" in s:
+                        has_zone = True
+                        row["target"] = {"heart_rate_zone": s["zoneNumber"]}
+                    else:
+                        row["target"] = {"min_bpm": low, "max_bpm": high}
+        return rows
+
+    steps = walk(payload["workoutSegments"][0]["workoutSteps"])
+    if not all(math.isfinite(value) for value in (*totals.values(), fast_time, slow_time)):
+        raise ValueError("combined workout totals must be finite")
+    compatibility = {
+        "format": "validated Garmin Connect running workout",
+        "watch_status": "unverified",
+        "note": "This preview used the local compiler. Upload, sync and watch behavior need a device check.",
+    }
+    if totals["repeat_depth"] > 1:
+        compatibility["nested_repeats"] = "Check how the paired watch renders nested repeat groups."
+    if has_zone:
+        compatibility["heart_rate_zones"] = "Zone targets use the watch’s running zone settings."
+    estimate = None
+    if not totals["distance_without_pace_m"]:
+        bounds = [totals["fixed_time_s"] + time for time in (fast_time, slow_time)]
+        if not all(math.isfinite(value) for value in bounds):
+            raise ValueError("combined workout time bounds must be finite")
+        estimate = [round(value, 1) for value in bounds]
+    return {"steps": steps, "totals": totals, "time_at_target_range_s": estimate,
+            "garmin_estimate_basis": "Fixed step time plus distance at 2.8 m/s.",
+            "compatibility": compatibility}
 
 
 def templates(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -251,13 +331,26 @@ def create(conn: sqlite3.Connection, spec: dict[str, Any], upload: bool = False,
 
     th = loads.thresholds(conn)
     problems = validate(spec, th.get("hr_max"))
+    if schedule_date is not None:
+        try:
+            if date.fromisoformat(schedule_date).isoformat() != schedule_date:
+                raise ValueError
+        except (TypeError, ValueError):
+            problems.append("schedule date must be YYYY-MM-DD")
     if problems:
         return {"ok": False, "problems": problems}
-    payload = build(spec)
+    try:
+        payload = build(spec)
+        preview = _preview(payload) if not upload else None
+    except ValueError as exc:
+        return {"ok": False, "problems": [str(exc)]}
     out: dict[str, Any] = {"ok": True, "garmin_workout_json": payload,
                            "estimated_duration_s": payload["estimatedDurationInSecs"],
                            "uploaded": False}
     if not upload:
+        out["preview"] = preview
+        if schedule_date is not None:
+            out["preview"]["requested_schedule_date"] = schedule_date
         out["next"] = "call again with upload=true to send it to Garmin Connect (needs the " \
                       "unofficial login on your Mac)"
         return out

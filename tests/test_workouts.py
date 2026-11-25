@@ -70,6 +70,8 @@ def test_upload_schedule_list_delete_with_fake_client(conn):
     assert r["uploaded"] and r["workout_id"] == 7 and f.scheduled == (7, "2026-11-25")
     assert workouts.list_on_garmin(f)["workouts"][0]["id"] == 7
     assert workouts.delete_on_garmin(7, f) == {"deleted": 7}
+
+
 def test_malformed_workouts_return_problems_instead_of_crashing():
     from garmin_mcp import workouts
 
@@ -90,3 +92,78 @@ def test_malformed_workouts_return_problems_instead_of_crashing():
     cyclic["steps"].append(cyclic)
     assert workouts.validate({"steps": [cyclic]}, 188)
     assert workouts.validate({"steps": [{"type": "interval", "duration": 60}] * 201}, 188)
+
+
+def test_preview_shows_nested_repeat_order_and_progressive_pace_without_connect(conn, monkeypatch):
+    from garmin_mcp import client
+
+    def unexpected_login():
+        raise AssertionError("preview must never load a Garmin client")
+
+    monkeypatch.setattr(client, "get_client", unexpected_login)
+    spec = {"name": "Progression", "steps": [
+        {"type": "warmup", "duration": 180, "hr_zone": 2},
+        {"type": "repeat", "times": 3, "steps": [
+            {"type": "interval", "distance_m": 1000, "pace": "5:45-5:30"},
+            {"type": "repeat", "times": 2, "steps": [
+                {"type": "interval", "distance_m": 400, "pace": "5:00-5:10"},
+                {"type": "recovery", "duration": 30, "hr": "120-140"}]},
+        ]},
+        {"type": "cooldown", "duration": 120},
+    ]}
+    result = workouts.create(conn, spec, schedule_date="2026-11-26")
+    assert result["ok"] and result["uploaded"] is False
+    preview = result["preview"]
+    assert preview["requested_schedule_date"] == "2026-11-26"
+    assert preview["totals"] == {
+        "encoded_steps": 7, "performed_steps": 17, "repeat_depth": 2,
+        "fixed_time_s": 480, "fixed_distance_m": 5400, "distance_without_pace_m": 0,
+    }
+    assert preview["time_at_target_range_s"] == [2190, 2259]
+    warmup, outer, cooldown = preview["steps"]
+    assert [s["order"] for s in (warmup, outer, cooldown)] == [1, 2, 7]
+    assert warmup["target"] == {"heart_rate_zone": 2}
+    longer, inner = outer["steps"]
+    faster, recovery = inner["steps"]
+    assert outer["times"] == 3 and inner["times"] == 2
+    assert [s["order"] for s in (longer, inner, faster, recovery)] == [3, 4, 5, 6]
+    assert longer["target"] == {"pace": "5:30–5:45 min/km", "faster_s_per_km": 330,
+                                "slower_s_per_km": 345}
+    assert faster["target"] == {"pace": "5:00–5:10 min/km", "faster_s_per_km": 300,
+                                "slower_s_per_km": 310}
+    assert recovery["target"] == {"min_bpm": 120, "max_bpm": 140}
+    assert preview["compatibility"]["watch_status"] == "unverified"
+    assert {"nested_repeats", "heart_rate_zones"} <= preview["compatibility"].keys()
+
+
+def test_preview_leaves_time_range_unknown_when_any_distance_has_no_pace(conn):
+    spec = {"steps": [{"type": "warmup", "distance_m": 500}, *SPEC["steps"]]}
+    result = workouts.create(conn, spec)
+    preview = result["preview"]
+    assert preview["totals"]["fixed_distance_m"] == 4500
+    assert preview["totals"]["distance_without_pace_m"] == 500
+    assert preview["time_at_target_range_s"] is None
+    assert result["estimated_duration_s"] > preview["totals"]["fixed_time_s"]
+
+
+def test_repeat_and_schedule_errors_prevent_upload(conn):
+    fake = FakeClient()
+    extra_target = {"type": "repeat", "times": 2, "pace": "5:00-5:10", "steps": SPEC["steps"]}
+    stray_repeat = {"type": "interval", "duration": 60, "times": 3}
+    assert workouts.validate({"steps": [extra_target]}, 188)
+    assert workouts.validate({"steps": [stray_repeat]}, 188)
+    result = workouts.create(conn, SPEC, upload=True, schedule_date="2026-W48-4", client=fake)
+    assert result == {"ok": False, "problems": ["schedule date must be YYYY-MM-DD"]}
+    assert fake.uploaded is None and fake.scheduled is None
+
+
+def test_repeat_limits_and_nonfinite_workout_totals(conn):
+    step = {"type": "interval", "duration": 4}
+    for times in (1, 30):
+        result = workouts.create(conn, {"steps": [{"type": "repeat", "times": times, "steps": [step]}]})
+        assert result["preview"]["totals"]["performed_steps"] == times
+        assert result["preview"]["time_at_target_range_s"] == [times * 4, times * 4]
+    for times in (0, 31):
+        assert workouts.validate({"steps": [{"type": "repeat", "times": times, "steps": [step]}]}, 188)
+    huge = {"steps": [{"type": "repeat", "times": 3, "steps": [{"type": "interval", "duration": 1e308}]}]}
+    assert workouts.create(conn, huge)["problems"] == ["combined workout duration must be finite"]

@@ -462,25 +462,37 @@ def rebuild(conn: sqlite3.Connection) -> dict[str, int]:
                 add(table, source, fn(data))
 
     counts = {}
-    for table, cols in TABLES.items():
-        conn.execute(f"DROP TABLE IF EXISTS {table}")
-        conn.execute(
-            f"CREATE TABLE {table} (day TEXT PRIMARY KEY, "
-            + ", ".join(cols) + ", sources TEXT)"
-        )
-        rows = []
-        for day, entries in cand[table].items():
-            entries.sort(key=lambda e: e[0])
-            merged = {c: _first(*(e[2].get(c) for e in entries)) for c in cols}
-            if all(v is None for v in merged.values()):
-                continue
-            used = sorted({e[1] for e in entries if any(e[2].get(c) is not None for c in cols)},
-                          key=lambda s: PRIORITY.get(s, 9))
-            rows.append((day, *merged.values(), ",".join(used)))
-        conn.executemany(
-            f"INSERT INTO {table} VALUES ({', '.join('?' for _ in range(len(cols) + 2))})", rows
-        )
-        counts[table] = len(rows)
+    # SQLite DDL does not start an implicit write transaction. Begin before any
+    # table replacement so an interrupted rebuild keeps the previous generation.
+    conn.execute("SAVEPOINT rebuild_tidy")
+    try:
+        for table, cols in TABLES.items():
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.execute(
+                f"CREATE TABLE {table} (day TEXT PRIMARY KEY, "
+                + ", ".join(cols) + ", sources TEXT)"
+            )
+            rows = []
+            for day, entries in cand[table].items():
+                entries.sort(key=lambda e: e[0])
+                merged = {c: _first(*(e[2].get(c) for e in entries)) for c in cols}
+                if all(v is None for v in merged.values()):
+                    continue
+                used = sorted({e[1] for e in entries if any(e[2].get(c) is not None for c in cols)},
+                              key=lambda s: PRIORITY.get(s, 9))
+                rows.append((day, *merged.values(), ",".join(used)))
+            conn.executemany(
+                f"INSERT INTO {table} VALUES ({', '.join('?' for _ in range(len(cols) + 2))})", rows
+            )
+            counts[table] = len(rows)
+    except BaseException:
+        # Some SQLite errors already roll back the transaction.
+        if conn.in_transaction:
+            conn.execute("ROLLBACK TO rebuild_tidy")
+            conn.execute("RELEASE rebuild_tidy")
+        raise
+    else:
+        conn.execute("RELEASE rebuild_tidy")
     conn.commit()
     try:  # Phase 4 tables depend on the tidy tables above
         from garmin_mcp import loads

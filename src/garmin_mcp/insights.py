@@ -372,7 +372,8 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None, *,
     if knee_pause and focus["title"] not in {
             "Pause training today.", "Rest today or choose very easy movement."}:
         detail = "Your previous evening check-in flagged knee soreness."
-        focus.update(title="Skip running today.", detail=detail, target="training", findings=[])
+        focus.update(title="Skip running today.", detail=detail, target="training", findings=[],
+                     evidence_keys=("knee_checkin",))
         recommendation = {**recommendation, "suggest": "skip running today", "reason": detail}
         week_ahead = {"plan": "Leave running out today and reassess tomorrow.", "basis": detail}
     yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
@@ -382,13 +383,14 @@ def daily_brief(conn: sqlite3.Connection, day: str | None = None, *,
         "focus": focus,
         "week_ahead": week_ahead,
         "knee_pause": knee_pause,
-        "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state",
+        "readiness": {"ours": {k: r["ours"][k] for k in ("composite_z", "state", "components", "minimum_signals",
                                                           "holding_back", "helping")},
                       "garmin": r["garmin"]},
         "hrv": {k: r["hrv"].get(k) for k in ("state", "rolling_7d_ms", "normal_band_ms",
                                               "last_night_ms", "cv_7d_pct")},
         "sleep": r["sleep"],
         "illness_flag": r["illness_flag"]["raised"],
+        "illness_details": r["illness_flag"],
         "garmin_training_status": snap["training"]["garmin_status"],
         "yesterday_activities": recent_activities(conn, days=1, end=yesterday)["activities"],
         "week_so_far": snap["recent_activities"],

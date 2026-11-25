@@ -171,3 +171,14 @@ src/garmin_mcp/wellness_timeline.py	17	fixed and verified	all	History collection
 LICENSE	18	reviewed	all	Repository root, package metadata and README	MIT text and 2026 Prahlad Rajhans copyright.
 src/garmin_mcp/archive_export.py	18	fixed and verified	all	Verifier CLI	Fixed summaries, readonly database, same-day activity identities and owner-only file when requested.
 tests/test_archive_export.py	18	reviewed	all	pytest	Fixtures cover explicit dates, fixed columns and refusing overwrite.
+tests/test_archive_audit.py	18	reviewed	1–132	garmin-mcp-verify archive audit, wellness decoder and FIT references	Read-only aggregate coverage, normalized-table independence and descriptor cases. Included in the 63-test targeted operations run.
+docs/OWNER_ACCEPTANCE.md	1	reviewed	all	Owner Mac and configured archive	Date input remains local. Command distinguishes source match, model availability, archive replay and physical acceptance.
+docs/WELLNESS_PREVIEW.md	9	reviewed	all	Read-only verifier FIT preview	Supported measurement scope, conflict rules and owner acceptance for representative monitoring files.
+docs/WORKOUT_PREVIEW.md	11	reviewed	all	MCP create_workout default dry run	Local compiler and watch compatibility are reported separately. No live device evidence.
+src/garmin_mcp/monitoring_preview.py	9	reviewed	all	Verifier monitoring FIT entry	Read-only source comparison and bounded timestamp reconstruction. No archive write path.
+src/garmin_mcp/owner_acceptance.py	1	reviewed	all	Module CLI, explicit pulse date, optional replay	Local read-only provenance and aggregate results. Loopback availability check does not exercise advice.
+src/garmin_mcp/reading_availability.py	2	reviewed	all	Today and Recovery on dashboard	Dated usable evidence, incomplete sleep, sync freshness and last observed day.
+src/garmin_mcp/wellness_review.py	10	reviewed	all	Sleep and Recovery on dashboard	Explicit nap coverage and prior completed-day Body Battery comparisons. Owner cadence and sleep coverage still require archive verification.
+tests/test_monitoring_preview.py	9	reviewed	all	Fixture suite	Synthetic FIT messages and archive reconciliation, including rejection of activity files. No production archive involved.
+tests/test_owner_acceptance.py	1	reviewed	all	Fixture suite	Dated source versus rolling pulse, aggregate coverage and missing databases. Private owner pulse still open.
+tests/test_coaching_followthrough.py	4–6 and 10	reviewed	1–94	Fixture suite for Today, Recovery, Sleep and weekly cue review	Covers delayed sync, dated recommendations and evidence retention, missing nap/pulse data, qualified Body Battery comparisons and cadence cue pause.

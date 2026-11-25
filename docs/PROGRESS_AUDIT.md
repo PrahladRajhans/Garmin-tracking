@@ -152,3 +152,11 @@ use, a common glossary, a tested fallback for rejected/unfinished local AI prose
 targeted archive exports, additional Body Battery handling, per-feature ecosystem
 follow-up and MIT attribution. Still open: the owner’s actual archive and Mac, the
 iPhone performance target and wellness FIT import beyond the validated inputs.
+
+## Owner acceptance workstream
+
+The [roadmap](../ROADMAP.md) reconciles all 14 items with closure checks for the workspace and
+owner devices. The release adds the local acceptance command, offline previews, chart startup
+and safe archive rebuild changes, and structured coaching and dated reading evidence.
+The physical-device, live protected delivery, real Qwen prose and full manual audit checks
+remain separate.

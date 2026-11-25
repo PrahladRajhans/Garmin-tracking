@@ -532,6 +532,8 @@ def _deep_item(conn, state, data):
 
 def _deep_items(conn, state, data):
     result = {}
+    if run := deep_insight.post_run_review(data):
+        result[f'post-run-insight-{data["runs"][0]["activity_id"]}'] = run
     if rows := deep_insight.running_review(data):
         lens = "running_review"
         voice, focus, _ = deep_insight.writing_style(conn, lens)
@@ -546,9 +548,12 @@ def _deep_items(conn, state, data):
 
 
 def _deep_key(item, state):
-    content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
-                     deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
-                     deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS, deep_insight.SELECT_COMPARISON])
+    if isinstance(item, deep_insight.PostRunInsight):
+        content = _json([state["model"], deep_insight.POST_RUN_CONTRACT, item.system, item.prompt, item.schema])
+    else:
+        content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
+                         deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
+                         deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS, deep_insight.SELECT_COMPARISON])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -600,6 +605,18 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         if reply.get("done") is not True or reply.get("done_reason") == "length":
             raise OllamaUnavailable
         return reply.get("response")
+
+    if isinstance(item, deep_insight.PostRunInsight):
+        outcome = "incomplete"
+        try:
+            raw = complete(item.system, item.prompt, item.schema, False, INSIGHT_SELECTION_SECONDS, 24,
+                           selection=True)
+            current()
+            result, outcome = item.assess(raw)
+            return result
+        finally:
+            if attempts is not None:
+                attempts.append({"mode": "selected_post_run", "stage": "selection", "outcome": outcome})
 
     def select_comparison():
         pairs = item.comparison_options()
@@ -709,7 +726,8 @@ def generate(conn: sqlite3.Connection, data: dict, deadline: float, *,
             return accepted
         use_thinking = bool(state.get("thinking") and profile["thinking"])
         seconds = _thinking_seconds(state)
-        item_budget = (seconds if use_thinking else 0) + INSIGHT_OVERHEAD_SECONDS
+        item_budget = (INSIGHT_SELECTION_SECONDS if isinstance(insight, deep_insight.PostRunInsight) else
+                       (seconds if use_thinking else 0) + INSIGHT_OVERHEAD_SECONDS)
         attempts = insight_attempts.setdefault(name, [])
         try:
             draft = _deep_request(model, profile, insight, min(deadline, time.monotonic() + item_budget),
@@ -852,9 +870,11 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
                 data = dashboard.collect(conn)
                 state = settings(conn)
                 before_status = _worker_status(conn, state["model"])
-                count = len(_deep_items(conn, state, data))
                 thinking_budget = _thinking_seconds(state) if state.get("thinking") else 0
-                budget = SYNC_SECONDS + count * (thinking_budget + INSIGHT_OVERHEAD_SECONDS)
+                budget = SYNC_SECONDS + sum(
+                    INSIGHT_SELECTION_SECONDS if isinstance(item, deep_insight.PostRunInsight) else
+                    thinking_budget + INSIGHT_OVERHEAD_SECONDS for item in _deep_items(conn, state, data).values()
+                )
                 generate(conn, data, time.monotonic() + budget,
                          still_current=lambda: dashboard._snapshot_id(path) == snapshot
                          and not _sync_in_progress(conn))
@@ -940,7 +960,8 @@ def main() -> None:
     parser.add_argument("--eval-insight", action="store_true", help="Try a fictional thinking insight")
     parser.add_argument("--selection-only", action="store_true",
                         help="With --eval-insight, exercise the fallback on fictional evidence")
-    parser.add_argument("--insight-case", choices=deep_insight.FICTIONAL_CASES, default="mixed-recovery",
+    parser.add_argument("--insight-case", choices=(*deep_insight.FICTIONAL_CASES, *deep_insight.FICTIONAL_POST_RUN_CASES),
+                        default="mixed-recovery",
                         help="Select the fictional evidence used by --eval-insight")
     parser.add_argument("--eval", action="store_true", help="Benchmark installed models with fiction")
     parser.add_argument("--models", help="Comma-separated local tags to benchmark")
@@ -963,20 +984,31 @@ def main() -> None:
                            else _thinking_seconds(settings(conn)) // 60)
                 if not 1 <= minutes <= 30:
                     raise ValueError("Choose 1 to 30 minutes of thinking time.")
+                case = deep_insight.FICTIONAL_POST_RUN_CASES.get(args.insight_case)
+                fixture = None
+                if case:
+                    data, expected = case
+                    fixture = deep_insight.post_run_review(data)
+                    if fixture is None:
+                        print(_json({"model": chosen, "case": args.insight_case, "status": "insufficient_evidence",
+                                     "expected_topic": expected, "quality_pass": expected is None, "seconds": 0}))
+                        return
+                    fallback_topic = deep_insight.post_run_fallback(data)["topic"]
                 if not _cloud_disabled(time.monotonic() + 5):
                     raise ValueError("Ollama must confirm cloud access is disabled.")
                 model_profile = _model_profile(chosen, time.monotonic() + 5)
                 if not model_profile["text_generation"]:
                     raise ValueError("This model does not support Ollama text generation.")
-                think = args.thinking is not False and not args.selection_only
+                think = args.thinking is not False and not args.selection_only and not case
                 if think and not model_profile["thinking"]:
                     raise ValueError("This model does not advertise thinking support.")
                 _warm(chosen, model_profile, time.monotonic() + INSIGHT_WARM_SECONDS)
-                lens, rows = deep_insight.FICTIONAL_CASES[args.insight_case]
-                voice, focus, _ = deep_insight.writing_style(conn, lens)
-                fixture = deep_insight.Insight(rows, lens, voice, focus)
+                if fixture is None:
+                    lens, rows = deep_insight.FICTIONAL_CASES[args.insight_case]
+                    voice, focus, _ = deep_insight.writing_style(conn, lens)
+                    fixture = deep_insight.Insight(rows, lens, voice, focus)
                 start = time.monotonic()
-                remaining = (INSIGHT_SELECTION_SECONDS if args.selection_only else
+                remaining = (INSIGHT_SELECTION_SECONDS if args.selection_only or case else
                              (minutes * 60 if think else 0) + INSIGHT_OVERHEAD_SECONDS)
                 attempts = []
                 try:
@@ -985,11 +1017,16 @@ def main() -> None:
                                             attempts=attempts, selection_only=args.selection_only)
                 except (OllamaUnavailable, TimeoutError):
                     print(_json({"model": chosen, "case": args.insight_case, "status": "incomplete_or_timed_out",
-                                 "attempts": attempts, "seconds": round(time.monotonic() - start, 2)}))
+                                 "attempts": attempts, "seconds": round(time.monotonic() - start, 2),
+                                 **({"expected_topic": expected, "quality_pass": False,
+                                     "dashboard_topic": fallback_topic} if case else {})}))
                     return
                 print(_json({"model": chosen, "case": args.insight_case, "insight": insight,
                              "status": "accepted" if insight else "withheld",
-                             "attempts": attempts, "seconds": round(time.monotonic() - start, 2)}))
+                             "attempts": attempts, "seconds": round(time.monotonic() - start, 2),
+                             **({"expected_topic": expected,
+                                 "dashboard_topic": insight["topic"] if insight else fallback_topic,
+                                 "quality_pass": bool(insight and insight["topic"] == expected)} if case else {})}))
                 return
             if args.eval:
                 print(json.dumps(evaluate(conn, [tag.strip() for tag in args.models.split(",")] if args.models else [])))

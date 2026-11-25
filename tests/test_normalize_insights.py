@@ -1,5 +1,8 @@
 import json
+import sqlite3
 from datetime import UTC, date, datetime, timedelta
+
+import pytest
 
 from garmin_mcp import db, insights
 from garmin_mcp.normalize import rebuild
@@ -63,6 +66,35 @@ def test_rebuild_merges_sources_by_priority(conn):
     assert r["score"] == 60 and r["morning_score"] == 80  # latest vs first of the day
     assert insights._row(conn, "scores", DAY)["endurance_score"] == 5400
     assert insights._row(conn, "scores", DAY)["hill_score"] == 22
+
+
+@pytest.mark.parametrize("blocked_table", ["daily", "sleep"])
+def test_failed_rebuild_preserves_previous_normalized_tables(conn, blocked_table):
+    _seed(conn)
+    rebuild(conn)
+    db.put_daily(conn, "pa_daily_summary", DAY, "personal_api", {
+        "calendarDate": DAY, "movement": {"steps": {"value": 9000}},
+    })
+    conn.commit()
+
+    def deny_insert(action, table, column, database, trigger):
+        if action == sqlite3.SQLITE_INSERT and table == blocked_table:
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    conn.set_authorizer(deny_insert)
+    try:
+        with pytest.raises(sqlite3.DatabaseError):
+            rebuild(conn)
+    finally:
+        conn.set_authorizer(None)
+
+    assert not conn.in_transaction
+    assert insights._row(conn, "daily", DAY)["steps"] == 8000
+    assert insights._row(conn, "sleep", DAY)["sleep_s"] == 25200
+    counts = rebuild(conn)
+    assert "loads_error" not in counts
+    assert insights._row(conn, "daily", DAY)["steps"] == 9000
 
 
 def test_snapshot_and_flags(conn):

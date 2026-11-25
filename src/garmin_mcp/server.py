@@ -326,9 +326,11 @@ def workout_templates() -> dict[str, Any]:
 def create_workout(spec: str, upload: bool = False,
                    schedule_date: str | None = None) -> dict[str, Any]:
     """Build a structured running workout from a JSON spec, validate it (paces 2:30-12:00/km,
-    HR below your max) and return Garmin's workout JSON. With upload=true it is sent to Garmin
-    Connect (unofficial login, Mac only) and optionally scheduled (YYYY-MM-DD); sync the watch to
-    receive it. Spec: {"name":..., "steps":[{"type":"warmup|interval|recovery|cooldown",
+    HR below your max) and return Garmin's workout JSON. The default offline preview shows step
+    order, repeat totals, target units and the time range where pace is supplied. Watch compatibility
+    is unverified. With upload=true it is sent to Garmin Connect (unofficial login, Mac only)
+    and optionally scheduled (YYYY-MM-DD). Sync the watch to receive it.
+    Spec: {"name":..., "steps":[{"type":"warmup|interval|recovery|cooldown",
     "duration":"m:ss" or "distance_m":800, "pace":"5:00-5:10" | "hr":"150-160" | "hr_zone":2},
     {"type":"repeat","times":5,"steps":[...]}]}. Only upload when the user asks."""
     import json as _json

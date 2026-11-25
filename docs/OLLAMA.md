@@ -63,6 +63,43 @@ work when the service also fails to return a comparison.
 Changing the draft budget gives the same evidence a fresh attempt.
 [Ollama thinking controls](https://docs.ollama.com/capabilities/thinking)
 
+### Post-run evidence check
+
+The latest detailed run has a separate review when qualified measurements are available.
+Its compact packet contains at most three checked observations. It uses cadence at matched
+pace and grade within the run, moving pulse across earlier comparable runs, and recorded time
+near the same configured cadence cue on this run and the latest attempt from an earlier date.
+Each supplies units and the comparison window or sample size. The model receives no run IDs,
+dates, routes, or notes.
+
+Ollama chooses one numeric ID in a direct, 45-second request. Python rejects stable readings
+when the packet has a measured change or a repeated cue. It uses the accepted observation
+verbatim, with an alternative to consider, a question for the next comparable run and a link
+to the recorded evidence. Cadence-cue exposure describes time at that cadence. Comparing
+comfort or performance needs separate evidence. Pulse comparisons leave room for weather and
+wrist-sensor fit. The dashboard uses a rule-written review while the model is off or pending,
+and when the response fails validation. Thin or stale data does not qualify.
+
+For fictional quality checks, run:
+
+```bash
+for case in post-run-cue post-run-outlier post-run-form post-run-thin; do
+  garmin-mcp-narrator --eval-insight --insight-case "$case" --model qwen3.5:4b
+done
+```
+
+`quality_pass` compares the model's accepted topic with the expected check. `dashboard_topic`
+also shows what the local rule would display after a withheld or interrupted choice. The
+thin case expects `insufficient_evidence` and does not contact the model. A returned status
+of `accepted` shows a grounded choice. The expected topic separately tests its usefulness.
+
+On 25 November 2026, local Qwen3.5 4B noticed the repeated cadence cue and the moving-pulse
+outlier in 19.52 and 17.22 seconds after warm-up. It chose a stable pulse over a meaningful
+late cadence change in the third case. The final guard withheld that choice and returned the
+rule-written cadence review on the dashboard. The thin case made no model request. These
+fictional Linux CPU checks cover topical usefulness and safe fallback separately from live
+acceptance on the owner's Mac.
+
 Before v0.27.1, Qwen3.5 4B on Linux spent
 five minutes on the fictional matched-run case without completing its reasoning; its direct
 retry was withheld after review. A direct mixed-recovery run was also withheld. Unit and

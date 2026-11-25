@@ -339,3 +339,24 @@ A bar from zero elapsed seconds would make small differences between splits hard
 see. The chart compares to the median and labels its baseline. Whole-second
 annotations keep short views readable, while the list and readout retain tenths.
 Desktop adopts a 16 px body and a 940 px chart-width cap. Browser zoom stays available.
+
+## Phone chart startup
+
+Charts initialize just before they enter the viewport. The phone view skips its hidden
+desktop drawings and defers point and overlay setup for charts inside collapsed sections.
+Direct keyboard focus can initialize a chart. Browsers without IntersectionObserver use
+the eager initialization path. The snapshot still contains the measurements and charts.
+
+A synthetic Run page at 390 × 844 began with zero of its 12 drawings initialized compared
+with 12 before the change. Scrolling to the cadence chart initialized three drawings.
+Chromium and WebKit passed touch selection, keyboard navigation, a change to desktop width,
+and the fallback with IntersectionObserver disabled. The comparison measures chart setup
+work. Physical iPhone timings and the owner's hosted snapshot remain acceptance checks.
+
+## Dated inputs and post-run review, v0.30.0
+
+Eight integrated Chromium and WebKit states covered Today, Recovery and a detailed
+run at 390 and 1,440 px, in both themes. The smoke test opened the dated readings
+disclosure and the post-run evidence links and checked page width and browser errors.
+The input and workouts were synthetic. Physical Safari and owner onboarding remain
+listed in [owner acceptance](OWNER_ACCEPTANCE.md).

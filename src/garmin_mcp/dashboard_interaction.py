@@ -29,14 +29,45 @@ SCRIPT = r"""
     });
   }
 
+  // The snapshot contains two responsive drawings per chart. Only prepare the drawing
+  // approaching the viewport, leaving hidden or collapsed charts alone.
+  const observed = new WeakSet();
+  const chartObserver = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) readyChart(entry.target);
+      }
+    }, {rootMargin: '320px 0px'})
+    : null;
+
+  function readyChart(figure) {
+    if (figure.dataset.ready) return;
+    chartObserver?.unobserve(figure);
+    initChart(figure);
+  }
+
+  function prepareCharts(page) {
+    for (const figure of page.querySelectorAll('[data-chart]:not([data-ready])')) {
+      if (!chartObserver) {
+        readyChart(figure);
+      } else if (!observed.has(figure)) {
+        observed.add(figure);
+        figure.querySelector('svg').setAttribute('tabindex', '0');
+        chartObserver.observe(figure);
+      }
+    }
+  }
+  document.addEventListener('focusin', event => {
+    const figure = event.target.closest('[data-chart]:not([data-ready])');
+    if (figure) readyChart(figure);
+  });
+
   function markPage(event) {
     const id = location.hash.slice(1) || 'today';
     const target = document.getElementById(id);
     if (target?.classList.contains('run-section')) target.open = true;
     const page = target?.closest('.page') || document.getElementById('today');
-    for (const figure of page.querySelectorAll('[data-chart]:not([data-ready])')) {
-      initChart(figure);
-    }
+    prepareCharts(page);
     const section = !target ? 'today' : id.startsWith('run-') || id.startsWith('running-') ? 'running'
       : id.startsWith('workout-') ? 'training' : id === 'recovery' ? 'today'
       : id.startsWith('day-') || id.startsWith('month-') ||

@@ -12,6 +12,7 @@ from pathlib import Path
 from garmin_mcp.config import data_dir
 
 INSIGHT_CONTRACT = 3
+POST_RUN_CONTRACT = 1
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,172 @@ def running_review(data):
                                  f'against an observed matched span of {span[0]:g} to {span[1]:g}.',
                                  f'run-{run["activity_id"]}-form'))
     return tuple(rows) if len(rows) >= 2 else ()
+
+
+@dataclass(frozen=True)
+class RunCheck:
+    reading: Evidence
+    measurements: dict
+    alternative: str
+    question: str
+    priority: int
+
+
+@dataclass(frozen=True)
+class PostRunInsight:
+    checks: tuple[RunCheck, ...]
+    lens = "post_run"
+    system = (
+        "Choose the follow-up after this run. Return only the numeric check ID. "
+        "First choose a cadence cue if a recorded earlier_attempt and this_run are both supplied. "
+        "Without that cue, choose moving pulse when its relation is above or below, even if cadence changed. "
+        "When pulse is within range or absent, prefer changed late cadence at matched pace and grade. "
+        "When all options are stable, choose moving pulse if available. Do not infer causes."
+    )
+
+    @property
+    def rows(self):
+        return tuple(check.reading for check in self.checks)
+
+    @property
+    def prompt(self):
+        return json.dumps([{"check": i, "metric": row.reading.domain, **row.measurements}
+                           for i, row in enumerate(self.checks, 1)], separators=(",", ":"))
+
+    @property
+    def schema(self):
+        return {"type": "object", "required": ["check"], "additionalProperties": False,
+                "properties": {"check": {"type": "integer", "enum": list(range(1, len(self.checks) + 1))}}}
+
+    def assess(self, raw):
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return None, "invalid_selection"
+        if not isinstance(data, dict) or data.keys() != {"check"}:
+            return None, "invalid_selection"
+        choice = data["check"]
+        if type(choice) is not int or not 1 <= choice <= len(self.checks):
+            return None, "invalid_selection"
+        if self.checks[choice - 1].priority < 2 <= max(check.priority for check in self.checks):
+            return None, "low_signal_choice"
+        return self.result(choice, "selected_post_run"), "grounded_selection"
+
+    def result(self, choice, mode):
+        check = self.checks[choice - 1]
+        return {"observation": check.reading.text, "alternative": check.alternative,
+                "question": check.question, "evidence": [choice],
+                "mode": mode, "topic": check.reading.domain}
+
+
+def _cadence_cue_check(data, run):
+    trial = data.get("trial") or {}
+    if not trial.get("active") or not run.get("date"):
+        return None
+    target = trial.get("trial", {}).get("target", {}).get("cadence_spm")
+    if not _number(target):
+        return None
+    attempts = trial.get("attempts") or ()
+    current = next((attempt for attempt in attempts if attempt.get("activity_id") == run["activity_id"]), {})
+    before = max((attempt for attempt in reversed(attempts) if attempt.get("date") and attempt["date"] < run["date"]),
+                 key=lambda attempt: attempt["date"], default={})
+    result = []
+    for attempt in (current, before):
+        exposure = attempt.get("did_it") or {}
+        near, total = exposure.get("minutes_at_target"), exposure.get("moving_minutes")
+        if not (exposure.get("available") and _number(near) and _number(total) and 0 <= near <= total and total > 0):
+            return None
+        result.append((near, total))
+    (now, now_total), (earlier, earlier_total) = result
+    threshold = target - 2  # Match trials.minutes_at_cadence's recorded exposure rule.
+    reading = Evidence("cadence cue", f"With the {target:g} steps/min cue, cadence reached "
+                       f"{threshold:g} steps/min or more for {now:g} of {now_total:g} recorded cadence "
+                       f"minutes on this run and {earlier:g} of {earlier_total:g} on the earlier attempt.",
+                       f'run-{run["activity_id"]}')
+    return RunCheck(reading, {"target_steps_per_min": target, "at_least_steps_per_min": threshold,
+                             "minutes_above_and_recorded": {"this_run": result[0], "earlier_attempt": result[1]}},
+                    "Route and effort can differ between attempts. The recorded minutes describe time at that cadence.",
+                    "On a similar route at matching pace and grade, does time near the cue repeat and how does it feel?",
+                    4)
+
+
+def post_run_review(data):
+    """Build up to three compact, qualified checks for the newest detailed run."""
+    if data.get("available") is False or data.get("older_snapshot") or data.get("sync_retry_required"):
+        return None
+    run = next(iter(data.get("runs", ())), None)
+    if not run:
+        return None
+    aid = run["activity_id"]
+    checks = []
+    cadence = (run.get("late_form") or {}).get("cadence_spm") or {}
+    early, late, matched = (cadence.get(key) for key in ("early", "late", "matched_s"))
+    if all(_number(value) and value > 0 for value in (early, late, matched)):
+        reading = Evidence("late cadence", f"At similar pace and grade, cadence averaged {early:g} steps/min "
+                           f"early and {late:g} late across {matched:g} matched seconds in each half.",
+                           f"run-{aid}-form")
+        changed = abs(late - early) >= 3
+        checks.append(RunCheck(reading, {"steps_per_min": {"early": early, "late": late},
+                                        "matched_seconds_per_half": matched, "match": "pace and grade",
+                                        "changed": changed},
+                               "Surface and wind can still differ between the matched sections.",
+                               "Does the early-to-late cadence difference repeat at matching pace and grade?",
+                               2 if changed else 0))
+    match = run.get("comparable_effort") or {}
+    if match.get("available"):
+        low, high = match["observed_hr_range_bpm"]
+        current = match["this_run"]["avg_hr_bpm"]
+        count = len(match["matches"])
+        if count and all(_number(value) for value in (low, high, current)):
+            relation = "below" if current < low else "above" if current > high else "within"
+            reading = Evidence("moving pulse", f"Moving heart rate was {current:g} bpm, {relation} the "
+                               f"{low:g} to {high:g} bpm span of {count} earlier runs at similar pace, "
+                               f"duration and climbing per kilometre.", f"run-{aid}-compare")
+            checks.append(RunCheck(reading, {"moving_bpm": current, "earlier_span_bpm": [low, high],
+                                            "earlier_runs": count, "relation": relation,
+                                            "match": "pace, duration and climbing per kilometre"},
+                                   "Weather or wrist-sensor fit could affect the recorded pulse.",
+                                   f"On another comparable run, does moving pulse land {relation} "
+                                   "your earlier range again?", 3 if relation != "within" else 1))
+    if cue := _cadence_cue_check(data, run):
+        checks.append(cue)
+    return PostRunInsight(tuple(checks)) if checks else None
+
+
+def post_run_fallback(data):
+    item = post_run_review(data)
+    if not item:
+        return None
+    choice, check = max(enumerate(item.checks, 1), key=lambda entry: entry[1].priority)
+    return {**item.result(choice, "rule_post_run"),
+            "readings": [{"page": check.reading.page, "text": check.reading.text, "previous": False}]}
+
+
+def _fictional_post_run(pulse, late, *, cue=False):
+    day = "2026-11-25"
+    data = {"end": day, "runs": [{"activity_id": 101, "date": day}]}
+    run = data["runs"][0]
+    if pulse is not None:
+        run["comparable_effort"] = {"available": True, "observed_hr_range_bpm": [137, 145],
+                                    "difference_hr_bpm": pulse - 141,
+                                    "this_run": {"avg_hr_bpm": pulse}, "matches": [{}, {}, {}]}
+    if late is not None:
+        run["late_form"] = {"cadence_spm": {"early": 172, "late": late, "matched_s": 420}}
+    if cue:
+        data["trial"] = {"active": True, "trial": {"target": {"cadence_spm": 174}},
+                         "attempts": [{"activity_id": 83, "date": "2026-11-22",
+                                       "did_it": {"available": True, "minutes_at_target": 5, "moving_minutes": 25}},
+                                      {"activity_id": 101, "date": day,
+                                       "did_it": {"available": True, "minutes_at_target": 8, "moving_minutes": 27}}]}
+    return data
+
+
+FICTIONAL_POST_RUN_CASES = {
+    "post-run-cue": (_fictional_post_run(152, 166, cue=True), "cadence cue"),
+    "post-run-outlier": (_fictional_post_run(152, 169), "moving pulse"),
+    "post-run-form": (_fictional_post_run(141, 165), "late cadence"),
+    "post-run-thin": (_fictional_post_run(None, None), None),
+}
 
 
 def _style_path(conn):

@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-25
+
+- Distinguish stale, missing, pending and recorded readings on Today and Recovery. Save
+  the evidence behind changed recommendations and show it with the prior decision.
+- Add compact, structured post-run evidence and grounded next-run checks, with a
+  reproducible coaching evaluation and cadence experiment follow-up.
+- Add owner-only archive acceptance, a read-only monitoring FIT overlap preview, and
+  clearer workout repeat, pace and device validation in local previews.
+- Show recorded nap coverage and descriptive Body Battery comparisons. Initialize charts
+  as they approach the phone viewport and preserve previous normalized data on failed rebuilds.
+
 ## [0.29.0] - 2026-11-25
 
 - Plot kilometre splits as bars above or below the run median and keep every elapsed
