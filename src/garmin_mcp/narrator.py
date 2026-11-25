@@ -28,6 +28,7 @@ from garmin_mcp.config import DEFAULT_NARRATOR_MODEL as DEFAULT_MODEL
 ITEM_SECONDS = 20
 SYNC_SECONDS = 120
 DEFAULT_THINKING_MINUTES = 10
+MAX_THINKING_MINUTES = 30
 INSIGHT_WARM_SECONDS = 90
 INSIGHT_DIRECT_SECONDS = 75
 INSIGHT_REVIEW_SECONDS = 40
@@ -38,6 +39,8 @@ INSIGHT_OVERHEAD_SECONDS = 2 * (INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS)
 PORT = 11434
 _RESPONSE_LIMIT = 16 * 1024
 _SETTING = "ai_narrator"
+_DEEP_COVERAGE = {"deep-insight": "interpretation", "running-insight": "running_review",
+                  "sleep-insight": "sleep_review", "sunday-insight": "sunday_review"}
 _REVIEW_SCHEMA = {"type": "object", "required": ["verdict"], "additionalProperties": False,
                   "properties": {"verdict": {"type": "string", "enum": deep_insight.REVIEW_REASONS}}}
 _MODEL = re.compile(r"[a-zA-Z0-9][\w.-]*(?::[a-zA-Z0-9][\w.-]*)?", flags=re.ASCII)
@@ -206,7 +209,7 @@ def configure(conn: sqlite3.Connection, enable: bool | None = None,
     if thinking is not None or "thinking" in before:
         after["thinking"] = before.get("thinking", False) if thinking is None else thinking
     if thinking_minutes is not None:
-        if type(thinking_minutes) is not int or not 1 <= thinking_minutes <= 30:
+        if type(thinking_minutes) is not int or not 1 <= thinking_minutes <= MAX_THINKING_MINUTES:
             raise ValueError("Choose 1 to 30 minutes of thinking time.")
         after["thinking_minutes"] = thinking_minutes
     elif "thinking_minutes" in before:
@@ -524,7 +527,7 @@ def _deep_item(conn, state, data):
     rows = deep_insight.evidence(data) if state.get("thinking") else ()
     if not rows:
         return None
-    lens = "running" if any(row.domain == "running" for row in rows) else "sleep"
+    lens = "running" if any(row.domain == "running" for row in rows) else "daily"
     voice, focus, _ = deep_insight.writing_style(conn, lens)
     previous = deep_insight.remembered(conn, data.get("end"))
     return deep_insight.Insight(rows + previous, lens, voice, focus)
@@ -540,6 +543,9 @@ def _deep_items(conn, state, data):
         result["running-insight"] = deep_insight.Insight(rows, lens, voice, focus)
     if daily := _deep_item(conn, state, data):
         result["deep-insight"] = daily
+    if rows := deep_insight.sleep_review(data):
+        voice, focus, _ = deep_insight.writing_style(conn, "sleep")
+        result["sleep-insight"] = deep_insight.Insight(rows, "sleep", voice, focus)
     if rows := deep_insight.sunday_review(data):
         lens = "sunday_review"
         voice, focus, _ = deep_insight.writing_style(conn, lens)
@@ -553,6 +559,7 @@ def _deep_key(item, state):
     else:
         content = _json([state["model"], bool(state.get("thinking")), _thinking_seconds(state),
                          deep_insight.INSIGHT_CONTRACT, item.system, item.prompt, item.schema,
+                         item.concise_system, item.concise_schema,
                          deep_insight.REVIEW, _REVIEW_SCHEMA, _CORRECTIONS, deep_insight.SELECT_COMPARISON])
     return "narrator:deep:" + hashlib.sha256(content.encode()).hexdigest()
 
@@ -575,11 +582,11 @@ def _think_value(profile):
 _CORRECTIONS = {
     "invalid_response": "Return only the requested JSON object.",
     "missing_citations": "Cite two current domains and every reading your observation refers to.",
-    "unsupported_wording": "Describe an observed contrast and ask a short neutral question.",
+    "unsupported_wording": "Describe a short, measured contrast using the supplied readings.",
     "uncited_number": "Use no figures in the observation or question.",
     "wrong_comparison": "Keep the direction, metric and time period exactly as recorded.",
-    "unsupported_claim": "Start with 'The recording showed'. State two cited directions and their time windows. "
-                         "Use measured verbs: was, rose, fell, or stayed similar.",
+    "unsupported_claim": "State the measured names, both cited directions and their time windows. "
+                         "Use verbs such as rose, fell, or stayed similar. Avoid broad conclusions.",
     "advice_or_prediction": "Ask what to measure again. Avoid targets, recommendations and forecasts.",
 }
 
@@ -640,16 +647,16 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
 
     def try_draft(mode, correction=None):
         thinking = mode == "thinking"
-        system = item.system
+        system, schema = ((item.system, item.schema) if thinking else (item.concise_system, item.concise_schema))
         stage = "draft"
         question_reframed = False
         if correction:
             system += " Revise the approach. " + _CORRECTIONS[correction]
         try:
-            raw = complete(system, item.prompt, item.schema, thinking,
+            raw = complete(system, item.prompt, schema, thinking,
                            thinking_seconds if thinking else INSIGHT_DIRECT_SECONDS,
-                           INSIGHT_THINKING_TOKENS if thinking else 180)
-            draft, reason = item.assess(raw, repair_question=True)
+                           INSIGHT_THINKING_TOKENS if thinking else 100)
+            draft, reason = item.assess(raw, repair_question=True, concise=not thinking)
             question_reframed = reason == "question_reframed"
             if draft:
                 stage = "review"
@@ -683,6 +690,15 @@ def _deep_request(model, profile, item, deadline, *, still_current=None, think_f
         if draft is None and reason in _CORRECTIONS and not think_first:
             draft, reason = try_draft("direct_revision", reason)
     except (OllamaUnavailable, TimeoutError):
+        direct_budget = INSIGHT_DIRECT_SECONDS + INSIGHT_REVIEW_SECONDS + INSIGHT_SELECTION_SECONDS
+        if think_first and deadline - time.monotonic() > direct_budget:
+            try:
+                draft, reason = try_draft("direct_retry")
+            except (OllamaUnavailable, TimeoutError):
+                pass
+            else:
+                if draft or reason == "abstained":
+                    return draft
         if selected := select_comparison():
             return selected
         raise
@@ -806,9 +822,8 @@ def check(conn: sqlite3.Connection) -> dict[str, Any]:
             found = _deep_cached(conn, insight, state)
             counts = {"ready": 0, "pending": 0, "rejected": 0}
             counts["pending" if found is None else "ready" if found[0] else "rejected"] = 1
-            groups = {"deep-insight": "interpretation", "running-insight": "running_review",
-                      "sunday-insight": "sunday_review"}
-            coverage[groups[name]] = counts
+            group = "post_run_review" if name.startswith("post-run-insight-") else _DEEP_COVERAGE.get(name, name)
+            coverage[group] = counts
         path, _ = dashboard._snapshot_paths()
         summaries, missing = cached(conn, data)
         status = snapshot_status(conn, data, summaries, missing)
@@ -850,7 +865,8 @@ def _worker(database: Path, out_dir: Path, snapshot: bytes) -> None:
     from garmin_mcp.publish import publish_if_enabled
 
     path = out_dir / "index.html"
-    wait_until = time.monotonic() + 3 * (30 * 60 + INSIGHT_OVERHEAD_SECONDS) + SYNC_SECONDS
+    wait_until = (time.monotonic() + len(_DEEP_COVERAGE) * (MAX_THINKING_MINUTES * 60 + INSIGHT_OVERHEAD_SECONDS)
+                  + SYNC_SECONDS + INSIGHT_SELECTION_SECONDS)
     lock_path = database.with_name(database.name + ".narrator.lock")
     with lock_path.open("a") as lock:
         # A newer build should get a turn once the older worker releases the database lock.
@@ -982,7 +998,7 @@ def main() -> None:
                     raise ValueError("Choose an installed local model.")
                 minutes = (args.thinking_minutes if args.thinking_minutes is not None
                            else _thinking_seconds(settings(conn)) // 60)
-                if not 1 <= minutes <= 30:
+                if not 1 <= minutes <= MAX_THINKING_MINUTES:
                     raise ValueError("Choose 1 to 30 minutes of thinking time.")
                 case = deep_insight.FICTIONAL_POST_RUN_CASES.get(args.insight_case)
                 fixture = None
@@ -991,7 +1007,8 @@ def main() -> None:
                     fixture = deep_insight.post_run_review(data)
                     if fixture is None:
                         print(_json({"model": chosen, "case": args.insight_case, "status": "insufficient_evidence",
-                                     "expected_topic": expected, "quality_pass": expected is None, "seconds": 0}))
+                                     "expected_topic": expected, "quality_pass": expected is None,
+                                     "reviewed_prose": False, "seconds": 0}))
                         return
                     fallback_topic = deep_insight.post_run_fallback(data)["topic"]
                 if not _cloud_disabled(time.monotonic() + 5):
@@ -1017,12 +1034,15 @@ def main() -> None:
                                             attempts=attempts, selection_only=args.selection_only)
                 except (OllamaUnavailable, TimeoutError):
                     print(_json({"model": chosen, "case": args.insight_case, "status": "incomplete_or_timed_out",
-                                 "attempts": attempts, "seconds": round(time.monotonic() - start, 2),
+                                 "reviewed_prose": False, "attempts": attempts,
+                                 "seconds": round(time.monotonic() - start, 2),
                                  **({"expected_topic": expected, "quality_pass": False,
                                      "dashboard_topic": fallback_topic} if case else {})}))
                     return
                 print(_json({"model": chosen, "case": args.insight_case, "insight": insight,
                              "status": "accepted" if insight else "withheld",
+                             "reviewed_prose": bool(insight and insight["mode"] in
+                                                    {"thinking", "direct", "direct_retry", "direct_revision"}),
                              "attempts": attempts, "seconds": round(time.monotonic() - start, 2),
                              **({"expected_topic": expected,
                                  "dashboard_topic": insight["topic"] if insight else fallback_topic,

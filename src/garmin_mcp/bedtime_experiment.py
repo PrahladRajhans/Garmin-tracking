@@ -12,7 +12,7 @@ def _week(end):
 
 
 def _minutes(value):
-    if len(value) != 5:
+    if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
         raise ValueError("Use HH:MM for the bedtime target.")
     parsed = time.fromisoformat(value)
     return 60 * parsed.hour + parsed.minute
@@ -27,7 +27,8 @@ def _review(conn, nights, monday, target, end):
     timed = [(day, night) for day, night in nights.items()
              if first <= day <= last and night["bed"] is not None]
     hrv = recovery.nightly_hrv(conn, first, last) if timed else {}
-    readiness = dict(conn.execute("SELECT day, score FROM readiness WHERE day BETWEEN ? AND ?", (first, last))) if timed else {}
+    readiness = {day: recovery.garmin_score(score) for day, score in conn.execute(
+        "SELECT day, score FROM readiness WHERE day BETWEEN ? AND ?", (first, last))} if timed else {}
     on_time, later = [], []
     for day, night in timed:
         met = _overnight(night["bed"]) <= _overnight(target)

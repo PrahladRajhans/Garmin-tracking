@@ -47,8 +47,8 @@ def archived_days(conn, start=None, end=None):
         yield day, payload if isinstance(payload, dict) else {}
 
 
-def samples(payload, day, zone):
-    """Decode the known Connect arrays. Missing, activity and unrecognized data stay absent."""
+def samples(payload, day, zone, *, preserve_conflicts=False):
+    """Decode Connect arrays. Keep conflicting values only for source comparisons."""
     output = {}
     for key, (field, value_index, minimum) in METRICS.items():
         rows = payload.get(field)
@@ -74,7 +74,8 @@ def samples(payload, day, zone):
             except (ValueError, OverflowError, OSError):
                 continue
             if math.isfinite(stamp) and local.date().isoformat() == day:
-                points.setdefault(stamp, (local, value))
+                sample_key = (stamp, value) if preserve_conflicts else stamp
+                points.setdefault(sample_key, (local, value))
         if points:
             output[key] = [points[t] for t in sorted(points)]
     return output

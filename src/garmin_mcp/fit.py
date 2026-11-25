@@ -67,10 +67,15 @@ def retain_file(directory: Path, activity_id: int, data: bytes) -> Path:
     return original
 
 
-def decode(data: bytes) -> dict[str, list[dict[str, Any]]]:
-    messages, errors = Decoder(Stream.from_byte_array(bytearray(data))).read()
-    if errors and not messages.get("record_mesgs") and not messages.get("session_mesgs"):
-        raise FitDecodeError("; ".join(str(e) for e in errors))
+def decode(data: bytes, *, merge_heart_rates: bool = True) -> dict[str, list[dict[str, Any]]]:
+    # A session-only FIT may include HR messages but has no record stream to merge into.
+    decoder = Decoder(Stream.from_byte_array(bytearray(data)))
+    messages, errors = decoder.read(merge_heart_rates=merge_heart_rates)
+    if (merge_heart_rates and len(errors) == 1 and isinstance(errors[0], KeyError)
+            and errors[0].args == ("record_mesgs",) and "hr_mesgs" in messages):
+        messages, errors = Decoder(Stream.from_byte_array(bytearray(data))).read(merge_heart_rates=False)
+    if errors or not messages:
+        raise FitDecodeError("FIT integrity check failed." if errors else "No FIT messages were decoded.")
     return messages
 
 
@@ -90,19 +95,35 @@ def _iso(value: Any) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
 
 
-def store(conn: sqlite3.Connection, activity_id: int, data: bytes) -> dict[str, int]:
-    """Decode a FIT file and replace this activity's stored streams. Returns row counts."""
-    messages = decode(data)
+def store(conn: sqlite3.Connection, activity_id: int, data: bytes,
+          *, path: Path | None = None) -> dict[str, int]:
+    """Decode and atomically replace this activity's FIT rows and optional file reference."""
+    return store_decoded(conn, activity_id, decode(data), path=path)
+
+
+def store_decoded(conn: sqlite3.Connection, activity_id: int,
+                  messages: dict[str, list[dict[str, Any]]],
+                  *, path: Path | None = None) -> dict[str, int]:
+    kinds = {row.get("type") for row in messages.get("file_id_mesgs", ())} - {None}
+    if kinds - {"activity"} or not any(messages.get(name) for name in (
+        "record_mesgs", "session_mesgs", "lap_mesgs", "length_mesgs", "set_mesgs",
+    )):
+        raise FitDecodeError("No activity streams were decoded.")
     if not conn.in_transaction:
         conn.execute("BEGIN")
     conn.execute("SAVEPOINT store_fit")
     try:
-        return _store_messages(conn, activity_id, messages)
-    except Exception:
-        conn.execute("ROLLBACK TO store_fit")
+        counts = _store_messages(conn, activity_id, messages)
+        if path is not None:
+            conn.execute("UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), activity_id))
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK TO store_fit")
+            conn.execute("RELEASE store_fit")
         raise
-    finally:
+    else:
         conn.execute("RELEASE store_fit")
+        return counts
 
 
 def _store_messages(conn, activity_id, messages):

@@ -135,7 +135,10 @@ def test_heart_rate_difference_uses_utc_and_has_no_health_cutoff(conn, monkeypat
     for hour, minute, hr in ((18, 0, 80), (19, 15, 120), (19, 45, 160), (12, 0, -1), (6, 0, 20)):
         ts = datetime(2026, 11, 20, hour, minute, tzinfo=UTC).timestamp() * 1000
         samples.extend([[ts + i * 1000, hr] for i in range(60)])
-    db.put_daily(conn, "pa_heart_rate", "2026-11-20", "personal_api", {"heartRateValues": samples})
+    db.put_daily(conn, "pa_heart_rate", "2026-11-20", "personal_api", {"heartRateValues": [samples[0]] * 60})
+    db.put_daily(conn, "heart_rate", "2026-11-20", "garminconnect", {
+        "heartRateValues": [None, [], ["bad timestamp", 90], [0, 90], *samples],
+    })
     results = []
     try:
         with monkeypatch.context() as m:

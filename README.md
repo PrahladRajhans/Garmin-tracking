@@ -4,7 +4,7 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.30.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.31.0. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and reviewed local AI on Today, Sleep, and Running when evidence is available. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
@@ -51,10 +51,10 @@ Garmin Connect --(scheduled sync)--> local SQLite (~/.garmin-mcp) <--reads-- MCP
 The sync job stores every Garmin response verbatim plus parsed FIT streams, so the assistant reads
 fast local data and Garmin is called only by the scheduled sync (or the `refresh_data` tool).
 
-The optional local narrator summarizes recovery, sleep, the seven-day training review, experiments,
-and recent workouts on the Mac. When Today has multiple supported findings, Ollama can select which
-follow-up to show first. Python supplies the scores, training guidance, and evidence. Use
-`garmin-mcp-narrator --check` to see local service and coverage. [Setup and checks](docs/OLLAMA.md)
+The optional local narrator writes evidence-linked interpretations for Today, Sleep, and Running
+and summarizes recent workouts on the Mac. Python supplies the scores, training guidance, and
+evidence. Use `garmin-mcp-narrator --check` to see the local service, coverage, and whether each
+scope has reviewed prose or selected readings. [Setup and checks](docs/OLLAMA.md)
 
 It uses the unofficial [`garminconnect`](https://github.com/cyberjunky/python-garminconnect)
 Python library, which talks to the same endpoints as the Garmin Connect website.

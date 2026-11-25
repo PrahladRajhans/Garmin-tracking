@@ -437,6 +437,21 @@ FITNESS_AGE_DATASETS = {"pa_fitness_age", "fitness_age"}
 
 
 # --------------------------------------------------------------------------- build
+def stored_payloads(conn: sqlite3.Connection, datasets):
+    """Read same-source daily payloads before ranges, newest receipt within each kind."""
+    datasets = sorted(datasets)
+    params = ",".join("?" for _ in datasets)
+    for table, day, tiebreaker in (
+        ("raw_daily", "day", "day"),
+        ("raw_range", "NULL", "start_day DESC, end_day"),
+    ):
+        yield from conn.execute(
+            f"SELECT dataset, source, payload, {day} FROM {table} "
+            f"WHERE dataset IN ({params}) AND payload IS NOT NULL AND payload != 'null' "
+            f"ORDER BY fetched_at DESC, dataset, {tiebreaker}", datasets,
+        )
+
+
 def rebuild(conn: sqlite3.Connection) -> dict[str, int]:
     """Recreate all tidy tables from raw data. Returns row counts per table."""
     cand: dict[str, dict[str, list[tuple[int, str, dict[str, Any]]]]] = {
@@ -448,18 +463,14 @@ def rebuild(conn: sqlite3.Connection) -> dict[str, int]:
         for day, values in rows:
             cand[table][day].append((prio, source, values))
 
-    for table_name in ("raw_daily", "raw_range"):
-        day_col = "day" if table_name == "raw_daily" else "NULL"
-        for dataset, source, payload, day in conn.execute(
-            f"SELECT dataset, source, payload, {day_col} FROM {table_name} "
-            "WHERE payload IS NOT NULL AND payload != 'null'"
-        ):
-            data = json.loads(payload)
-            if dataset in FITNESS_AGE_DATASETS and day:
-                add("fitness_age", source, fitness_age_rows_for(day, data))
-            elif dataset in EXTRACTORS:
-                table, fn = EXTRACTORS[dataset]
-                add(table, source, fn(data))
+    datasets = EXTRACTORS.keys() | FITNESS_AGE_DATASETS
+    for dataset, source, payload, day in stored_payloads(conn, datasets):
+        data = json.loads(payload)
+        if dataset in FITNESS_AGE_DATASETS and day:
+            add("fitness_age", source, fitness_age_rows_for(day, data))
+        elif dataset in EXTRACTORS:
+            table, fn = EXTRACTORS[dataset]
+            add(table, source, fn(data))
 
     counts = {}
     # SQLite DDL does not start an implicit write transaction. Begin before any

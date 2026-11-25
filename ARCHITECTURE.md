@@ -114,28 +114,32 @@ of a model or network query. Sync persists a local render-pending flag before bu
 HTML. The Garmin fetch gate and HTML refresh are separate decisions. It compares the
 version/build stamp of local and available iCloud snapshots, and retries rendering
 without advancing the completed Garmin sync time.
+Syncs targeting the same SQLite archive use a separate per-archive lock, so an overlapping
+refresh cannot clear another refresh's retry marker. Independent archives can sync separately.
+The dashboard uses the newest available wellness or activity date and keeps older readings
+labelled by date when the daily summary has yet to arrive.
 
 ## Local narrator (v0.22.0)
 
 With opt-in enabled, enabling or rebuilding the dashboard writes its HTML before starting a
 detached worker. Scheduled runs retry pending work even when they skip Garmin downloads.
-The worker uses the same collected dashboard shape to select small fact packets and keeps its
-20-second item and 120-second batch deadlines outside the sync and browser. It checks
+The worker uses the same collected dashboard shape to select small fact packets and applies
+its per-scope deadlines outside the sync and browser. It checks
 `/api/status` on loopback for disabled cloud access and requests the `:local` model variant.
 There is no proxy, redirect, bearer token or configurable server URL.
 Ollama returns short IDs for one to three approved sentences or one eligible daily follow-up.
 The worker checks the IDs, resolves the text from the original evidence and caches it.
 [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs.md)
 
-Open-ended reviews of Today, Running and Sunday group each comparison with its baseline.
+Open-ended reviews of Today, Sleep, Running and Sunday group each comparison with its baseline.
 The worker checks the draft against cited values and runs a separate claims review on final
-text. One bounded revision can address a failed check. The worker records mode, stage and
+text. A concise draft can recover from a failed check. The worker records mode, stage and
 verdict locally and applies the same snapshot checks to revised output. See the
 [local-model pipeline](docs/OLLAMA.md#thinking-insights) for budgets and diagnostics.
 
 Settings and content-addressed results are in local SQLite `meta`. The renderer only reads
 accepted cache entries for the current facts and model. The worker checks the snapshot ID
-before replacing the Mac and iCloud files and serializes the replacement with other builds.
+before replacing the Mac and iCloud files and serializes collection and replacement with other builds.
 The narration stamp lets the next worker detect accepted results missing from the saved HTML
 if the previous worker lost the snapshot race.
 On the configured archive, a guarded Ollama rebuild also requests opt-in Pages publication.

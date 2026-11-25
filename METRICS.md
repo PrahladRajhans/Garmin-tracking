@@ -665,6 +665,12 @@ averages are descriptive. A comparison for a metric needs three readings in each
 
 ## Day readings, sleep shortfall and archive baselines
 
+- **Dated availability.** Malformed and non-finite measurements do not count as readings.
+  A missing trend half has no average. Wake times are compared on a circular clock. The
+  fixed wake target, sample count, and spread use the same set of complete nights from
+  the previous two weeks. Identical readings have zero spread.
+- **Awake versus sleep pulse.** Require a valid sleep window and 60 unique, usable awake
+  pulse samples from one source. Try Garmin Connect when the Personal API data falls short.
 - **Garmin resting estimate.** Personal API `heartRate.restingValue` takes precedence, then
   Connect summary, then the export's `currentDayRestingHeartRate`. The rolling export field
   `restingHeartRate` is excluded from daily RHR during normalization. An older tidy database

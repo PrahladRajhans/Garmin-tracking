@@ -16,8 +16,10 @@ import re
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from garmin_mcp import db, fit
@@ -198,14 +200,9 @@ class Syncer:
                               activity_id)
         if not ok or not data:
             return
-        path = None
-        if self.store_fit_files:
-            path = fit.retain_file(fit_dir(), activity_id, data)
-            self.conn.execute(
-                "UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), activity_id)
-            )
         try:
-            fit.store(self.conn, activity_id, data)
+            path = fit.retain_file(fit_dir(), activity_id, data) if self.store_fit_files else None
+            fit.store(self.conn, activity_id, data, path=path)
         except Exception as exc:  # noqa: BLE001 - corrupt/unsupported file: log, keep going
             db.log(self.conn, self.result.run_id, self.source.name, "activity.fit_parse",
                    str(activity_id), "error", f"{type(exc).__name__}: {exc}"[:300])
@@ -256,13 +253,33 @@ def run_sync(days: int = 7, since: str | None = None, source: str = "both",
     """Sync one or both sources. In "both" mode the official API runs first and the
     unofficial source only adds what the official one lacks; a failure in one source is
     reported and never blocks the other."""
+    database = db_path()
+    if str(database) == ":memory:":
+        return _run_sync(database, days, since, source, delay)
+
+    database = Path(database).resolve()
+    lock_path = database.with_name(database.name + ".sync.lock")
+    lock_path.touch(mode=0o600, exist_ok=True)
+    # Lock a separate empty SQLite file across the entire run. The archive itself
+    # can commit partial results and remain readable while a Garmin call is pending.
+    with closing(sqlite3.connect(lock_path, timeout=0)) as lock:
+        try:
+            lock.execute("BEGIN EXCLUSIVE")
+        except sqlite3.OperationalError as exc:
+            if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY:
+                raise
+            return {"sources": {}, "full_sync_complete": False, "sync_in_progress": True}
+        return _run_sync(database, days, since, source, delay)
+
+
+def _run_sync(database: Path, days: int, since: str | None, source: str, delay: float) -> dict[str, Any]:
     plan: list[tuple[str, Any]] = {
         "both": [("personal_api", _personal_api), ("garminconnect", lambda: _garminconnect(True))],
         "personal_api": [("personal_api", _personal_api)],
         "garminconnect": [("garminconnect", lambda: _garminconnect(False))],
     }[source]
     out: dict[str, Any] = {"sources": {}}
-    conn = db.connect(db_path())
+    conn = db.connect(database)
     try:
         from garmin_mcp import athlete
 
@@ -373,7 +390,7 @@ def main() -> None:
         print(json.dumps(db.coverage(conn), indent=2))
         return
     if not args.force and not args.since:
-        decision = gate()
+        decision = gate(source=args.source)
         print(json.dumps({"gate": decision}))
         if not decision["sync"]:
             result = _refresh_dashboard_if_needed()
@@ -386,12 +403,12 @@ def main() -> None:
 FULL_SYNC_EVERY_H = 11.0
 
 
-def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
+def gate(now: datetime | None = None, probe=None, *, source: str = "both") -> dict[str, Any]:
     """Decide whether a scheduled run should do a full sync.
 
     You sync your phone ~twice a day, so: full sync when the last successful one is >= 11 h old;
-    otherwise a single cheap probe (today's activity list) and a sync only if it shows an
-    activity we don't have yet. `refresh_data` and `--force` bypass this.
+    otherwise a single cheap probe of today's activity list using the selected source, and a
+    sync only if it shows an activity we don't have yet. `refresh_data` and `--force` bypass this.
     """
     from datetime import UTC
 
@@ -412,7 +429,7 @@ def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
             return {"sync": True, "reason": "last full sync >= 11 h ago" if last else
                     "no previous sync"}
         try:
-            ids = (probe or _probe_today)()
+            ids = probe() if probe is not None else _probe_today(source)
         except Exception as exc:  # noqa: BLE001 - probe failure: wait for the 11 h sync
             return {"sync": False, "reason": f"probe failed ({type(exc).__name__}); waiting"}
         known = {r[0] for r in conn.execute("SELECT activity_id FROM activities")}
@@ -423,8 +440,8 @@ def gate(now: datetime | None = None, probe=None) -> dict[str, Any]:
         conn.close()
 
 
-def _probe_today() -> list[int]:
-    src = _personal_api()
+def _probe_today(source: str = "both") -> list[int]:
+    src = _garminconnect(False) if source == "garminconnect" else _personal_api()
     day = today().isoformat()
     return [int(a["activityId"]) for a in src.list_activities(day, day) if "activityId" in a]
 

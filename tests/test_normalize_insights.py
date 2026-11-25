@@ -117,8 +117,12 @@ def test_snapshot_and_flags(conn):
 def test_trend_and_unknown_metric(conn):
     _seed(conn)
     rebuild(conn)
+    invalid_day = (date.fromisoformat(DAY) - timedelta(days=1)).isoformat()
+    conn.execute("INSERT INTO daily(day, resting_hr) VALUES (?, ?)", (invalid_day, "unavailable"))
     t = insights.trend(conn, "daily.resting_hr", 7, DAY)
     assert t["points"] == 1 and t["avg"] == 46
+    assert t["first_half_avg"] == 46 and t["second_half_avg"] is None
+    assert t["series"] == [(DAY, 46)]
     assert "valid_metrics" in insights.trend(conn, "nope.x")
 
 
@@ -251,3 +255,27 @@ def test_snapshot_hrv_combines_deduplicated_nights_from_both_sources(conn):
     assert snapshot["last_night_ms"] == 60
     assert snapshot["avg_7d_ms"] == 60 and snapshot["days_in_7d"] == 3
     assert snapshot["avg_60d_ms"] == 50 and snapshot["days_in_60d"] == 4
+
+
+
+def test_verifier_and_normalizer_choose_same_overlapping_range_and_daily_revision(conn):
+    from garmin_mcp import verify
+
+    def payload(night, weekly=None, status=None):
+        return {"hrvSummaries": [{"calendarDate": DAY, "lastNightAvg": night,
+                                  "weeklyAvg": weekly, "status": status}]}
+
+    dataset = "pa_hrv_summaries"
+    db.put_range(conn, dataset, "2026-11-01", "2026-11-25", "personal_api", payload(51, 40))
+    db.put_range(conn, dataset, "2026-11-10", "2026-11-25", "personal_api", payload(56, status="balanced"))
+    conn.execute("UPDATE raw_range SET fetched_at='2026-11-26T12:00:00+00:00' WHERE start_day='2026-11-10'")
+    conn.execute("UPDATE raw_range SET fetched_at='2026-11-26T11:00:00+00:00' WHERE start_day='2026-11-01'")
+    rebuild(conn)
+    assert tuple(conn.execute("SELECT last_night_avg,weekly_avg,status FROM hrv").fetchone()) == (56, 40, "balanced")
+    assert verify._collect(conn, dataset)[DAY]["last_night_avg"] == 56
+
+    db.put_daily(conn, dataset, DAY, "personal_api", payload(57))
+    conn.execute("UPDATE raw_daily SET fetched_at='2026-11-26T10:00:00+00:00'")
+    rebuild(conn)
+    assert tuple(conn.execute("SELECT last_night_avg,weekly_avg,status FROM hrv").fetchone()) == (57, 40, "balanced")
+    assert verify._collect(conn, dataset)[DAY]["last_night_avg"] == 57

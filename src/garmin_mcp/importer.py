@@ -23,7 +23,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from garmin_mcp import db, fit
 from garmin_mcp.config import db_path, fit_dir
@@ -71,8 +71,17 @@ class ExportReader:
     """Uniform access to the export whether it is a folder or a (possibly nested) ZIP."""
 
     def __init__(self, path: Path) -> None:
+        if not (path.is_file() or path.is_dir()):
+            raise FileNotFoundError("Choose an existing Garmin export ZIP or folder.")
         self.path = path
         self._zip = zipfile.ZipFile(path) if path.is_file() else None
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        if self._zip is not None:
+            self._zip.close()
 
     def names(self) -> list[str]:
         if self._zip:
@@ -103,8 +112,8 @@ def _calendar_day(value: Any) -> str | None:
 
 def _record_day(rec: dict[str, Any]) -> str | None:
     for key in ("calendarDate", "calendar_date", "date"):
-        if key in rec:
-            return _calendar_day(rec[key])
+        if day := _calendar_day(rec.get(key)):
+            return day
     return None
 
 
@@ -211,16 +220,24 @@ def import_activities(conn: sqlite3.Connection, reader: ExportReader, names: lis
     return {"added": added, "already_present": kept}
 
 
-def _iter_fit_files(reader: ExportReader, names: list[str]) -> Iterator[tuple[str, bytes]]:
+def _iter_fit_files(reader: ExportReader, names: list[str]) -> Iterator[bytes | None]:
+    # A damaged member does not prevent independent FIT files from being processed.
+    read_errors = (OSError, KeyError, RuntimeError, zipfile.BadZipFile)
     for name in names:
         lower = name.lower()
-        if lower.endswith(".fit"):
-            yield name, reader.read(name)
-        elif lower.endswith(".zip") and "uploaded" in lower:
-            with zipfile.ZipFile(io.BytesIO(reader.read(name))) as inner:
-                for inner_name in inner.namelist():
-                    if inner_name.lower().endswith(".fit"):
-                        yield inner_name, inner.read(inner_name)
+        try:
+            if lower.endswith(".fit"):
+                yield reader.read(name)
+            elif lower.endswith(".zip") and "uploaded" in lower:
+                with zipfile.ZipFile(io.BytesIO(reader.read(name))) as inner:
+                    for item in inner.infolist():
+                        if item.filename.lower().endswith(".fit"):
+                            try:
+                                yield inner.read(item)
+                            except read_errors:
+                                yield None
+        except read_errors:
+            yield None
 
 
 def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list[str],
@@ -244,11 +261,14 @@ def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list
     seconds = sorted(starts)
     stats = dict.fromkeys(("fit_files", "activity_files", "attached", "already_parsed",
                            "ambiguous", "unmatched", "errors"), 0)
-    for _, data in _iter_fit_files(reader, names):
+    for data in _iter_fit_files(reader, names):
+        if data is None:
+            stats["errors"] += 1
+            continue
         stats["fit_files"] += 1
         try:
             messages = fit.decode(data)
-        except Exception:  # noqa: BLE001 - skip unreadable files
+        except fit.FitDecodeError:
             stats["errors"] += 1
             continue
         file_type = (messages.get("file_id_mesgs") or [{}])[0].get("type")
@@ -272,12 +292,15 @@ def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list
             stats["ambiguous"] += 1
             continue
         match = candidates[0]
-        path = fit.retain_file(fit_dir(), match, data)
-        if match in parsed:
-            stats["already_parsed"] += 1
+        try:
+            path = fit.retain_file(fit_dir(), match, data)
+            if match in parsed:
+                stats["already_parsed"] += 1
+                continue
+            fit.store_decoded(conn, match, messages, path=path)
+        except (OSError, sqlite3.DatabaseError, fit.FitDecodeError):
+            stats["errors"] += 1
             continue
-        conn.execute("UPDATE activities SET fit_path=? WHERE activity_id=?", (str(path), match))
-        fit.store(conn, match, data)
         parsed.add(match)
         stats["attached"] += 1
         conn.commit()
@@ -285,26 +308,28 @@ def import_fit_files(conn: sqlite3.Connection, reader: ExportReader, names: list
 
 
 def run_import(path: str | Path, conn: sqlite3.Connection | None = None) -> dict[str, Any]:
-    reader = ExportReader(Path(path).expanduser())
-    names = reader.names()
-    own = conn is None
-    conn = conn or db.connect(db_path())
-    try:
-        result = {
-            "daily": import_daily(conn, reader, names),
-            "snapshots": import_snapshots(conn, reader, names),
-            "activities": import_activities(conn, reader, names),
-        }
-        result["fit"] = import_fit_files(conn, reader, names)
-        db.log(conn, "import", SOURCE, "export", str(path), "ok")
-        conn.commit()
-        from garmin_mcp.normalize import rebuild
+    with ExportReader(Path(path).expanduser()) as reader:
+        names = sorted(reader.names())
+        own = conn is None
+        conn = conn or db.connect(db_path())
+        try:
+            result = {
+                "daily": import_daily(conn, reader, names),
+                "snapshots": import_snapshots(conn, reader, names),
+                "activities": import_activities(conn, reader, names),
+            }
+            result["fit"] = import_fit_files(conn, reader, names)
+            from garmin_mcp.normalize import rebuild
 
-        result["tidy_tables"] = rebuild(conn)
-        return result
-    finally:
-        if own:
-            conn.close()
+            result["tidy_tables"] = rebuild(conn)
+            errors = result["fit"]["errors"] or result["tidy_tables"].get("loads_error")
+            db.log(conn, "import", SOURCE, "export", str(path), "error" if errors else "ok",
+                   "Some FIT files or derived tables could not be processed." if errors else None)
+            conn.commit()
+            return result
+        finally:
+            if own:
+                conn.close()
 
 
 def main() -> None:

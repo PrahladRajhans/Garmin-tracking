@@ -33,6 +33,23 @@ def test_recovery_distinguishes_pending_sync_missing_and_incomplete(conn):
     assert not info["usable"] and not info["published_guidance"]
 
 
+def test_nonfinite_and_nonnumeric_source_rows_do_not_count_as_usable(conn):
+    rebuild(conn)
+    day = "2026-11-25"
+    now = datetime(2026, 11, 25, 10, tzinfo=UTC)
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync','2026-11-25T02:00:00+00:00')")
+    conn.execute("INSERT INTO daily(day,resting_hr) VALUES (?,?)", (day, float("inf")))
+    conn.execute("INSERT INTO sleep(day,sleep_s,avg_respiration) VALUES (?,'bad',-2)", (day,))
+    conn.execute("INSERT INTO hrv(day,last_night_avg) VALUES (?,?)", (day, float("inf")))
+    conn.execute("INSERT INTO readiness(day,score,level) VALUES (?,999,' ')", (day,))
+    info = reading_availability.collect(conn, day, UTC, brief=_brief(day, None), now=now)
+    assert all(row["state"] == "absent" for row in info["rows"].values())
+    conn.execute("UPDATE readiness SET score=0 WHERE day=?", (day,))
+    conn.execute("INSERT INTO health_status(day,respiration) VALUES (?,16)", (day,))
+    info = reading_availability.collect(conn, day, UTC, brief=_brief(day, None), now=now)
+    assert info["rows"]["garmin"]["state"] == info["rows"]["respiration"]["state"] == "recorded"
+
+
 def test_audit_persists_only_published_decisions_and_explains_changed_reasons(conn):
     day = "2026-11-25"
     focus = {"title": "Keep it easy", "detail": "Sleep was shorter.", "evidence_keys": ("sleep_week",)}

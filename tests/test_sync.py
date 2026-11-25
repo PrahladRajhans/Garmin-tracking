@@ -175,6 +175,37 @@ def test_partial_sync_is_retried_despite_recent_successful_requests(conn, tmp_pa
     assert sync.gate(probe=list)["sync"] is False
 
 
+def test_overlapping_refresh_preserves_the_active_sync_retry_flag(conn, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered, release = Event(), Event()
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(sync, "_rebuild_dashboard", lambda _: {})
+
+    def blocked_personal():
+        entered.set()
+        assert release.wait(10)
+        raise RuntimeError("source failed after receiving the competing request")
+
+    monkeypatch.setattr(sync, "_personal_api", blocked_personal)
+    monkeypatch.setattr(sync, "_garminconnect", lambda _: FakeSource())
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first = executor.submit(sync.run_sync, 1, None, "personal_api", 0)
+        try:
+            assert entered.wait(10)
+            second = sync.run_sync(days=1, source="garminconnect", delay=0)
+            assert second["sync_in_progress"] and not second["full_sync_complete"]
+            assert sync.gate(probe=list)["sync"]
+        finally:
+            release.set()
+        assert not first.result(timeout=10)["full_sync_complete"]
+
+    assert sync.gate(probe=list)["sync"]
+    assert sync.run_sync(days=1, source="garminconnect", delay=0)["full_sync_complete"]
+    assert not sync.gate(probe=list)["sync"]
+
+
 def test_request_log_alone_is_not_a_completed_sync(conn, tmp_path, monkeypatch):
     from garmin_mcp import sync
 
@@ -220,7 +251,7 @@ def test_current_garmin_download_gate_can_refresh_old_html(monkeypatch, tmp_path
     monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("GARMIN_DASHBOARD_PUBLISH", "")
     monkeypatch.setattr(sys, "argv", ["garmin-mcp-sync", "--no-update"])
-    monkeypatch.setattr(sync, "gate", lambda: {"sync": False})
+    monkeypatch.setattr(sync, "gate", lambda **_: {"sync": False})
     drive = tmp_path / "Library/Mobile Documents/com~apple~CloudDocs"
     drive.mkdir(parents=True)
     monkeypatch.setattr(dashboard.Path, "home", classmethod(lambda cls: tmp_path))
@@ -234,6 +265,35 @@ def test_current_garmin_download_gate_can_refresh_old_html(monkeypatch, tmp_path
     before = target.read_text()
     sync.main()
     assert target.read_text() == before
+
+
+def test_unofficial_only_cli_probes_unofficial_activities(conn, monkeypatch, tmp_path):
+    import sys
+
+    conn.execute("INSERT INTO meta VALUES ('last_full_sync',?)", (db.now_iso(),))
+    conn.commit()
+    monkeypatch.setattr(sync, "db_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(sys, "argv", ["garmin-mcp-sync", "--source", "garminconnect", "--no-update"])
+    probed = []
+    synced = []
+
+    def unofficial(extras_only):
+        probed.append(extras_only)
+        return FakeSource(activities=[{"activityId": 999}])
+
+    def unexpected_official():
+        probed.append("official")
+        raise RuntimeError("No Personal API key")
+
+    monkeypatch.setattr(sync, "_garminconnect", unofficial)
+    monkeypatch.setattr(sync, "_personal_api", unexpected_official)
+    monkeypatch.setattr(sync, "run_sync", lambda _, __, source, ___: synced.append(source) or {})
+    monkeypatch.setattr(sync, "_refresh_dashboard_if_needed", dict)
+
+    sync.main()
+
+    assert probed == [False]
+    assert synced == ["garminconnect"]
 
 
 def test_failed_dashboard_build_retries_even_if_the_next_fetch_is_skipped(monkeypatch, tmp_path):

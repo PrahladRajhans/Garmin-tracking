@@ -6,10 +6,11 @@ import sqlite3
 from collections import defaultdict
 from contextlib import closing
 from datetime import UTC, datetime
+from hashlib import sha256
+from os import fsync, link
+from tempfile import NamedTemporaryFile
 
-from garmin_fit_sdk import Decoder, Stream
-
-from garmin_mcp import engine, wellness_timeline
+from garmin_mcp import engine, fit, wellness_timeline
 
 FIT_EPOCH = datetime(1989, 12, 31, tzinfo=UTC).timestamp()
 MONITORING_TYPES = {"monitoring_a", "monitoring_b", "monitoring_daily"}
@@ -106,7 +107,7 @@ def _archive_signals(conn, start, end, zone):
             if day == local_day:
                 _add(points, "pulse", stamp, bpm)
     for day, payload in wellness_timeline.archived_days(conn, start, end):
-        for name, entries in wellness_timeline.samples(payload, day, zone).items():
+        for name, entries in wellness_timeline.samples(payload, day, zone, preserve_conflicts=True).items():
             metric = "body_battery" if name == "battery" else name
             for stamp, value in entries:
                 _add(points, metric, stamp.timestamp(), value)
@@ -143,12 +144,26 @@ def _compare(incoming, archived, zone, include_dates):
     return totals
 
 
-def preview(database_path, fit_path, *, include_dates=False):
-    """Report counts by signal. Dates are included only when explicitly requested."""
-    with fit_path.expanduser().open("rb") as file:
-        messages, errors = Decoder(Stream.from_buffered_reader(file)).read(merge_heart_rates=False)
-    if errors or not messages:
-        raise ValueError("Could not decode the FIT file with its integrity checks enabled.")
+def _retain(data, directory):
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination = directory / f"{sha256(data).hexdigest()}.fit"
+    with NamedTemporaryFile(dir=directory) as temporary:
+        temporary.write(data)
+        temporary.flush()
+        fsync(temporary.fileno())
+        try:
+            link(temporary.name, destination)
+        except FileExistsError:
+            if destination.read_bytes() != data:
+                raise ValueError("A retained monitoring FIT conflicts with its content hash.")
+            return "already_present"
+    return "created"
+
+
+def preview(database_path, fit_path, *, include_dates=False, retain_directory=None):
+    """Report counts, with an optional byte-for-byte raw copy outside SQLite."""
+    data = fit_path.expanduser().read_bytes()
+    messages = fit.decode(data, merge_heart_rates=False)
     kinds = {row.get("type") for row in messages.get("file_id_mesgs", ())}
     if not kinds or not kinds <= MONITORING_TYPES:
         raise ValueError("Choose a Garmin monitoring FIT file, not an activity or workout FIT.")
@@ -156,6 +171,8 @@ def preview(database_path, fit_path, *, include_dates=False):
     with closing(sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
+        if not conn.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='raw_daily'").fetchone():
+            raise ValueError("This database has no Garmin wellness archive schema.")
         zone = engine._tz(conn)
         incoming, unanchored = _fit_signals(messages, zone)
         days = {_day(stamp, zone) for values in incoming.values() for stamp in values}
@@ -165,10 +182,13 @@ def preview(database_path, fit_path, *, include_dates=False):
             archived = {metric: {} for metric in LIMITS}
 
     compared = {signal[0] for signal in FIT_SIGNALS} | {"file_id_mesgs"}
-    return {
+    result = {
         "candidate_local_days": len(days), "unanchored_pulse_messages": unanchored,
         "uncompared_message_types": {name: len(rows) for name, rows in sorted(messages.items())
                                      if name not in compared},
         "signals": {metric: _compare(incoming[metric], archived[metric], zone, include_dates)
                     for metric in LIMITS},
     }
+    if retain_directory is not None:
+        result["retained"] = _retain(data, retain_directory)
+    return result

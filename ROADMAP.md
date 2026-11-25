@@ -50,7 +50,7 @@ coverage from the earlier queue as regression checks where affected.
 | 9. Monitoring FIT | A read-only monitoring preview separates candidate sample gaps, overlaps and conflicts for supported signals. Use `--include-dates` for per-signal counts by local date. The preview leaves the archive untouched. | Run against a representative owner's FIT and verify timestamp reconstruction and archive agreement. |
 | 10. Deeper wellness | Recovery compares prior completed-day Body Battery charge/drain across qualified groups. Sleep reports separately recorded nap totals and coverage. No missing value is counted as zero. | Confirm nap and charge/drain coverage and validate use in repeated recovery/running comparisons on the real archive. |
 | 11. Workout preview | The local compiler can expose repeat counts, performed work, pace bounds and estimated time, with watch compatibility marked unverified. | Validate owner-device behavior after explicit upload and sync. |
-| 12. Repository review | The [continuation audit](docs/REPOSITORY_REVIEW.md#25-november-continuation-audit) reconciles 173 baseline paths and traces deployment, normalization, FIT and export ranges manually. An identified loss of prior normalized rows on a failed rebuild is covered by a transaction and two rollback checks. | Complete remaining manual analytics, renderer, AI and legacy traces, then exercise configured launchd, sources and publishing on the owner's Mac. |
+| 12. Repository review | The [continuation audit](docs/REPOSITORY_REVIEW.md#25-november-continuation-audit) reconciles 173 baseline paths. The [post-v0.30.0 audit](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) tracks manual ranges and fixture results. It verifies the corrected source-specific sync gate, overlapping refresh behavior, valid workout routing and the protected publisher preflight. | Continue the recorded manual review of remaining paths. Exercise the configured scheduler, sources and publishing on the owner's Mac. |
 
 ## Detailed execution queue
 
@@ -253,6 +253,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.31.0 | Reviewed Sleep prose, archive and FIT safeguards, partial-date rendering, refresh serialization and broader manual review | [Audit coverage and remaining dependencies](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) and [owner acceptance](docs/OWNER_ACCEPTANCE.md). |
 | 0.30.0 | Dated recovery evidence, cadence follow-up, recommendation history, FIT and workout previews, owner acceptance and phone chart loading | Workspace checks and remaining owner acceptance are in the [execution status](#25-november-execution-status). |
 | 0.29.0 | Running charts, contextual metrics, Ollama fallback, archive CSV and licensing | Implemented |
 | 0.28.0 | Ecosystem review, archive audit and intraday wellness charts | Implemented |

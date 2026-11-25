@@ -3,10 +3,17 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
 from conftest import make_fit
 
 from garmin_mcp import db
-from garmin_mcp.importer import ExportReader, _calendar_day, import_fit_files, run_import
+from garmin_mcp.importer import (
+    ExportReader,
+    _calendar_day,
+    _record_day,
+    import_fit_files,
+    run_import,
+)
 
 # make_fit() sessions start 2026-11-01 07:00:00 UTC
 START_MS = 1793516400000
@@ -49,6 +56,7 @@ def test_calendar_day_formats():
     assert _calendar_day("2026-02-30") is None
     assert _calendar_day(20269999) is None
     assert _calendar_day(float("inf")) is None
+    assert _record_day({"calendarDate": "invalid", "calendar_date": 20261101}) == "2026-11-01"
 
 
 def test_import_fit_prefers_closest_and_preserves_new_revisions(conn, tmp_path):
@@ -101,3 +109,43 @@ def test_import_is_idempotent_and_never_overwrites_api_activity(conn, tmp_path):
     assert r2["activities"] == {"added": 0, "already_present": 1}
     assert conn.execute("SELECT name FROM activities WHERE activity_id=99").fetchone()[0] == \
         "From API"
+
+
+
+def test_import_rejects_nonexistent_export_before_creating_database(tmp_path, monkeypatch):
+    database = tmp_path / "no-archive.db"
+    monkeypatch.setenv("GARMIN_DB_PATH", str(database))
+    with pytest.raises(FileNotFoundError, match="existing Garmin export"):
+        run_import(tmp_path / "missing-export")
+    assert not database.exists()
+
+
+def test_bad_fit_crc_and_nested_zip_do_not_prevent_accepting_valid_fit(conn, tmp_path):
+    original = make_fit(n=6)
+    (tmp_path / "corrupt.fit").write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    (tmp_path / "UploadedFiles_bad.zip").write_bytes(b"invalid ZIP")
+    (tmp_path / "valid.fit").write_bytes(original)
+    conn.execute("INSERT INTO activities(activity_id,start_time_gmt,updated_at) "
+                 "VALUES (2,'2026-11-01 07:00:00','x')")
+    conn.commit()
+    with ExportReader(tmp_path) as reader:
+        stats = import_fit_files(conn, reader, ["corrupt.fit", "UploadedFiles_bad.zip", "valid.fit"])
+    assert stats["errors"] == 2 and stats["attached"] == 1 and stats["fit_files"] == 2
+    path = Path(conn.execute("SELECT fit_path FROM activities WHERE activity_id=2").fetchone()[0])
+    assert path.read_bytes() == original
+    assert not list(path.parent.glob("2-*.fit"))
+
+
+def test_failed_fit_reference_keeps_previous_pointer_and_rows(conn, tmp_path):
+    (tmp_path / "retry.fit").write_bytes(make_fit(n=7))
+    conn.execute("INSERT INTO activities(activity_id,start_time_gmt,updated_at,fit_path) "
+                 "VALUES (1,'2026-11-01 07:00:00','x','old.fit')")
+    conn.execute("INSERT INTO fit_records(activity_id,ts,heart_rate) VALUES (1,'old',62)")
+    conn.execute("CREATE TRIGGER fail_reference BEFORE UPDATE OF fit_path ON activities "
+                 "BEGIN SELECT RAISE(ABORT,'blocked'); END;")
+    conn.commit()
+    stats = import_fit_files(conn, ExportReader(tmp_path), ["retry.fit"])
+    conn.commit()
+    assert stats["errors"] == 1 and stats["attached"] == 0
+    assert tuple(conn.execute("SELECT fit_path,fit_parsed FROM activities").fetchone()) == ("old.fit", 0)
+    assert [tuple(row) for row in conn.execute("SELECT ts,heart_rate FROM fit_records")] == [("old", 62)]

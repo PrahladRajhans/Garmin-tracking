@@ -12,7 +12,7 @@ on a temporary SQLite copy. Model checks use only loopback status, installed tag
 model capabilities, without calling inference or sending health data. The JSON omits the date
 entered, source values, activity identifiers, credentials, reasoning and file paths.
 
-- `pulse` indicates whether the normalized estimate matches the expected value and which
+- `pulse` indicates whether the date has a normalized estimate, whether it matches the expected value and which
   independently dated Garmin sources agree. A rolling-only export value never counts as a
   dated match. If the fields disagree, verify the exact date and measurement type in Garmin
   Connect. These flags check provenance for the watch estimate. An awake pulse measurement is
@@ -28,3 +28,9 @@ entered, source values, activity identifiers, credentials, reasoning and file pa
   Check the coverage counts alongside replay success to establish how many months were
   exercised. Physical Safari, reviewer acceptance on actual data, and scheduled delivery
   require separate checks on the owner's devices.
+
+For a watch compatibility check, preview a structured workout locally, then upload only the
+approved workout from the Mac. Confirm its ID in Garmin Connect, and check the calendar
+separately if a date was requested. An unverified upload or schedule status requires a read-back
+in Garmin Connect before repeating the operation. Confirm repeats, targets and step order on the
+watch after its next sync.

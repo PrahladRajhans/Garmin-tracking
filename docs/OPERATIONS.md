@@ -25,6 +25,15 @@ and stages the current HTML once it holds the lock. A skipped download run can r
 file. A receipt in the dashboard directory avoids uploading the same file twice.
 Garmin retries still respect the existing rate-limit backoff.
 
+The new-activity probe uses the Garmin Connect session for `--source garminconnect`.
+The default `both` and explicit `personal_api` use the official Personal API. Use `--force`
+or an explicit `--since` date to bypass the schedule gate for a manual backfill.
+
+A scheduled sync and an MCP refresh targeting the same archive cannot run together. The
+second request reports `sync_in_progress` and leaves the first request's retry state alone.
+Readers can continue using SQLite. Keep the empty adjacent `.sync.lock` file in place during
+sync. Its lock is released when the sync process closes its connection or exits.
+
 Old endpoint logs are retained for diagnosis but are not completion evidence. The first run
 after this migration fetches normally once; there is no destructive migration of raw data.
 An unavailable requested source means the next scheduled run retries, so fix expired login
@@ -101,6 +110,12 @@ Requested MCP results may leave the Mac through the selected AI client/model pro
 Cloudflare Access protects reader access; the HTML is still stored by Cloudflare. Keep the
 optional upload disabled until the owner has configured both protected hostnames and checked
 anonymous denial, owner login and phone navigation.
+
+The upload preflight and check-only command validate whole-host Access policy and probe `/`
+and `/index.html` on both production and preview hostnames. If Pages redirects the file to
+the root, preflight verifies that the root requires login. Check a direct deployment URL
+when activating hosting. Run preflight again after changing Access settings. A deduplicated
+upload skips provider checks. A failed check blocks new uploads.
 
 ## Archive verification (v0.14.3)
 

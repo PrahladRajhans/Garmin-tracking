@@ -30,7 +30,7 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
 4. **Backfill a year from the APIs** (adds unofficial extras: readiness factors, training
    status etc. for recent months; the official API is rate-limited to ~100 requests/window and
    the sync waits automatically; expect 30–60 min):
-   `.venv/bin/garmin-mcp-sync --days 365 > ~/.garmin-mcp/backfill.log 2>&1` (run in background
+   `.venv/bin/garmin-mcp-sync --days 365 --force > ~/.garmin-mcp/backfill.log 2>&1` (run in background
    and check `--coverage` when done).
 5. **Connect to Claude Desktop**: add to
    `~/Library/Application Support/Claude/claude_desktop_config.json` (merge, don't overwrite
@@ -39,7 +39,10 @@ Run from `~/Garmin-tracking`. Python 3.12+ is installed (`python3 --version`; th
    {"mcpServers": {"garmin": {"command": "/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp"}}}
    ```
    Tell the user to restart the Claude desktop app.
-6. **Schedule sync every 3 hours** (since v0.12 each run first checks a gate: full sync only if ≥ 11 h since the last one or a new activity exists, otherwise one cheap call) with a launchd agent
+6. **Schedule sync every 3 hours** with a launchd agent. Each run checks for a previous
+   incomplete sync, an 11-hour interval since the last complete sync, or a new activity.
+   The new-activity check uses the Personal API in the default setup. If scheduling
+   `--source garminconnect`, it uses the Garmin Connect session.
    `~/Library/LaunchAgents/com.garmin-mcp.sync.plist` running
    `/Users/<user>/Garmin-tracking/.venv/bin/garmin-mcp-sync --days 3`, StartInterval 10800,
    stdout/stderr to `~/.garmin-mcp/sync.log`; then `launchctl load` it.

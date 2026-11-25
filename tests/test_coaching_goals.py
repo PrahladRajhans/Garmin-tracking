@@ -124,6 +124,9 @@ def test_week_plan_uses_recent_run_volume_and_pauses_for_status(conn):
         prior = (day - timedelta(days=i)).isoformat()
         db.upsert_activity(conn, {"activityId": i, "activityType": {"typeKey": "running"},
                                  "startTimeLocal": f"{prior} 08:00:00", "duration": 1800})
+    db.upsert_activity(conn, {"activityId": 2, "activityType": {"typeKey": "running"},
+                             "startTimeLocal": "2026-11-21 08:00:00", "duration": 1800})
+    conn.execute("UPDATE activities SET duration_s='bad' WHERE activity_id=2")
     week = training_plan.week(conn, day.isoformat(), readiness)
     assert (week["sessions"], week["minutes"], week["history_run_days_by_week"]) == (2, 30, [2]*4)
     readiness["ours"]["state"] = "calibrating"

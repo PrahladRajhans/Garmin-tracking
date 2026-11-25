@@ -1,10 +1,15 @@
-# Handover: Garmin-tracking (state at v0.30.0, 2026-11-25)
+# Handover: Garmin-tracking (state at v0.31.0, 2026-11-25)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.31.0:** a dedicated reviewed Sleep interpretation, clearer AI outcome reporting,
+  partial-data dashboard fixes and private retention of verified Garmin monitoring FIT files.
+  See [audit coverage](docs/REPOSITORY_REVIEW.md), [AI evaluation](docs/OLLAMA.md),
+  [FIT workflow](docs/WELLNESS_PREVIEW.md), and [remaining owner checks](docs/OWNER_ACCEPTANCE.md).
 
 - **v0.30.0:** a local owner acceptance report, dated reading coverage and recommendation
   evidence, a focused post-run review with a weekly cue follow-up, monitoring FIT and

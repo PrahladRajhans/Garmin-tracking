@@ -1,4 +1,4 @@
-"""MCP server. Every tool reads the local database; only `refresh_data` talks to Garmin."""
+"""Local Garmin MCP tools, with explicit sync, workout and opt-in external operations."""
 
 from __future__ import annotations
 
@@ -354,7 +354,9 @@ def garmin_workouts(action: str = "list", workout_id: int | None = None) -> dict
         if not workout_id:
             return {"error": "workout_id required"}
         return workouts.delete_on_garmin(workout_id)
-    return workouts.list_on_garmin()
+    if action == "list":
+        return workouts.list_on_garmin()
+    return {"error": "action must be list or delete"}
 
 
 # ----------------------------------------------------------------- Phase 8: insight engine

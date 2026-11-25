@@ -36,7 +36,7 @@ def week(conn: sqlite3.Connection, day: str, readiness: dict[str, Any]) -> dict[
             f"WHERE type IN ({placeholders}) AND substr(start_time_local,1,10)>=? "
             "AND substr(start_time_local,1,10)<? AND duration_s >= 300",
             (*RUN_ACTIVITY_TYPES, first.isoformat(), day)):
-        if stamped in excluded or not math.isfinite(duration_s):
+        if stamped in excluded or type(duration_s) not in (int, float) or not math.isfinite(duration_s):
             continue
         try:
             block = (date.fromisoformat(stamped) - first).days // 7

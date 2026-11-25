@@ -168,6 +168,64 @@ open. The earlier register preserves past review evidence, and the pinned invent
 paths above identify the additional coverage for this release. Owner acceptance also remains
 open for the private archive, Mac-scheduled operations, live Garmin, and the physical iPhone.
 
+## Post-v0.30.0 manual audit
+
+This pass started at `e8dc20b` (v0.30.0), with 183 tracked files including 92 Python files.
+The line spans below cover code read and traced across its callers. Behavioral checks are
+listed separately. The audit prioritizes paths that can change archive state, omit an update,
+trigger a network request, or mislead a coaching decision.
+
+| Path and reviewed lines | Behavior and evidence | Acceptance still open |
+|---|---|---|
+| [MCP server](../src/garmin_mcp/server.py#L1), 1–804 | Traced all local reads, settings, bedtime/plan/experiment writes, workout preview/list/delete, dashboard rebuild, weather opt-in and source sync through registration and dispatch. Bedtime acceptance already marks the dashboard stale in the same SQLite transaction. Unsupported workout actions previously fell through to a live listing, so routing now rejects them before network work. An isolated SDK 2 stdio session initialized, listed 57 tools, verified synthetic coverage and rejected a misspelled workout command. | Real desktop client and Garmin sessions on the owner's Mac. |
+| [Client](../src/garmin_mcp/client.py#L1), 1–70, [login](../src/garmin_mcp/login.py#L1), 1–23, [config](../src/garmin_mcp/config.py#L1), 1–25 | Traced lazy Garmin auth, saved session reuse, one-time password/MFA input, timezone selection, default Qwen tag, and alternate data/DB paths. No credentials or Garmin account were needed for the workspace checks. | Owner session renewal, saved timezone and scheduler environment. |
+| [Source interface](../src/garmin_mcp/sources/base.py#L1), 1–34, [source export](../src/garmin_mcp/sources/__init__.py#L1), 1–5, [Connect adapter](../src/garmin_mcp/sources/garminconnect_source.py#L1), 1–97, [Personal API adapter](../src/garmin_mcp/sources/personal_api.py#L1), 1–130 | Traced per-source daily versus window requests, the Connect extras filter, token refresh, bounded pagination, activity details and raw/FIT zip intake. Personal API fixtures verify expired token refresh, missing or blank credential handling and malformed pagination. | Actual source coverage, both live sessions and representative original FIT formats. |
+| [Scheduled sync](../src/garmin_mcp/sync.py#L1), 1–450 | Reviewed request budgets, incremental windows, partial sync/retry, activity/detail/FIT paths, dashboard and publishing retry, and CLI gates. Garmin Connect-only now checks for new activities through the Connect session. A separate per-archive SQLite lock prevents concurrent runs from clearing one another's retry state while preserving archive reads and partial commits. Fixtures reproduced both issues and verify retries. The default early probe still uses the Personal API. | Configured launchd job, Windows Task Scheduler and live timing. |
+| [Self-update](../src/garmin_mcp/autoupdate.py#L1), 1–110, [CI](../.github/workflows/ci.yml#L1), 1–23, [package config](../pyproject.toml#L1), 1–42, [environment template](../.env.example#L1), 1–16, [ignore rules](../.gitignore#L1), 1–10 | Traced editable install, re-exec, pending-install retries, pinned CI actions, package dependencies and declared commands. Manual one-year backfill now explicitly bypasses the schedule gate. The interactive MCP process loads `.env`. Scheduled auth uses the documented key/token files or environment passed to the job. | Actual launchd checkout, virtual environment, and install-failure recovery on the Mac. |
+| [Pages publisher](../src/garmin_mcp/publish.py#L1), 1–242, [Mac deployment guide](../MAC_SETUP.md#L1), 1–270, [operations guide](OPERATIONS.md#L1), 1–175 | Traced opt-in configuration, Access policy verification, anonymous redirects, deployment locking, staged file, successful upload receipt, hosted evidence rebuild, and owner-only device checks. Publishing uses stand-in provider fixtures. Its latest preflight checks the root and the HTML path on production and preview hostnames. | Actual Access policy and preview/deployment URLs, owner sign-in and Home Screen refresh on physical Safari. |
+
+The first focused operations run passed 72 tests across sync, workouts, Personal API,
+self-update and publishing. A later result covered the new concurrency regression and the
+selected source gate together, with both tests passing.
+
+The analytics pass read 1,257 lines from nine complete files at the starting revision.
+
+| Baseline file and reviewed lines | Manual review |
+|---|---|
+| [Recovery](../src/garmin_mcp/recovery.py#L1), 1–314, [daily focus](../src/garmin_mcp/daily_focus.py#L1), 1–125, [reading availability](../src/garmin_mcp/reading_availability.py#L1), 1–60, [wellness review](../src/garmin_mcp/wellness_review.py#L1), 1–85 | Traced incompatible and missing source rows, freshness labels, recovery flags, input validation, breathing fallback and explicit zero recovery time. Reviewed minimum support for nap and Body Battery comparisons. |
+| [Scores](../src/garmin_mcp/scores.py#L1), 1–248, [signal context](../src/garmin_mcp/signal_context.py#L1), 1–99 | Traced default and override paths, age/HR inputs, score bounds, baseline date exclusion and paired eligibility for recovery-weight comparisons. |
+| [Sleep review](../src/garmin_mcp/sleep_review.py#L1), 1–174, [bedtime experiment](../src/garmin_mcp/bedtime_experiment.py#L1), 1–82, [training plan](../src/garmin_mcp/training_plan.py#L1), 1–70 | Traced recorded sleep stages, wraparound clock summaries, wake-statistic windows, weekly target persistence/comparisons, dated plan matching and unusable activity durations. |
+
+The 50-test analytics run covered recovery, scoring, sleep, bedtime, coaching and signal context.
+The identical-clock regression checks that repeated wake times keep a zero spread.
+
+| Archive and model code reviewed | Manual review |
+|---|---|
+| [Importer](../src/garmin_mcp/importer.py#L1), 1–343, [FIT](../src/garmin_mcp/fit.py#L1), 1–244, [monitoring preview](../src/garmin_mcp/monitoring_preview.py#L1), 1–194, [verifier](../src/garmin_mcp/verify.py#L1), 1–371, [archive export](../src/garmin_mcp/archive_export.py#L1), 1–110, [archive audit](../src/garmin_mcp/archive_audit.py#L1), 1–67, [wellness timeline](../src/garmin_mcp/wellness_timeline.py#L1), 1–112 | Traced file retention, parser transactions, monitored metric and timestamp reconciliation, usable date ranges, export overwrite protection and import continuation. Also traced [normalization](../src/garmin_mcp/normalize.py#L400) lines 400–528 and [SQLite store](../src/garmin_mcp/db.py#L192) lines 192–257 and 283–322. Sixty focused tests passed across import, FIT, storage history, preview, audit/export, normalization and sync. |
+| [Narrator](../src/garmin_mcp/narrator.py#L378), 378–510, 519–782, 787–907 and 960 through EOF, [deep insight](../src/garmin_mcp/deep_insight.py#L19), 19–184, 195–348, 351–482 and 484 through EOF | Traced loopback, capability checks and transport, cache signatures, prompt-specific evidence eligibility, review, selection and canonical snapshot rebuilding. The tests cover scoped Sleep and post-run diagnostics without relying on the owner's records. The reviewed spans follow the working revision and omit some setup and evaluation branches. |
+| [Dashboard](../src/garmin_mcp/dashboard.py#L74), collection, Today and Sleep composition, Running lead, day-history rendering, and snapshot build; [archive baseline](../src/garmin_mcp/baseline.py#L1), [running block](../src/garmin_mcp/running_block.py#L1), [matched effort](../src/garmin_mcp/run_evidence.py#L1) and [readiness benchmark](../src/garmin_mcp/readiness_benchmark.py#L1), full files | Traced archive-to-page as-of selection, what counts as a historical observation, waking and running recommendations, phase-specific comparisons and the shared checked-evidence view. Clear rest advice overrides the cadence cue and Running lead. The browser matrix exercised the reviewed Sleep source link, availability and post-run explanations. |
+| [Health](../src/garmin_mcp/health.py#L45), sleep breakdown and pulse comparison, and [insights](../src/garmin_mcp/insights.py#L329), trend and daily brief | Traced malformed archived sleep payloads, source fallback for awake pulse, valid sleep windows, finite metric series, and the empty half of a one-reading trend. |
+
+This is a manual pass through the named paths and ranges. Further current-revision review
+is open for the remaining dashboard pages and CSS, the full running and running-dynamics
+calculation chains, relationships and other insight calculations, rarely used external
+conditions paths, extended load and fixture logic, remaining AI setup paths, and the
+untested deployment environments above. The earlier file register records each path's
+prior status and the automated inventory remains distinct from manual trace coverage.
+Replaying multiple whole-export JSON snapshots with overlapping raw-range keys can still
+produce repeated supersession history. Canonical replay ordering requires dated source
+snapshots that establish which conflicting version was newer.
+
+## v0.31.0 release check
+
+Ruff and 343 tests passed on Linux. A 36-month synthetic archive replay produced no
+broken internal links or duplicate IDs and left the source SQLite hash unchanged.
+Chromium and WebKit passed eight responsive browser configurations spanning phone and
+desktop widths and light and dark themes. The real local Qwen3.5 4B model passed
+reviewed prose checks on fictional Today, Sleep and Running evidence in direct mode.
+The owner's archive, Mac runtime, physical iPhone and private hosting remain separate
+checks documented in [owner acceptance](OWNER_ACCEPTANCE.md).
+
 ## v0.30.0 release check
 
 Ruff and all 311 tests passed. The 36-month synthetic replay found zero broken
