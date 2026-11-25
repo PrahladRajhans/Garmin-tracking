@@ -639,6 +639,8 @@ thresholds. The empty-database dashboard failure is resolved in v0.14.1. See
 | D.1 | Mac setup (`MAC_SETUP.md`): import, 1-year backfill (✅ 2,894 calls, 0 errors), Claude Desktop config, 3-hourly sync (✅). **Self-update (v0.11): after one last pull, every sync updates itself from `main`; settings come from `config/athlete.json`.** | v1.0.0 |
 
 ### Later / optional (only if you ask)
+**Multi-user app with sign-ups, privacy and AI insights:** parked as an open discussion. See [docs/PRODUCTISATION_OPTIONS_2026-11-25.md](docs/PRODUCTISATION_OPTIONS_2026-11-25.md) (Garmin data-access gate, who holds the data, architecture options, security, economics, staged plan). Pursue only after the nearer-term fixes.
+
 R32 intervals.icu source · R33 Apple Health import · R34 multi-device dedupe.
 Grafana remains dropped; private remote hosting has been requested and moved to A above.
 
