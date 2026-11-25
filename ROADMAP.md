@@ -10,7 +10,7 @@ into it, and every item there is mapped to a phase here:
 
 ## Current priorities
 
-> **Open proposals:** the [25 Nov 2026 review](docs/LESSONS_FROM_30_LINKS_2026-11-25.md) adds backlog items Q1–Q6, M1–M8 and J1–J3 (not yet scheduled here). Suggested first release: Trends board (Q5), key expiry reminder (Q1), delete gate (Q2), missing-days report (Q4); then the Personal-API-only capability test (M1).
+> **Open proposals:** the [25 Nov 2026 review](docs/LESSONS_FROM_30_LINKS_2026-11-25.md) adds backlog items Q1–Q6, M1–M8 and J1–J3 (not yet scheduled here), and §12 merges in Grok's UI/UX items G1–G14 ([brief](docs/external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md)). Suggested first release: Trends board (Q5), key expiry reminder (Q1), delete gate (Q2), missing-days report (Q4); then the Personal-API-only capability test (M1).
 
 Reviewed 25 November 2026 through v0.32.0 against the owner's three tables and the earlier numbered
 list. The sequence below maps all 14 items to acceptance criteria. Earlier execution IDs and
