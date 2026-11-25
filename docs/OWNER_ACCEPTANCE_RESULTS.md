@@ -28,7 +28,7 @@ a disposable copy), **runtime** (Mac, Ollama, launchd, Garmin calls), **device**
 | 15 | Daily distance across sources | archive copy | **Fixed**: export counted rides and swims |
 | 16 | Interval and progression workout preview | runtime (offline) | Passed locally. **Watch unverified** (upload not approved) |
 | 17 | Ollama version, cloud disabled, model | runtime | Passed. Thinking is off; draft budget 10 min |
-| 18 | Ollama listens on loopback only | runtime | **Failed**: network exposure was on. Owner to switch it off, then recheck |
+| 18 | Ollama listens on loopback only | runtime | **Fixed by the owner and rechecked**: network exposure was on. Now `127.0.0.1` only, cloud disabled, narrator ready, one fictional Running case passed. Ollama had updated to 0.40.18 |
 | 19 | Fictional AI cases | runtime | See below |
 | 20 | Dated archive AI cases | archive copy + runtime | See below. **Usefulness still needs the owner's review** |
 | 21 | Model unreachable; stale worker before and during generation | archive copy | Passed: page kept, status recorded, newer snapshot never overwritten |

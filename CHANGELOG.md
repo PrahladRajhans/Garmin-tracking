@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+- The owner turned off Ollama's network exposure; loopback-only listening was rechecked
+  ([results](docs/OWNER_ACCEPTANCE_RESULTS.md)).
+
 - Record the post-merge Mac checks: the real scheduled job, a 180-day timeline backfill and the
   AI update ([results](docs/OWNER_ACCEPTANCE_RESULTS.md#after-the-merge-pr-46-commit-157a11c)).
 - Record the owner's iPhone checks in Files, including VoiceOver and offline reopen
