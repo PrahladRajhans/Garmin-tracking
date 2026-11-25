@@ -369,3 +369,7 @@ run at 390 and 1,440 px, in both themes. The smoke test opened the dated reading
 disclosure and the post-run evidence links and checked page width and browser errors.
 The input and workouts were synthetic. Physical Safari and owner onboarding remain
 listed in [owner acceptance](OWNER_ACCEPTANCE.md).
+
+## Owner correction
+
+Chart readings dropdowns were removed globally in v0.33.1 at the owner’s explicit request. Direct point selection, overlays and live announcements remain available.

@@ -286,7 +286,7 @@ def _point(x: float, y: float, label: str, value: str, cls: str = "hit",
 def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
            x_label: str, y_label: str, controls: str = "",
            *, condition_labels: list[str] | None = None,
-           compact: bool = False, dense: bool = False, static_readings: bool = False) -> str:
+           compact: bool = False, dense: bool = False) -> str:
     left, right, top, bottom = limits
     overlay = (f'<g class="chart-cursor" aria-hidden="true">'
                f'<line class="cursor-x" y1="{top}" y2="{bottom}"/>'
@@ -295,8 +295,7 @@ def _chart(kind: str, parts: list[str], w: int, h: int, limits: tuple,
     caption = '<figcaption class="chart-readout"><strong></strong><span></span></figcaption>'
     lookup = f' data-conditions="{_e(json.dumps(condition_labels, ensure_ascii=False))}"' if condition_labels else ""
     layout = (" chart-compact" if compact else "") + (" chart-dense" if dense else "")
-    readings = " data-static-readings" if static_readings else ""
-    return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}{readings}>'
+    return (f'<figure class="chart-interaction{layout}" data-chart="{kind}"{lookup}>'
             f'{controls}<span class="sr-only" role="status" aria-atomic="true"></span>'
             f'<svg class="chart" viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="{_e(y_label)} by {_e(x_label)}" aria-describedby="chart-help">'
@@ -1916,8 +1915,7 @@ def _split_bars(splits: list[tuple[str, float]], reference: float, w: int = W) -
               for i, label in enumerate(labels)]
     else:
         g += _x_ticks(labels, x, bottom, w > W)
-    return _chart("bar", g, w, h, (left, right, top, bottom), "Kilometre", title,
-                  static_readings=True)
+    return _chart("bar", g, w, h, (left, right, top, bottom), "Kilometre", title)
 
 
 def _split_chart(splits):
@@ -2920,8 +2918,6 @@ font-size:13px;line-height:1.35}
 .chart-cursor line{stroke:var(--cursor);stroke-width:.9;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
 .chart-cursor circle{fill:var(--surface);stroke:var(--active);stroke-width:1.6}
 .chart-note{font-size:12px;color:var(--muted);margin:3px 0 0}
-.chart-readings ul{padding-inline-start:1.3em}
-.chart-readings li{font-size:.875em;line-height:1.5;padding-block:3px;overflow-wrap:anywhere}
 .source-link{text-decoration:underline;color:var(--active)}
 .grid line.grid,.chart .grid{stroke:var(--grid);stroke-width:1}
 .chart .axis,.chart .zero{stroke:var(--axis);stroke-width:1;fill:none}
@@ -3201,8 +3197,7 @@ def render(d: dict[str, Any]) -> str:
         '<button type="button" data-theme-choice="light" aria-pressed="true">Light</button>'
         '<button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>'
         '</div></header><p class="sr-only" id="chart-help">Arrow keys select a reading. '
-        'Home and End move to the first and last readings. Escape clears the selection. '
-        'Open Chart readings for the exact values.</p>'
+        'Home and End move to the first and last readings. Escape clears the selection.</p>'
         '<nav class="top" '
         f'aria-label="Dashboard pages">{nav}</nav>{"".join(pages)}<footer>{freshness} {status}{ai_state} '
         f'</footer></main><script>{SCRIPT}</script></body></html>')
