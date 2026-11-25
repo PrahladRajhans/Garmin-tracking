@@ -33,6 +33,8 @@ import statistics
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from garmin_mcp.fit import RECORD_CADENCE_SQL
+
 BANISTER = {"male": (0.64, 1.92), "female": (0.86, 1.67)}
 CTL_DAYS, ATL_DAYS = 42, 7
 MAX_HR_INTERVAL_S = 10
@@ -599,7 +601,7 @@ def sense_checks(conn: sqlite3.Connection, asof: str) -> dict[str, Any]:
 
     # 3. Speed physics: cadence (one foot) x 2 x step length = speed.
     row = conn.execute(
-        "SELECT AVG(r.cadence * 2 * r.step_length / 1000 / 60), AVG(r.speed) FROM fit_records r "
+        f"SELECT AVG(({RECORD_CADENCE_SQL}) * 2 * r.step_length / 1000 / 60), AVG(r.speed) FROM fit_records r "
         "JOIN activities a USING(activity_id) WHERE a.type IN ('running','trail_running') AND "
         "r.speed > 1.5 AND r.cadence > 60 AND r.step_length > 0").fetchone()
     if row and row[0] and row[1]:

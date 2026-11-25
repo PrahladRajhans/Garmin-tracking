@@ -110,7 +110,7 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Efficiency factor | Minetti-graded speed (m/min) ÷ average HR |
 | Decoupling (Pa:HR) | (EF 1st half − EF 2nd half) / EF 1st half × 100; < 5 % = Friel heuristic |
 | HR drift | average HR 2nd half − 1st half (steady runs) |
-| Cadence | FIT one-foot running cadence × 2 (steps/min). Cycling streams and workout details keep the recorded revolutions per minute. |
+| Cadence | FIT one-foot running cadence **plus its fractional part** (`fractional_cadence`), × 2 (steps/min). Before v0.32.1 the fraction was dropped, which read about 0.9 spm below the watch. Cycling streams and workout details keep the recorded revolutions per minute. |
 | Vertical ratio | vertical oscillation / step length × 100 (matches Garmin's session value) |
 | Matched-pace norm | median of runs within ±15 s/km (widened to ±30 if < 3 runs) in 180 days |
 | Form trends | monthly medians within your median pace ± 30 s/km |
@@ -723,9 +723,22 @@ averages are descriptive. A comparison for a metric needs three readings in each
   windows include the missing date ranges and do not display a numeric baseline. See
   [Garmin sources and independent research](docs/GARMIN_DATA_REVIEW.md).
 
+## Daily distance
+
+`daily.distance_m` is walking and running distance in metres. The Personal API reports it as step
+distance. The export and Connect summaries use `wellnessDistanceMeters`, falling back to
+`totalDistanceMeters` only when it is absent. Before v0.32.1 the export used the total, which also
+counts rides and swims. Rides and swims keep their own distance on each activity.
+
 ## Intraday Stress and Body Battery
 
 Connect stores epoch-millisecond Stress and Body Battery entries in the daily stress response.
+Garmin files each reading under the **watch's** local date. When a stored day records a different
+UTC offset (travel), the day filter and the clock labels use that offset; otherwise they use the
+configured timezone. The same applies to the intraday pulse chart.
+Both `--source both` (default) and `--source garminconnect` download it. Before v0.32.1 the
+default mode skipped it, so those archives have no intraday timeline for earlier days until a
+forced sync covers them.
 Use the configured local timezone, accept Stress 0–100 and Body Battery 5–100, and keep
 the first usable value at a duplicate timestamp. For each 15-minute window, Stress shows
 the median plus the recorded low and high. The peak summary needs at least two readings

@@ -3,7 +3,7 @@
 import json
 import math
 import statistics
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from itertools import groupby
 
 METRICS = {"stress": ("stressValuesArray", 1, 0), "battery": ("bodyBatteryValuesArray", 2, 5)}
@@ -33,6 +33,22 @@ def _battery_layout(descriptors):
     return (stamp, level) if stamp != level else None
 
 
+def device_zone(payload, home):
+    """The watch's clock for one stored day, which differs from `home` while travelling.
+
+    Garmin files readings under the watch's local date. Keep `home` (with its DST rules) when
+    the day's recorded offset agrees with it, or when the payload carries no offset.
+    """
+    try:
+        gmt = datetime.fromisoformat(payload["startTimestampGMT"]).replace(tzinfo=UTC)
+        offset = datetime.fromisoformat(payload["startTimestampLocal"]) - gmt.replace(tzinfo=None)
+        if gmt.astimezone(home).utcoffset() == offset or abs(offset) > timedelta(hours=14):
+            return home
+        return timezone(offset)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return home
+
+
 def archived_days(conn, start=None, end=None):
     sql = "SELECT day, payload FROM raw_daily WHERE dataset='stress'"
     params = ()
@@ -50,6 +66,7 @@ def archived_days(conn, start=None, end=None):
 def samples(payload, day, zone, *, preserve_conflicts=False):
     """Decode Connect arrays. Keep conflicting values only for source comparisons."""
     output = {}
+    zone = device_zone(payload, zone)
     for key, (field, value_index, minimum) in METRICS.items():
         rows = payload.get(field)
         if not isinstance(rows, list):

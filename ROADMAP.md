@@ -37,6 +37,26 @@ each workstream lands, then run Ruff, the full Python suite, and affected replay
 once against the release commit. Keep cadence, bedtime, archive restore and publication retry
 coverage from the earlier queue as regression checks where affected.
 
+### Open after the Mac acceptance run (v0.32.1)
+
+[What was checked](docs/OWNER_ACCEPTANCE_RESULTS.md). In priority order:
+
+1. **Owner, security:** turn off Ollama's network exposure and confirm it listens on loopback
+   only. Check data-folder permissions and set up a backup ([operations](docs/OPERATIONS.md#backups-and-rollback)).
+2. **Owner, time-sensitive:** Garmin returned no intraday series for dates older than a few
+   months. Backfill the stress timeline while it is still available.
+3. **Owner:** give the date and label of the 44 bpm reading; review the local AI report.
+4. **Device:** physical iPhone (Files, Home Screen, VoiceOver, offline) and watch workout check.
+5. **Code:** Running and weekly AI reviews usually fail the direction check and fall back to exact
+   readings. Improve the evidence wording or the prompt, and measure on dated cases.
+6. **Code:** the dashboard file is about 4.5 MB against the 600 KB target. Most is inline SVG in
+   collapsed detail sections.
+7. **Code:** bedtime, experiments and event timing still use the configured timezone on travel
+   days.
+8. **Code:** import of monitoring FIT stays disabled until Body Battery message types, conflicts
+   and rollback are validated.
+9. **Code:** wider repository audit (separate task, step 14 below).
+
 ### 25 November execution status
 
 | Step | Workspace evidence | Remaining acceptance |
@@ -262,6 +282,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.32.1 | Fixes from the first Mac acceptance run | [Results](docs/OWNER_ACCEPTANCE_RESULTS.md) |
 | 0.32.0 | FIT grade parity, pulse and load coverage, archive chronology and provenance, exact chart readings | [Review and acceptance](docs/REPOSITORY_REVIEW.md#v0320-manual-work-and-acceptance). |
 | 0.31.0 | Reviewed Sleep prose, archive and FIT safeguards, partial-date rendering, refresh serialization and broader manual review | [Audit coverage and remaining dependencies](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) and [owner acceptance](docs/OWNER_ACCEPTANCE.md). |
 | 0.30.0 | Dated recovery evidence, cadence follow-up, recommendation history, FIT and workout previews, owner acceptance and phone chart loading | Workspace checks and remaining owner acceptance are in the [execution status](#25-november-execution-status). |

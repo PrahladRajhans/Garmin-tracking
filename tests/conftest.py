@@ -6,6 +6,19 @@ from garmin_fit_sdk import Encoder, Profile
 from garmin_mcp import db
 
 
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path_factory, monkeypatch):
+    """Keep every test away from the owner's files. Dashboard builds mirror into the home
+    folder's iCloud Drive even when the data folder is temporary."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    for name in ("GARMIN_DATA_DIR", "GARMIN_DB_PATH", "GARMIN_TZ", "GARMIN_TOKEN_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GARMIN_DATA_DIR", str(home / "data"))
+    monkeypatch.setenv("GARMIN_TOKEN_DIR", str(home / ".garminconnect"))
+    monkeypatch.delenv("GARMIN_DASHBOARD_PUBLISH", raising=False)
+
+
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
     monkeypatch.setenv("GARMIN_DATA_DIR", str(tmp_path))

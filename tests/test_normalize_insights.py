@@ -336,3 +336,14 @@ def test_default_verifier_rejects_missing_archive(tmp_path, monkeypatch, capsys)
     assert exc.value.code == 2
     assert "No stored Garmin database" in capsys.readouterr().err
     assert not archive.exists()
+
+
+def test_daily_distance_means_walking_and_running_in_every_source():
+    """The Personal API gives step distance. Export totals also include rides and swims."""
+    from garmin_mcp.normalize import daily_from_summary
+
+    record = {"calendarDate": "2026-05-05", "totalDistanceMeters": 9000, "wellnessDistanceMeters": 7000}
+    [(_, readings)] = daily_from_summary(record, exported=True)
+    assert readings["distance_m"] == 7000
+    [(_, older)] = daily_from_summary({"calendarDate": "2024-06-01", "totalDistanceMeters": 900}, exported=True)
+    assert older["distance_m"] == 900

@@ -14,7 +14,7 @@ import statistics
 from datetime import date, timedelta
 from typing import Any
 
-from garmin_mcp.fit import cadence_units
+from garmin_mcp.fit import LAP_CADENCE_SQL, RECORD_CADENCE_SQL, cadence_units
 from garmin_mcp.normalize import TABLES
 
 
@@ -278,7 +278,7 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
     summary = json.loads(a.pop("summary") or "{}")
     cadence_scale, cadence_unit = cadence_units(a["type"])
     laps = [dict(r) for r in conn.execute(
-        "SELECT lap_index, timer_s, distance_m, avg_hr, max_hr, avg_speed, avg_cadence, "
+        f"SELECT lap_index, timer_s, distance_m, avg_hr, max_hr, avg_speed, {LAP_CADENCE_SQL} AS avg_cadence, "
         "avg_power FROM fit_laps WHERE activity_id=? ORDER BY lap_index", (activity_id,))]
     for lap in laps:
         sp = lap.pop("avg_speed")
@@ -287,7 +287,7 @@ def activity_detail(conn: sqlite3.Connection, activity_id: int) -> dict[str, Any
         lap["avg_cadence_spm"] = cad * cadence_scale if cad is not None else None
         lap["cadence_unit"] = cadence_unit
     stream = conn.execute(
-        "SELECT COUNT(*), AVG(heart_rate), AVG(cadence), AVG(power), AVG(vertical_oscillation),"
+        f"SELECT COUNT(*), AVG(heart_rate), AVG({RECORD_CADENCE_SQL}), AVG(power), AVG(vertical_oscillation),"
         " AVG(stance_time), AVG(step_length), MAX(altitude)-MIN(altitude), AVG(temperature) "
         "FROM fit_records WHERE activity_id=?", (activity_id,)).fetchone()
     form = None
@@ -465,12 +465,12 @@ def weekly_review(conn: sqlite3.Connection, end: str | None = None) -> dict[str,
         r = conn.execute(
             "SELECT COUNT(*), SUM(a.duration_s), SUM(CASE WHEN a.type LIKE '%run%' THEN "
             "a.distance_m END), SUM(l.trimp), SUM(l.garmin_load), SUM(l.z1_s), SUM(l.z2_s), "
-            "SUM(l.z3_s), COUNT(l.trimp) FROM activities a JOIN activity_load l USING(activity_id) "
+            "SUM(l.z3_s), COUNT(l.trimp), COUNT(l.garmin_load) FROM activities a JOIN activity_load l USING(activity_id) "
             "WHERE l.day BETWEEN ? AND ?", (a, b)).fetchone()
         return {"sessions": r[0], "hours": _r((r[1] or 0) / 3600, 2),
                 "run_km": _r((r[2] or 0) / 1000, 1),
                 "trimp": _r(r[3] or 0.0) if r[8] == r[0] else None, "sessions_with_load": r[8],
-                "garmin_load": _r(r[4] or 0.0), "zone_s": [r[5] or 0, r[6] or 0, r[7] or 0]}
+                "garmin_load": _r(r[4] or 0.0) if r[9] == r[0] else None, "zone_s": [r[5] or 0, r[6] or 0, r[7] or 0]}
 
     week, prev4 = agg(start, end), agg(prev_start, prev_end)
     avg_prev = {k: _r(prev4[k] / 4, 1) if prev4[k] is not None else None

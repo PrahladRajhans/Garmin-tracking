@@ -44,6 +44,14 @@ def is_running_activity(activity_type: str | None) -> bool:
     return "run" in (activity_type or "").lower()
 
 
+# FIT stores one-foot cadence as a whole number plus a fraction kept in the record or lap
+# payload. Readers add both, as the watch does for its own averages.
+RECORD_CADENCE_SQL = ("cadence + COALESCE(CASE WHEN json_valid(extra) THEN "
+                      "json_extract(extra, '$.fractional_cadence') END, 0)")
+LAP_CADENCE_SQL = ("avg_cadence + COALESCE(CASE WHEN json_valid(payload) THEN "
+                   "json_extract(payload, '$.avg_fractional_cadence') END, 0)")
+
+
 def cadence_units(activity_type: str | None) -> tuple[int, str | None]:
     """Scale one-foot running cadence to steps; keep cycling pedal revolutions as read."""
     if is_running_activity(activity_type):

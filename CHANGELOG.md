@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-11-25
+
+Fixes found while accepting v0.32.0 on the owner's Mac. Method and results:
+[owner acceptance results](docs/OWNER_ACCEPTANCE_RESULTS.md).
+
+- Download the Connect stress timeline in the default `--source both` mode. Intraday Stress and
+  Body Battery charts had no data there (`sources/garminconnect_source.py`).
+- Add FIT `fractional_cadence` to record and lap cadence. Cadence read about 0.9 spm below the
+  watch (`fit.py`, `coaching.py`, `insights.py`, `loads.py`).
+- Date intraday wellness and pulse by the watch's clock on days recorded in another timezone. In
+  the monitoring FIT preview, give the end-of-day resting estimate to the day it closes
+  (`wellness_timeline.py`, `dashboard_history.py`, `monitoring_preview.py`).
+- Use walking and running distance from export and Connect summaries, matching the Personal API
+  (`normalize.py`). Older days are corrected at the next sync.
+- Report weekly Garmin load as unknown when any workout has none (`insights.py`).
+- Validate bedtime targets explicitly: Python 3.14+ accepts "24:00". CI now also runs 3.15.
+- Isolate the test suite from the home folder. It could replace the iCloud dashboard with a
+  synthetic page (`tests/conftest.py`).
+
 ## [0.32.0] - 2026-11-25
 
 - Estimate running grade over a continuous distance window. Equivalent fast and slow

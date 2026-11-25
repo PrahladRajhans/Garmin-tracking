@@ -136,6 +136,7 @@ def test_sparse_run_uses_garmin_threshold_and_missing_load_stays_missing(conn):
     assert report["week"]["sessions_with_load"] == 1 and report["week"]["sessions"] == 2
     assert report["week"]["trimp"] is None and report["week"]["intensity_pct"] is None
     assert report["load_change_pct"] is None
+    assert report["week"]["garmin_load"] is None, "no Garmin load must not read as zero effort"
     assert all(flag["flag"] != "load jump" for flag in engine.load_flags(conn, day))
     easy = loads.activity_load(conn, {"activity_id": 99, "type": "walking", "avg_hr": 44,
                                      "duration_s": 300}, loads.thresholds(conn, day), None)
