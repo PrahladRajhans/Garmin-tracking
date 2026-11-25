@@ -91,9 +91,6 @@ SCRIPT = r"""
     const status = figure.querySelector('[role=status]');
     const overlayControls = [...figure.querySelectorAll('[data-overlay-control]')];
     const overlayTracks = [...figure.querySelectorAll('[data-overlay-track]')];
-    const disclosure = document.createElement('details');
-    const disclosureLabel = document.createElement('summary');
-    const readingList = document.createElement('ul');
     const cursor = figure.querySelector('.chart-cursor');
     const vertical = cursor.querySelector('.cursor-x');
     const horizontal = cursor.querySelector('.cursor-y');
@@ -112,23 +109,10 @@ SCRIPT = r"""
     let latestMove;
     let overlay = null;
     let overlayReadings = [];
-    let listedOverlay;
     const scatter = figure.dataset.chart === 'scatter';
 
     function readingValue(point, index) {
       return [point.value, point.condition, overlayReadings[index]].filter(Boolean).join(' · ');
-    }
-
-    function fillReadings() {
-      if (!disclosure.open || listedOverlay === overlay) return;
-      const rows = document.createDocumentFragment();
-      points.forEach((point, index) => {
-        const row = document.createElement('li');
-        row.textContent = point.title + ' · ' + readingValue(point, index);
-        rows.append(row);
-      });
-      readingList.replaceChildren(rows);
-      listedOverlay = overlay;
     }
 
     function clear() {
@@ -193,14 +177,6 @@ SCRIPT = r"""
     }
 
     figure.dataset.ready = 'true';
-    if (points.length && !figure.hasAttribute('data-static-readings')) {
-      disclosure.className = 'chart-readings';
-      disclosureLabel.textContent = 'Chart readings';
-      disclosureLabel.setAttribute('aria-label', 'Chart readings for ' + svg.getAttribute('aria-label'));
-      disclosure.append(disclosureLabel, readingList);
-      disclosure.addEventListener('toggle', fillReadings);
-      figure.after(disclosure);
-    }
     for (const button of overlayControls) {
       const readings = JSON.parse(button.dataset.readings);
       button.addEventListener('click', () => {
@@ -216,7 +192,6 @@ SCRIPT = r"""
         const index = selected;
         selected = -1;
         select(index, true);
-        fillReadings();
       });
     }
     svg.setAttribute('tabindex', '0');

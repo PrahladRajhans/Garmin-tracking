@@ -378,7 +378,7 @@ def test_kilometre_splits_have_signed_bars_and_full_elapsed_readings():
 
     html = dashboard._split_chart([("km 1", 355.2), ("km 2", 351), ("km 3", 352), ("km 4", 356)])
     assert html.count('data-chart="bar"') == 2
-    assert html.count("data-static-readings") == 2
+    assert "Chart readings" not in html and "chart-readings" not in html
     assert html.count('class="split-slower"') == html.count('class="split-faster"') == 4
     assert 'data-title="km 2" data-value="5:51.0 · -2.6 s vs median"' in html
     assert "above is slower · below is faster" in html and "All 4 split times" in html
@@ -400,3 +400,18 @@ def test_form_boundaries_and_context_are_shared_with_mcp_glossary():
     assert ranges[2] == ("green", "164 to under 174")
     assert running.rate("cadence_spm", 173.9)["colour"] == "green"
     assert running.rate("cadence_spm", 174)["colour"] == "blue"
+
+
+def test_running_form_review_requires_comparable_evidence():
+    run = {"date": "2026-11-20", "pace": "6:00", "activity_id": 7, "work_on": ["Check another similar run."],
+           "form": {"step_length_m": {"label": "Stride length", "value": 1.01,
+                   "meaning": "Distance per step.", "check": "Compare at the same pace."}}}
+    text = dashboard._running_form_review([run])
+    assert "More comparable earlier runs" in text and "#run-7" in text
+    assert "data-chart=" not in text and "Check another similar run." in text
+
+
+def test_readiness_plot_explains_both_relationship_directions():
+    base = {"available": True, "pairs": [], "paired_days": 20, "interpretation": "Descriptive."}
+    assert "lower pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": -0.4}, set())
+    assert "higher pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": 0.4}, set())

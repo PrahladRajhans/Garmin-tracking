@@ -11,6 +11,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `docs/external/GROK_UI_UX_RECOMMENDATIONS_2026-11-25.md`: Grok's UI/UX brief, stored unchanged under a provenance banner. Section 12 of the lessons document audits its claims against the code and merges its roadmap (items G1–G14) with ours. Proposals only.
 - [`docs/LESSONS_FROM_30_LINKS_2026-11-25.md`](docs/LESSONS_FROM_30_LINKS_2026-11-25.md): independent review of 30 Garmin and MCP projects against v0.33.0. It covers the login risk, MCP tool design, a standalone (no-Mac) analysis, a backlog in priority order with dependencies, Trends page options and a ledger of every link with evidence depth. Proposals only; nothing was built.
 
+## [0.33.1] - 2026-11-25
+
+- Gate monthly sleep bars on recorded coverage, clarify pace/pulse and readiness interpretations, and show independent efficiency observations.
+- Replace sparse running-form timelines with a dated latest-run review, pace-adjusted references, coverage and next checks.
+- Remove the Chart readings dropdown across every dashboard page and record the owner’s explicit preference in AGENTS.md.
+
 ## [0.33.0] - 2026-11-25
 
 Fixes from the Mac acceptance run and the AI usefulness verdicts.
