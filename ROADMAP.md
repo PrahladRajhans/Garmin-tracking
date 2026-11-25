@@ -45,10 +45,14 @@ coverage from the earlier queue as regression checks where affected.
    confirmed on 25 November. Still to do: check data-folder permissions and set up a backup ([operations](docs/OPERATIONS.md#backups-and-rollback)).
 2. **Done 25 November:** the stress timeline was backfilled from 1 July 2026. Garmin returned
    nothing for earlier days tried, so older intraday history may only exist in monitoring FIT files.
-3. **Owner:** give the date and label of the 44 bpm reading; review the local AI report.
+3. **Owner:** give the date and label of the 44 bpm reading. Overrule any AI verdict you disagree with.
 4. **Device:** the watch workout check (upload not approved yet). iPhone checks in Files,
    including VoiceOver and offline reopen, passed on 25 November. Safari and Home Screen launch
    wait on a hosting decision.
+4a. **Code, from the [AI verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness):** do not ask
+   whether a within-noise "difference" repeats; set a recency limit on the post-run review; make the
+   selection fallback prefer the largest change; reject trend wording from one weekly step; date the
+   latest resting estimate.
 5. **Code:** Running and weekly AI reviews usually fail the direction check and fall back to exact
    readings. Improve the evidence wording or the prompt, and measure on dated cases.
 6. **Code:** the dashboard file is about 4.9 MB against the 600 KB target. Most is inline SVG in
