@@ -75,8 +75,10 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
         trimp = conn.execute("SELECT load FROM fitness WHERE day=?", (day,)).fetchone()
     except sqlite3.OperationalError:
         trimp = None
-    load = trimp[0] if trimp and recovery._positive(trimp[0]) else 0.0
-    strain = strain_from_trimp(load)
+    load = trimp[0] if trimp else 0.0
+    if not isinstance(load, (int, float)) or not math.isfinite(load) or load < 0:
+        load = None
+    strain = strain_from_trimp(load) if load is not None else None
     target = TARGETS.get(color) if color else None
     garmin = r["garmin"] or {}
     return {
@@ -95,7 +97,7 @@ def daily_scores(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
                   "garmin_sleep_score": recovery.garmin_score(sleep_row[2]) if sleep_row else None,
                   "debt_7d_h": r["sleep"]["debt_7d_h"],
                   "incomplete": has_sleep_duration and sleep_row[0] < recovery.MIN_VALID_NIGHT_H * 3600},
-        "strain": {"value": strain, "trimp": round(load, 1),
+        "strain": {"value": strain, "trimp": round(load, 1) if load is not None else None,
                    "target_range": target},
     }
 
@@ -160,8 +162,8 @@ def sense_checks(conn: sqlite3.Connection, end: str, days: int = 180) -> list[di
                    "detail": f"r = {r:.2f} over {len(pairs)} nights" if r is not None
                    else "not enough nights",
                    "tolerance": "r > 0.3 (Garmin's score also weighs stages and stress)"})
-    vals = [x["strain"] for x in h]
-    checks.append({"check": "Strain within 0-21", "ok": all(0 <= v <= 21 for v in vals),
+    vals = [x["strain"] for x in h if x["strain"] is not None]
+    checks.append({"check": "Strain within 0-21", "ok": all(0 <= v <= 21 for v in vals) if vals else None,
                    "detail": f"max {max(vals) if vals else None}", "tolerance": "0-21"})
     rec = [x["recovery"] for x in h if x["recovery"] is not None]
     if rec:

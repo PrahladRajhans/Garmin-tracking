@@ -13,12 +13,14 @@ model capabilities, without calling inference or sending health data. The JSON o
 entered, source values, activity identifiers, credentials, reasoning and file paths.
 
 - `pulse` indicates whether the date has a normalized estimate, whether it matches the expected value and which
-  independently dated Garmin sources agree. A rolling-only export value never counts as a
-  dated match. If the fields disagree, verify the exact date and measurement type in Garmin
+  independently dated Garmin sources agree. It checks day records and stored source ranges.
+  The Resting pulse check in dashboard History reads the same dated evidence. A rolling-only
+  export value is omitted. If the fields disagree, verify the exact date and measurement type in Garmin
   Connect. These flags check provenance for the watch estimate. An awake pulse measurement is
   a separate confirmation.
 - `recent_36_calendar_months` counts months with normalized daily records ending in the
-  archive's latest daily month. Check the usable days by signal to distinguish an archive
+  latest month with a usable daily, sleep or overnight HRV measurement. Daily-summary months
+  can be zero while usable sleep or HRV counts are positive. Use the signal counts to distinguish an archive
   spanning three years from continuous coverage. The FIT and intraday counts cover the full
   retained archive.
 - `ollama` checks availability, cloud-disabled status, the installed selected model and

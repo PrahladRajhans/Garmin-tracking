@@ -215,17 +215,11 @@ The identical-clock regression checks that repeated wake times keep a zero sprea
 | [Conditions](../src/garmin_mcp/conditions.py#L1), 1–242, [weather retrieval](../src/garmin_mcp/weather_fetch.py#L1), 1–212, [environmental comparisons](../src/garmin_mcp/environment_review.py#L1), 1–254 | Traced local CSV validation, weather opt-in, rounded coordinates, same-source comparisons and per-outcome evidence. Open-Meteo timestamps each rain total at the end of its hour. The weather query now includes the following UTC date when the final run hour needs the midnight reading. The air-quality query and saved overlap stay scoped to the run. |
 | [Running](../src/garmin_mcp/running.py#L1), 1–362, [coaching](../src/garmin_mcp/coaching.py#L1), 1–602, [matched effort](../src/garmin_mcp/run_evidence.py#L1), 1–116, [route review](../src/garmin_mcp/route_review.py#L1), 1–76, [running block](../src/garmin_mcp/running_block.py#L1), 1–121 | Traced FIT-derived form, activity type gates, Garmin session summaries, dashboard and MCP dispatch, matched effort, route evidence and weekly blocks. Direct IDs must identify a run before showing run cadence. An older session dictionary and the current list format now share the same field reader. |
 
-Two load evidence issues reproduced on synthetic data remain open. Two HR samples 20 minutes
-apart can supply a 20-minute rolling value with only 10 seconds of credited measurement.
-Set and verify a window coverage rule against representative FIT rates before using the value
-as threshold HR. A run without usable HR or thresholds produces zero TRIMP with the label
-`average hr`. Define missing-load behavior across activity views, weekly totals, load history
-and guidance before changing that representation.
-
-The run analysis also reproduced a sampling sensitivity. A steady 1 Hz synthetic trace at
-1.8 m/s and 5% grade produced the same grade-adjusted efficiency as flat and no late-form
-comparison. Grade currently requires more than 2 m between consecutive samples. Replay
-equivalent 1 Hz and smart-recording traces before changing grade adjustment or late-form gates.
+The v0.32 changes close the reproduced load issues. A sustained pulse estimate requires
+90% measured coverage, and long gaps cannot earn credit. Unknown workout load propagates to
+daily strain, the weekly chart, and load comparisons. The smoothed trend uses measured load.
+Synthetic tests cover a genuine measured zero, dense and sparse HR, partial weeks, and parallel
+recordings of constant grades.
 
 ### Running calculations
 
@@ -234,10 +228,10 @@ The manual read covered [`running.py`](../src/garmin_mcp/running.py#L1) lines 1�
 reports now reject cycling IDs, preserving revolutions per minute for cycling. Legacy
 single-session FIT metadata works in running reports and timing verification.
 
-An equivalent 1 Hz trace at 1.8 m/s and 5% grade produced the same grade-adjusted speed as
-the flat trace and no late-form comparison. Both computations require more than two metres
-between samples. A grade change needs a replay comparing 1-second and smart recording on the
-same course before relying on either method for cross-device comparisons.
+A steady 1 Hz trace at 1.8 m/s and 5% grade previously looked flat and had no late-form
+comparison. Grade now uses a 20 m distance window shared by running and load. Synthetic
+one-second and five-second traces agree uphill, downhill, and after a gap. The owner's
+instrumented runs still need a comparison.
 
 ### Chart interactions and accessibility
 
@@ -245,8 +239,8 @@ Reviewed [the chart script](../src/garmin_mcp/dashboard_interaction.py#L9) lines
 [dashboard chart rendering](../src/garmin_mcp/dashboard.py#L277) lines 277–606, 1871–1924,
 2055–2221, 2896–2994, and 3193–3196 in the working revision. Point labels are assigned as
 text, hidden responsive duplicates do not initialize, and keyboard point selection announces a
-live reading. Touch updates the visible readout. Verify the touch path with VoiceOver and give
-charts an equivalent exact-value disclosure where needed. Both responsive SVGs remain in the
+live reading. Committed touch selections now announce the reading. The on-demand Chart readings list
+includes exact values and the active overlay. Physical VoiceOver remains unverified. Both responsive SVGs remain in the
 HTML, so measure transfer size separately from the deferred interaction setup.
 
 ### Athlete settings
@@ -254,16 +248,13 @@ HTML, so measure transfer size separately from the deferred interaction setup.
 Reviewed [`athlete.py`](../src/garmin_mcp/athlete.py#L1) and
 [`goals.py`](../src/garmin_mcp/goals.py#L1) through the profile seed, override validation,
 race prediction inputs and missing-data output. A malformed seed no longer interrupts sync
-or saves invalid timezone or pulse overrides. Some invalid race goal shapes still reach
-the goal review, which returns an error. Keep that boundary visible until write and read
-validation use the same race-goal contract.
+or saves invalid timezone or pulse overrides. Race goal settings and saved goals now share distance, target and date validation.
 
 The manual pass covers the paths and ranges above. Further current-revision review is open for
 remaining dashboard pages and CSS, running evidence dependencies, model setup and the untested
 deployment environments above. Historical and automated coverage remain in the file register.
-Replaying multiple whole-export JSON snapshots with overlapping raw-range keys can still
-produce repeated supersession history. Canonical replay ordering requires dated source
-snapshots that establish which conflicting version was newer.
+Identical full-export replays reuse retained snapshots. Selecting precedence between different
+overlapping export bundles still needs reliable export chronology.
 
 ### SQLite, normalized inputs and verifier entry points
 
@@ -279,16 +270,31 @@ bare verifier invocation with a missing archive. Normalization leaves the empty 
 of derived Health Status while retaining the original payload and other readings. The
 verifier rejects the missing file before opening SQLite.
 
-Three other synthetic findings remain open.
+The mixed ISO/epoch readiness ordering, explicit sleep offset conversion and merged
+import log regressions are fixed and covered by synthetic cases. Archive bytes are preserved.
 
-- Readiness timestamp ordering is lexical. A 06:00 ISO string was sorted after a 07:00
-  epoch-millisecond reading for the same date, causing the older score to be selected.
-- The normalization helper for GMT sleep timestamps truncates an explicit ISO offset.
-  A 06:00 timestamp with a -07:00 offset stayed at 06:00 instead of converting to 13:00 UTC.
-  The effect on the owner's source data is unverified.
-- Whole-export imports reuse the same sync-log run ID. The coverage query can therefore
-  show an earlier import error in the latest import's aggregate even after a successful
-  later import.
+## v0.32.0 manual work and acceptance
+
+The follow-up reviewed baseline `7871762` across
+[dashboard history](../src/garmin_mcp/dashboard_history.py#L1) lines 1–174,
+[owner acceptance](../src/garmin_mcp/owner_acceptance.py#L1) 1–126,
+[baselines](../src/garmin_mcp/baseline.py#L1) 1–85,
+[coaching history](../src/garmin_mcp/coach_review.py#L1) 1–99,
+[wellness review](../src/garmin_mcp/wellness_review.py#L1) 1–85,
+and [reading availability](../src/garmin_mcp/reading_availability.py#L1) 1–69.
+It also traced dashboard lines 2300–2718 through History, periods and Body, and the
+new code paths from FIT to grade, load, weekly coaching, charts and exact readings.
+
+The owner report and dashboard share the dated raw-source pulse resolver. The coverage window
+includes latest usable sleep and HRV even without daily summary data. Intraday pulse selects a
+single feed by number of occupied 15-minute windows, then latest sample, then Personal API.
+History excludes malformed values. Event patterns use the training finish date in the athlete's
+timezone, including overnight sessions without leaking data past the queried period.
+
+Still open are the remaining manual renderer, CSS and legacy branches, owner archive and FIT
+validation, Mac Qwen and launchd, and physical devices or protected hosting. The
+[14-item ledger](../ROADMAP.md#25-november-execution-status) tracks them through the
+[local acceptance checks](OWNER_ACCEPTANCE.md).
 
 ## v0.31.0 release check
 

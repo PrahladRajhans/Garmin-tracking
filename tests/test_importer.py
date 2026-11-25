@@ -112,6 +112,39 @@ def test_import_is_idempotent_and_never_overwrites_api_activity(conn, tmp_path):
 
 
 
+def test_replaying_snapshot_bundle_adds_no_superseded_versions(conn, tmp_path):
+    current = tmp_path / "1_heartRateZones_b.json"
+    (tmp_path / "1_heartRateZones_a.json").write_text('[{"zone":1}]')
+    current.write_text('[{"zone":2}]')
+
+    for _ in range(2):
+        assert run_import(tmp_path, conn=conn)["snapshots"] == ["ex_hr_zones"]
+    active = "SELECT payload FROM raw_range WHERE dataset='ex_hr_zones'"
+    history = "SELECT payload FROM raw_payload_history WHERE dataset='ex_hr_zones' ORDER BY id"
+    assert json.loads(conn.execute(active).fetchone()[0]) == [{"zone": 2}]
+    assert [json.loads(row[0]) for row in conn.execute(history)] == [[{"zone": 1}]]
+
+    current.write_text('[{"zone":3}]')
+    run_import(tmp_path, conn=conn)
+    assert json.loads(conn.execute(active).fetchone()[0]) == [{"zone": 3}]
+    assert {row[0] for row in conn.execute(history)} == {'[{"zone":1}]', '[{"zone":2}]'}
+
+
+def test_coverage_isolates_each_import_even_when_times_match(conn, tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "now_iso", lambda: "2026-11-25T08:00:00+00:00")
+    damaged = tmp_path / "damaged.fit"
+    damaged.write_bytes(b"not a FIT file")
+    assert run_import(tmp_path, conn=conn)["fit"]["errors"] == 1
+    failed = db.coverage(conn)["last_sync"]
+    damaged.unlink()
+    assert run_import(tmp_path, conn=conn)["fit"]["errors"] == 0
+    succeeded = db.coverage(conn)["last_sync"]
+
+    assert failed["calls"] == succeeded["calls"] == 1
+    assert failed["errors"] == 1 and succeeded["errors"] == 0
+    assert failed["run_id"] != succeeded["run_id"]
+
+
 def test_import_rejects_nonexistent_export_before_creating_database(tmp_path, monkeypatch):
     database = tmp_path / "no-archive.db"
     monkeypatch.setenv("GARMIN_DB_PATH", str(database))

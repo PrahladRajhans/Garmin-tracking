@@ -1,10 +1,10 @@
 import math
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from garmin_mcp import loads
-from garmin_mcp.normalize import TABLES
+from garmin_mcp import dashboard, db, engine, insights, loads, scores
+from garmin_mcp.normalize import TABLES, rebuild
 
 
 def test_banister_constants():
@@ -93,3 +93,66 @@ def test_thresholds_skips_fit_zone_records_without_maximum_pulse(conn):
     assert thresholds["hr_max"] == 179
     conn.execute("DELETE FROM fit_zones WHERE activity_id=1")
     assert loads.thresholds(conn, "2026-11-23")["garmin"]["hr_max_setting"] is None
+
+
+def test_best_rolling_hr_requires_measured_time_and_weights_boundary():
+    origin = datetime(2026, 11, 21, tzinfo=UTC)
+
+    def points(samples):
+        return [((origin + timedelta(seconds=seconds)).isoformat(), hr) for seconds, hr in samples]
+
+    assert loads.best_rolling_hr(points([(0, 132), (1200, 192)]), 1200) is None
+    assert loads.best_rolling_hr(points((s, 154) for s in range(0, 1201, 5)), 1200) == 154
+    gaps = [(s, 154 if s < 500 or s > 700 else None) for s in range(0, 1201, 5)]
+    assert loads.best_rolling_hr(points(gaps), 1200) is None
+    short_gap = [(s, 154 if s < 500 or s > 550 else None) for s in range(0, 1201, 5)]
+    assert loads.best_rolling_hr(points(short_gap), 1200) == 154
+    edge = points([(0, 120), (7, 120), (14, 160)])
+    assert loads.best_rolling_hr(edge, 10) == 148
+
+
+def test_sparse_run_uses_garmin_threshold_and_missing_load_stays_missing(conn):
+    day = "2026-11-21"
+    db.put_daily(conn, "ex_daily_summary", day, "export",
+                 {"calendarDate": day, "currentDayRestingHeartRate": 50})
+    for aid, start, average in [(1, day, None), (2, day, 160), (3, "2026-11-13", 150)]:
+        db.upsert_activity(conn, {"activityId": aid, "activityType": {"typeKey": "running"},
+                                  "startTimeLocal": f"{start}T07:00:00", "duration": 1800,
+                                  "averageHR": average, "maxHR": 188})
+    conn.execute("INSERT INTO fit_zones(activity_id,threshold_hr) VALUES (1,159)")
+    conn.executemany("INSERT INTO fit_records(activity_id,ts,heart_rate) VALUES (1,?,?)",
+                     [(f"{day}T07:00:00", 132), (f"{day}T07:20:00", 192)])
+    rebuild(conn)
+    assert loads.thresholds(conn, day)["lthr"] == 159
+    first, second = conn.execute("SELECT trimp,trimp_from FROM activity_load WHERE activity_id <= 2 "
+                                 "ORDER BY activity_id").fetchall()
+    assert tuple(first) == (None, None)
+    assert second[0] > 0 and second[1] == "average hr"
+    day_load, trend = conn.execute("SELECT load,ctl FROM fitness WHERE day=?", (day,)).fetchone()
+    assert day_load is None and trend > 0
+    assert dashboard._weekly_load(conn, day)[-1][1] is None
+    assert scores.daily_scores(conn, day)["strain"]["value"] is None
+    report = insights.weekly_review(conn, day)
+    assert report["week"]["sessions_with_load"] == 1 and report["week"]["sessions"] == 2
+    assert report["week"]["trimp"] is None and report["week"]["intensity_pct"] is None
+    assert report["load_change_pct"] is None
+    assert all(flag["flag"] != "load jump" for flag in engine.load_flags(conn, day))
+    easy = loads.activity_load(conn, {"activity_id": 99, "type": "walking", "avg_hr": 44,
+                                     "duration_s": 300}, loads.thresholds(conn, day), None)
+    assert easy["trimp"] == 0 and easy["trimp_from"] == "average hr"
+
+
+def test_graded_training_stress_uses_same_hill_at_one_and_five_seconds(conn):
+    origin = datetime(2026, 11, 21, tzinfo=UTC)
+    values = []
+    for aid, interval in enumerate((1, 5), 1):
+        db.upsert_activity(conn, {"activityId": aid, "activityType": {"typeKey": "running"}})
+        conn.executemany("INSERT INTO fit_records(activity_id,ts,speed,distance,altitude) VALUES (?,?,1.8,?,?)",
+                         [(aid, (origin + timedelta(seconds=s)).isoformat(), 1.8 * s, 100 + 0.09 * s)
+                          for s in range(0, 601, interval)])
+        values.append(loads.activity_load(conn, {"activity_id": aid, "type": "running", "duration_s": 600},
+                                          {"hr_rest": None, "hr_max": None, "lthr": None, "sex": "male"}, 3))
+    assert values[0] == values[1]
+    flat = 600 / 3600 * (1.8 / 3) ** 2 * 100
+    assert values[0]["rtss"] > flat
+    assert values[0]["trimp"] is None

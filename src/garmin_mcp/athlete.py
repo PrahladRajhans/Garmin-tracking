@@ -127,6 +127,13 @@ def validate_setting(key: str, value: Any) -> str | None:
             return "setting must be a number"
     if key == "threshold_pace_override" and pace_to_speed(value) is None:
         return "pace must be a positive m:ss value with seconds below 60"
+    if key == "goal_race":
+        from garmin_mcp.goals import parse_goal
+
+        try:
+            parse_goal(value)
+        except (TypeError, ValueError) as error:
+            return str(error)
     if key == "timezone":
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 

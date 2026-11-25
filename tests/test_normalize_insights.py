@@ -188,6 +188,34 @@ def test_units_floors_metres_distance_and_timestamp_format(conn):
     assert _ms_to_iso(EPOCH_MS) == "2026-11-20 00:00:00"
 
 
+def test_readiness_orders_mixed_epoch_and_offset_iso_by_instant(conn):
+    records = [
+        {"calendarDate": DAY, "timestamp": EPOCH_MS + 7 * 3600_000, "score": 52},
+        {"calendarDate": DAY, "timestamp": f"{DAY}T03:00:00-03:00", "score": 70},
+        {"calendarDate": DAY, "timestamp": "unavailable", "score": 100},
+    ]
+    db.put_daily(conn, "ex_training_readiness", DAY, "export", records)
+    rebuild(conn)
+
+    readiness = insights._row(conn, "readiness", DAY)
+    assert readiness["morning_score"] == 70 and readiness["score"] == 52
+    stored = conn.execute("SELECT payload FROM raw_daily WHERE dataset='ex_training_readiness'")
+    assert json.loads(stored.fetchone()[0]) == records
+
+
+def test_sleep_gmt_offsets_are_normalized_to_utc_without_changing_calendar_day(conn):
+    db.put_daily(conn, "ex_sleep", DAY, "export", {
+        "calendarDate": DAY,
+        "sleepStartTimestampGMT": f"{DAY}T02:00:00+05:30",
+        "sleepEndTimestampGMT": f"{DAY}T00:30:00-02:00",
+    })
+    rebuild(conn)
+
+    sleep = insights._row(conn, "sleep", DAY)
+    assert sleep["sleep_start"] == "2026-11-19 20:30:00"
+    assert sleep["sleep_end"] == "2026-11-20 02:30:00"
+
+
 def test_verify_passes_on_consistent_sources(conn):
     from garmin_mcp import verify
 

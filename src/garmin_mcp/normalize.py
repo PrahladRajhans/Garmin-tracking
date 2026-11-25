@@ -15,7 +15,7 @@ import re
 import sqlite3
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from garmin_mcp.importer import _calendar_day
@@ -111,13 +111,38 @@ def _records(obj: Any) -> Iterator[dict[str, Any]]:
             yield from _records(v)
 
 
-def _ts_key(rec: dict[str, Any]) -> str:
-    return str(_first(rec.get("timestamp"), rec.get("timestampLocal"),
-                      rec.get("updateTimestamp"), ""))
+def _timestamp_utc(value: Any) -> datetime | None:
+    """Decode a Garmin epoch-ms or ISO instant, interpreting unsuffixed GMT as UTC."""
+    try:
+        if isinstance(value, str):
+            if value.isdecimal():
+                value = int(value)
+            elif len(value) > 10 and value[10] in "Tt ":
+                stamp = datetime.fromisoformat(value)
+                return stamp.astimezone(UTC) if stamp.tzinfo else stamp.replace(tzinfo=UTC)
+        if type(value) in (int, float) and value > 10**11:
+            return datetime.fromtimestamp(value / 1000, tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        pass
+    return None
+
+
+def _ts_key(rec: dict[str, Any]) -> datetime | None:
+    for field in ("timestamp", "timestampGMT", "timestampLocal", "updateTimestamp"):
+        if (stamp := _timestamp_utc(rec.get(field))) is not None:
+            return stamp
+    return None
+
+
+def _time_bounds(recs: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    timed = [(stamp, rec) for rec in recs if (stamp := _ts_key(rec)) is not None]
+    if not timed:
+        return recs[0], recs[0]
+    return min(timed, key=lambda row: row[0])[1], max(timed, key=lambda row: row[0])[1]
 
 
 def _latest(recs: list[dict[str, Any]]) -> dict[str, Any]:
-    return max(recs, key=_ts_key)
+    return _time_bounds(recs)[1]
 
 
 def _as_list(payload: Any) -> list[Any]:
@@ -126,14 +151,8 @@ def _as_list(payload: Any) -> list[Any]:
 
 def _ms_to_iso(value: Any) -> str | None:
     """GMT timestamp (epoch ms or Garmin string) -> 'YYYY-MM-DD HH:MM:SS' UTC."""
-    if isinstance(value, (int, float)) and value > 10**11:
-        from datetime import datetime
-
-        return datetime.fromtimestamp(value / 1000, tz=UTC).strftime(
-            "%Y-%m-%d %H:%M:%S")
-    if isinstance(value, str) and len(value) >= 19:  # '2026-10-25T00:08:45.0'
-        return value[:10] + " " + value[11:19]
-    return None
+    stamp = _timestamp_utc(value)
+    return stamp.strftime("%Y-%m-%d %H:%M:%S") if stamp is not None else None
 
 
 # --------------------------------------------------------------------------- extractors
@@ -289,8 +308,7 @@ def readiness_rows(payload: Any) -> Rows:
         if day and "score" in rec:
             by_day[day].append(rec)
     for day, recs in by_day.items():
-        latest = _latest(recs)
-        morning = min(recs, key=_ts_key)
+        morning, latest = _time_bounds(recs)
         yield day, {
             "score": _num(latest.get("score")),
             "level": latest.get("level"),

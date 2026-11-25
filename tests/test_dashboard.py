@@ -133,6 +133,7 @@ def test_date_charts_preserve_elapsed_time_and_have_exact_values():
     xs = [float(x) for x in re.findall(r'<circle cx="([\d.]+)"[^>]*data-point', text)]
     assert len(xs) == 3 and math.isclose((xs[1] - xs[0]) / (xs[2] - xs[0]), 0.1)
     assert 'data-title="2026-01-02" data-value="2"' in text and "View values" not in text
+    assert 'role="status" aria-atomic="true"' in text
 
 
 def test_dashboard_inline_script_matches_document_policy():
@@ -377,6 +378,7 @@ def test_kilometre_splits_have_signed_bars_and_full_elapsed_readings():
 
     html = dashboard._split_chart([("km 1", 355.2), ("km 2", 351), ("km 3", 352), ("km 4", 356)])
     assert html.count('data-chart="bar"') == 2
+    assert html.count("data-static-readings") == 2
     assert html.count('class="split-slower"') == html.count('class="split-faster"') == 4
     assert 'data-title="km 2" data-value="5:51.0 · -2.6 s vs median"' in html
     assert "above is slower · below is faster" in html and "All 4 split times" in html

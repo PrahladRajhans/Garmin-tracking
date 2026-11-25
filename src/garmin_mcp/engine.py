@@ -17,7 +17,7 @@ import math
 import random
 import sqlite3
 import statistics
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -43,6 +43,7 @@ def _tz(conn: sqlite3.Connection) -> ZoneInfo:
 
 def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[str, float]]:
     """One row of numeric features per day (missing = absent key)."""
+    from garmin_mcp.normalize import _timestamp_utc
     from garmin_mcp.recovery import nightly_hrv
 
     tz = _tz(conn)
@@ -74,13 +75,26 @@ def features(conn: sqlite3.Connection, start: str, end: str) -> dict[str, dict[s
     for day, ts in conn.execute("SELECT day, sleep_start FROM sleep WHERE day BETWEEN ? AND ? "
                                 "AND sleep_start IS NOT NULL AND sleep_s >= 3*3600",
                                 (start, end)):
-        local = datetime.fromisoformat(ts).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        stamp = _timestamp_utc(ts)
+        if stamp is None:
+            continue
+        local = stamp.astimezone(tz)
         out.setdefault(day, {})["bedtime_h"] = ((local.hour - 12) % 24) + local.minute / 60 + 12
+    first = datetime.combine(date.fromisoformat(start), time.min, tz).astimezone(UTC)
+    stop = datetime.combine(date.fromisoformat(end) + timedelta(days=1), time.min, tz).astimezone(UTC)
     for start_gmt, dur in conn.execute(
-            "SELECT start_time_gmt, duration_s FROM activities WHERE start_time_gmt IS NOT NULL "
-            "AND substr(start_time_local,1,10) BETWEEN ? AND ?", (start, end)):
-        t = datetime.fromisoformat(start_gmt).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
-        end_local = t + timedelta(seconds=dur or 0)
+            "SELECT start_time_gmt, duration_s FROM activities WHERE julianday(start_time_gmt) < julianday(?) "
+            "AND typeof(duration_s) IN ('real','integer') AND duration_s > 0", (stop.isoformat(),)):
+        stamp = _timestamp_utc(start_gmt)
+        if stamp is None or not math.isfinite(dur):
+            continue
+        try:
+            finish = stamp + timedelta(seconds=dur)
+        except OverflowError:
+            continue
+        if not first <= finish < stop:
+            continue
+        end_local = finish.astimezone(tz)
         d = end_local.date().isoformat()
         hour = end_local.hour + end_local.minute / 60
         row = out.setdefault(d, {})
@@ -323,17 +337,18 @@ def trends(conn: sqlite3.Connection, end: str, days: int = 90) -> dict[str, Any]
 
 def load_flags(conn: sqlite3.Connection, end: str) -> list[dict[str, Any]]:
     """Load-change flags (never worded as injury risk)."""
+    from garmin_mcp.loads import total_daily_load
+
     flags = []
     e = date.fromisoformat(end)
     try:
-        wk = conn.execute("SELECT SUM(load) FROM fitness WHERE day > ? AND day <= ?",
-                          ((e - timedelta(days=7)).isoformat(), end)).fetchone()[0] or 0
-        prev = conn.execute("SELECT SUM(load)/4.0 FROM fitness WHERE day > ? AND day <= ?",
-                            ((e - timedelta(days=35)).isoformat(),
-                             (e - timedelta(days=7)).isoformat())).fetchone()[0] or 0
+        wk = total_daily_load(conn, (e - timedelta(days=6)).isoformat(), end)
+        prior = total_daily_load(conn, (e - timedelta(days=34)).isoformat(),
+                                 (e - timedelta(days=7)).isoformat())
     except sqlite3.OperationalError:
         return flags
-    if prev > 20 and wk > 1.3 * prev:
+    prev = prior / 4 if prior is not None else None
+    if prev is not None and prev > 20 and wk is not None and wk > 1.3 * prev:
         flags.append({"flag": "load jump", "detail": f"7-day load {wk:.0f} vs 4-week weekly "
                       f"average {prev:.0f} (+{(wk / prev - 1) * 100:.0f}%)",
                       "suggest": "keep the next days easy if legs or knee feel it"})
@@ -493,11 +508,11 @@ def form_percent(conn: sqlite3.Connection, end: str) -> dict[str, Any] | None:
     """intervals.icu-style form as % of fitness = (CTL - ATL) / CTL * 100 (verified on their
     docs); -30 % is their green/red boundary (heuristic)."""
     try:
-        row = conn.execute("SELECT ctl, atl FROM fitness WHERE day<=? ORDER BY day DESC LIMIT 1",
+        row = conn.execute("SELECT ctl, atl, load FROM fitness WHERE day<=? ORDER BY day DESC LIMIT 1",
                            (end,)).fetchone()
     except sqlite3.OperationalError:
         return None
-    if not row or not row[0]:
+    if not row or not row[0] or row[2] is None:
         return None
     if row[0] < 20:  # tiny fitness base: one session swings the % wildly
         return {"form_pct": None, "tsb": round(row[0] - row[1], 1), "ctl": row[0],

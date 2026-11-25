@@ -353,6 +353,15 @@ Chromium and WebKit passed touch selection, keyboard navigation, a change to des
 and the fallback with IntersectionObserver disabled. The comparison measures chart setup
 work. Physical iPhone timings and the owner's hosted snapshot remain acceptance checks.
 
+## Touch announcements and chart readings
+
+On a synthetic 390 × 844 Run page, Chromium and WebKit updated the polite status region
+after taps. The native Chart readings disclosure built its list on first open and used
+the displayed precision, condition details and active overlay. Keyboard toggles worked
+and the no-script split list remained available. Reading rows reuse the chart's existing
+data, and the split chart uses its dedicated list. VoiceOver speech and gestures still
+need a physical iPhone check.
+
 ## Dated inputs and post-run review, v0.30.0
 
 Eight integrated Chromium and WebKit states covered Today, Recovery and a detailed

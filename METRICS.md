@@ -81,15 +81,15 @@ Not available: skin temp, ECG, ground contact time balance (not computed from wr
 | Sex | watch profile in FIT (`user_profile.gender`) |
 | HRmax | highest activity max HR in the last 365 days (Garmin's auto-updated setting shown beside it and flagged when ≥ 8 bpm apart) |
 | Resting HR | median daily resting HR, last 60 days (Garmin's zone setting of 55 is not used) |
-| LTHR | best 20-min rolling HR on a run ≥ 25 min in 365 days (Friel-style estimate; lower bound without a hard 20–30 min effort). Garmin's LTHR shown beside it |
-| TRIMP | Banister per 1 s sample, men 0.64·e^(1.92x), women 0.86·e^(1.67x); gaps capped at 10 s; average-HR fallback without a stream |
+| LTHR | best time-weighted 20-min HR window on a run ≥ 25 min in 365 days. Require ≥ 90% measured time in the window, using positive adjacent intervals ≤ 10 s with usable end-sample pulse. Fall back to Garmin's threshold when no window qualifies. A field test or explicit override can replace the heuristic. |
+| TRIMP | Banister weighted by measured sample duration, men 0.64·e^(1.92x), women 0.86·e^(1.67x). Use a stream covering ≥ 90% of recorded workout duration, or valid average HR and that duration. Require compatible resting and maximum HR. Otherwise return missing load. |
 | CTL / ATL / TSB | exponential, λ = 1 − e^(−1/N), N = 42 / 7 (design choice; TrainingPeaks uses 1/N). TSB = yesterday's CTL − ATL. Ramp = CTL − CTL 7 days ago |
 | Monotony / strain | Foster: mean/SD of 7 daily loads; strain = weekly load × monotony |
-| rTSS | hours × IF² × 100 with Minetti-graded speed / critical speed; **only computed when CS comes from maximal efforts** |
+| rTSS | hours × IF² × 100 with Minetti-graded speed divided by an explicit threshold pace or critical speed from maximal efforts. Uses the same distance-window grade as running analysis. |
 | Intensity zones | Seiler 3-zone from LTHR (design choice): Z1 < 0.90·LTHR, Z2 0.90–1.00, Z3 ≥ LTHR; Treff PI = log10(Z1/Z2·Z3·100), only when Z1 > Z3 > Z2 |
 | Pace curve | best distance per window (1–120 min) from the FIT distance stream; outdoor runs only (treadmill speed is wrist-estimated) |
 | Critical speed | 2-parameter linear fit on 3–20 min best efforts; flagged submaximal unless 50 ≤ D′ ≤ 400 m and r² > 0.95 |
-| Effective VO2max | median over runs ≥ 20 min at ≥ 70 % HRmax of Daniels VO2(speed) ÷ Swain %VO2max (%HRmax = 0.6463·%VO2max + 37.182; Swain 1994) |
+| Effective VO2max | median over runs ≥ 20 min at ≥ 70 % HRmax of Daniels VO2(raw summary speed) ÷ Swain %VO2max (%HRmax = 0.6463·%VO2max + 37.182; Swain 1994) |
 | Race predictions | effective-VO2max (VDOT tables), best-effort VDOT, best-effort Riegel 1.06, CS (5K/10K, only if maximal), and Garmin's, side by side; volume warning below 30 km/week (8-week average) |
 
 ## Sense checks (run by `garmin-mcp-verify` and the `sense_checks` tool)
@@ -344,12 +344,25 @@ In `coaching.run_metrics`, recorded moving duration sums positive adjacent FIT t
 intervals of at most 10 seconds with speed above 1 m/s at both ends. The minimum is 120
 seconds of such intervals. The 10-second gap limit and speed threshold are engineering
 choices. Missing intervals are excluded from this estimate. Pace and grade-adjusted speed
-use end-sample values weighted by interval duration. Minute CV uses complete 60-second
-moving-time bins; the existing steady criterion is at least 1,200 seconds and CV below 15%.
+use end-sample speed weighted by interval duration. Both grade-adjusted speed and the early/late
+form comparison estimate grade from elevation change over a 20 m distance window around each
+interval. The window shifts at segment ends and interpolates its elevation endpoints, so closely
+spaced samples can contribute. Windows stay within increasing distance, finite elevation and
+contiguous active samples separated by at most ten seconds. When grade is unavailable, speed
+remains unadjusted and the interval cannot support a grade-matched form comparison. Minute CV
+uses complete 60-second moving-time bins; the existing steady criterion is at least 1,200
+seconds and CV below 15%.
 Efficiency uses matched speed and HR intervals. For the overall value and either moving-time
 half, valid HR must cover at least 90% of the corresponding duration. Decoupling remains
 100 × (first-half EF − second-half EF) / first-half EF. HR change is second minus first
 weighted HR in bpm. Neither establishes aerobic fitness by itself.
+
+Daily and weekly TRIMP totals require usable load for every recorded workout in the period.
+A day without a recorded workout can contribute zero. The smoothed curves use recorded
+contributions and continue to decay over time. Missing sessions can lower those curves,
+so an incomplete day or week does not generate a load comparison or daily strain score.
+This coverage policy is an engineering choice. Match the new results against the owner's
+archive before interpreting a change in long-term trend.
 
 Recorded elapsed time spans the first to last FIT record. Elapsed splits use monotonic
 cumulative distance relative to the first usable distance and interpolate crossings between
@@ -684,7 +697,8 @@ averages are descriptive. A comparison for a metric needs three readings in each
   larger of 5 bpm and three times 1.4826 × median absolute deviation. These are display
   heuristics. Historical highlights reuse that robust range with floors of 0.5 h sleep,
   1,500 steps and 8 stress points. The latest day omits completed-day comparisons.
-- **Intraday pulse.** Choose the usable Personal API series, otherwise Connect. Keep unique
+- **Intraday pulse.** Use one source per local day. Prefer the source with more measured
+  15-minute windows, then the one with the latest sample, then the Personal API. Keep unique
   timestamps in the athlete's local day and retain raw data. Show median, minimum, maximum
   and sample count in each 15-minute slot, with breaks for missing slots. Only windows with
   at least two samples qualify for the highest-median callout. Workout start guides mark

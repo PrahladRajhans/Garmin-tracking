@@ -305,7 +305,7 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
     )
     last = conn.execute(
         "SELECT run_id, MAX(ts) AS finished, SUM(status='error') AS errors, COUNT(*) AS calls "
-        "FROM sync_log GROUP BY run_id ORDER BY finished DESC LIMIT 1"
+        "FROM sync_log GROUP BY run_id ORDER BY finished DESC, MAX(id) DESC LIMIT 1"
     ).fetchone()
     tidy = {}
     for t in ("daily", "sleep", "hrv", "health_status", "readiness", "training",

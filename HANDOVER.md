@@ -1,10 +1,15 @@
-# Handover: Garmin-tracking (state at v0.31.0, 2026-11-25)
+# Handover: Garmin-tracking (state at v0.32.0, 2026-11-25)
 
 Read this first if you are a person or an AI (ChatGPT, Claude) picking up the project. It explains why the project exists, what has been built, where every formula and decision lives, how ours differs from Garmin and the apps it competes with, and what is left. Each claim points to a file, a function, or a section heading.
 
 ---
 
 ## Latest changes for reviewers
+
+- **v0.32.0:** sample-rate-independent grade estimates, pulse coverage gates, missing-load
+  propagation, dated source and import corrections, and on-demand chart readings. See
+  [formulas](METRICS.md), [repository review](docs/REPOSITORY_REVIEW.md), and
+  [owner verification](docs/OWNER_ACCEPTANCE.md).
 
 - **v0.31.0:** a dedicated reviewed Sleep interpretation, clearer AI outcome reporting,
   partial-data dashboard fixes and private retention of verified Garmin monitoring FIT files.
