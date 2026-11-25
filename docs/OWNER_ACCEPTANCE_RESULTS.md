@@ -30,7 +30,7 @@ a disposable copy), **runtime** (Mac, Ollama, launchd, Garmin calls), **device**
 | 17 | Ollama version, cloud disabled, model | runtime | Passed. Thinking is off; draft budget 10 min |
 | 18 | Ollama listens on loopback only | runtime | **Fixed by the owner and rechecked**: network exposure was on. Now `127.0.0.1` only, cloud disabled, narrator ready, one fictional Running case passed. Ollama had updated to 0.40.18 |
 | 19 | Fictional AI cases | runtime | See below |
-| 20 | Dated archive AI cases | archive copy + runtime | See below. **Usefulness still needs the owner's review** |
+| 20 | Dated archive AI cases | archive copy + runtime | Judged by Claude at the owner's request: **mostly not useful**. [Verdicts](#judged-usefulness) |
 | 21 | Model unreachable; stale worker before and during generation | archive copy | Passed: page kept, status recorded, newer snapshot never overwritten |
 | 22 | First build, then the AI update | archive copy + runtime | Passed: 3 s build, AI update 41 s later, page and cache agree |
 | 23 | Test suite leaves the owner's files alone | runtime | **Fixed**: it had replaced the iCloud dashboard with a test page (restored) |
@@ -93,6 +93,29 @@ Times are after model warm-up on the M5.
 | Archive, all dates | Post-run | Model chose among checked observations | under 1 s |
 
 Every number in an accepted output also appeared in the supplied readings. Direction, wording and
-whether the next step is useful need a person to read them; the prompts and outputs are in
-`~/.garmin-mcp/acceptance/ai_review.md`. A selected exact reading is availability of the fallback,
+whether the next step is useful are judged below. The supplied readings, outputs and per-result
+verdicts are in `~/.garmin-mcp/acceptance/ai_review.md`. A selected exact reading is availability of the fallback,
 not useful coaching. Running and the weekly review mostly end there.
+
+## Judged usefulness
+
+On 25 November the owner asked Claude to read the local review and judge it. This is one model
+judging another, not the owner's own verdict. Ten archive results:
+
+| Measure | Result |
+|---|---|
+| Numbers match the supplied readings | 10 of 10 |
+| Direction of change correct | 10 of 10 |
+| Unsupported claim that passed review | 1 (a "downward trend" from one week-to-week step) |
+| Useful | 2 (Today and Sleep on the large-contrast week, saying nearly the same thing) |
+| Partly useful | 1 (weekly review) |
+| Not useful | 7 |
+
+Why they were not useful:
+
+- **Post-run (3 of 3):** a cadence gap below the code's own 3 spm change threshold is still shown,
+  with a question asking whether the "difference" repeats.
+- **Post-run recency:** the newest run is reviewed however old it is.
+- **Selection fallback:** it can pick two near-unchanged readings and skip the largest change.
+- **Today and Sleep:** small week-to-week changes are written up as findings.
+- **Wording:** "occupied 1 days"; the latest resting-pulse sentence gives no date.

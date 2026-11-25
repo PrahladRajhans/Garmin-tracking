@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+- Record an AI-judged usefulness review of the dated archive cases and the defects it found
+  ([verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness)). No code change yet.
+
 - The owner turned off Ollama's network exposure; loopback-only listening was rechecked
   ([results](docs/OWNER_ACCEPTANCE_RESULTS.md)).
 
