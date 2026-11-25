@@ -54,6 +54,7 @@ from garmin_mcp import (
     sleep_review,
     trials,
     wellness_review,
+    wellness_timeline,
 )
 from garmin_mcp.dashboard_interaction import CONTENT_POLICY, SCRIPT
 
@@ -149,6 +150,7 @@ def collect(conn: sqlite3.Connection, end: str | None = None) -> dict[str, Any]:
     availability_day = end if explicit_date else today.isoformat()
     availability = reading_availability.collect(conn, availability_day, zone, brief=brief, retry=retry)
     return {
+        "day_zones": wellness_timeline.day_zones(conn, zone),
         "_conn": conn, "end": end, "zone": zone, "scores": ds,
         "sleep_review": sleep_data,
         "sleep_shortfall": recovery.sleep_shortfall_review(conn, end),
@@ -2626,9 +2628,10 @@ def page_history_day(d: dict[str, Any], day: str) -> str:
         body += _card("What stands out this day", f'<ul class="rows">{context}</ul>',
                       "Compared with your recent recorded days.", wide=True)
     body += _resting_pulse_card(row.get("resting_pulse_check"))
-    body += _intraday_pulse_card(row.get("intraday_hr"), row.get("activities", []), day=day, zone=d.get("zone", UTC))
+    watch_zone = d.get("day_zones", {}).get(day, d.get("zone", UTC))
+    body += _intraday_pulse_card(row.get("intraday_hr"), row.get("activities", []), day=day, zone=watch_zone)
     if wellness := row.get("intraday_wellness"):
-        body += _intraday_wellness_card(wellness, day, d.get("zone", UTC))
+        body += _intraday_wellness_card(wellness, day, watch_zone)
     if readings:
         body += _card("Readings", f'<details><summary>All recorded values</summary>'
                       f'<ul class="rows">{readings}</ul></details>', wide=True)

@@ -1,5 +1,6 @@
 import json
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -85,7 +86,7 @@ def test_sleep_prose_has_its_own_fresh_snapshot_and_qualified_readings(conn):
 
 def test_concise_sleep_draft_names_hrv_instead_of_claiming_broader_recovery():
     lens, rows = deep_insight.FICTIONAL_CASES["sleep-written"]
-    item = deep_insight.Insight(rows, lens)
+    item = deep_insight.Insight(tuple(replace(row, claim=None) for row in rows), lens)  # free drafting
     draft = {"evidence": [1, 2],
              "observation": "Sleep duration increased over the recent week, while recovery metrics declined."}
     assert item.assess(json.dumps(draft), concise=True) == (None, "unsupported_claim")

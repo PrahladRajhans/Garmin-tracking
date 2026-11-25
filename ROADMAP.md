@@ -49,28 +49,29 @@ coverage from the earlier queue as regression checks where affected.
 4. **Device:** the watch workout check (upload not approved yet). iPhone checks in Files,
    including VoiceOver and offline reopen, passed on 25 November. Safari and Home Screen launch
    wait on a hosting decision.
-4a. **Code, from the [AI verdicts](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness):** do not ask
-   whether a within-noise "difference" repeats; set a recency limit on the post-run review; make the
-   selection fallback prefer the largest change; date the
-   latest resting estimate. (Done: written observations that call one step a trend are rejected.)
+4a. **Done in v0.33.0:** the [AI verdict](docs/OWNER_ACCEPTANCE_RESULTS.md#judged-usefulness) defects
+   (within-noise cadence question, post-run recency, fallback skipping the largest change, trend
+   wording, undated resting estimate) are fixed. [Re-run](docs/OWNER_ACCEPTANCE_RESULTS.md#after-v0330).
 5. **Done in code:** Running and weekly direct drafts are now clause-by-clause with a Python
    direction and period check ([cause and measurements](docs/OLLAMA.md#running-and-weekly-direct-drafts)).
-   **Still to do:** measure on the dated cases and re-judge usefulness. The checks make the prose
-   accurate and plain; they do not make a small change worth reading (item 4a).
-6. **Code:** the dashboard file is about 4.9 MB against the 600 KB target. Most is inline SVG in
-   collapsed detail sections.
-7. **Code:** bedtime, experiments and event timing still use the configured timezone on travel
-   days.
+   Dated cases were re-run and re-judged after v0.33.0.
+6. **Owner decision:** the dashboard file is about 4.9 MB (about 0.57 MB compressed) against the
+   600 KB target. Rounding or minifying saves almost nothing. Reaching it uncompressed means fewer
+   day pages or less chart detail, so choose what to give up.
+7. **Done in v0.33.0:** bedtime, wake, training-finish and intraday times use each day's recorded
+   offset. Experiments compare instants, so they were already independent of timezone.
 8. **Code:** import of monitoring FIT stays disabled until Body Battery message types, conflicts
    and rollback are validated.
 9. **Done:** the incomplete pass after the long sync coincided with Ollama updating and restarting
    itself ([evidence](docs/OLLAMA.md#why-a-worker-pass-ends-incomplete)). `--check` now reports
    `last_incomplete_reasons`.
 10. **Code:** wider repository audit (separate task, step 14 below).
-11. **Code:** the model review of free-form observations (Today, Sleep, thinking drafts) passed
-    reversed directions and swapped periods in a fictional labelled set
-    ([result](docs/OLLAMA.md#how-reliable-the-model-review-is)). Give those readings the same
-    checkable contract.
+11. **Partly done in v0.33.0:** Today and Sleep direct drafts are clause-checked. Thinking drafts
+    and readings without a checkable field still rely on the model review.
+12. **Code:** the model review often rejects an accurate pair of clauses when one is a small
+    movement worded "the same", so a quiet week with one change falls back to exact readings.
+    Telling the reviewer, or reviewing clauses separately, did not fix it. Dropping the model review
+    for clause-checked drafts would, at the cost of one safety layer: owner's call.
 
 ### 25 November execution status
 
@@ -297,6 +298,7 @@ compute: activity recaps, daily brief, weekly review.
 ## Versions
 | Version | Content | State |
 |---|---|---|
+| 0.33.0 | Watch-clock times on travel days; AI reviews keep real changes | [Changelog](CHANGELOG.md#0330---2026-11-25) |
 | 0.32.1 | Fixes from the first Mac acceptance run | [Results](docs/OWNER_ACCEPTANCE_RESULTS.md) |
 | 0.32.0 | FIT grade parity, pulse and load coverage, archive chronology and provenance, exact chart readings | [Review and acceptance](docs/REPOSITORY_REVIEW.md#v0320-manual-work-and-acceptance). |
 | 0.31.0 | Reviewed Sleep prose, archive and FIT safeguards, partial-date rendering, refresh serialization and broader manual review | [Audit coverage and remaining dependencies](docs/REPOSITORY_REVIEW.md#post-v0300-manual-audit) and [owner acceptance](docs/OWNER_ACCEPTANCE.md). |

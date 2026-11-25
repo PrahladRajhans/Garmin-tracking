@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-25
+
+Fixes from the Mac acceptance run and the AI usefulness verdicts.
+
+- Bedtime, wake time, training finish time and the intraday charts follow the watch's clock on
+  days recorded in another timezone (`wellness_timeline.day_zones`, `engine.py`, `sleep_review.py`,
+  `dashboard.py`). Past bedtime summaries and patterns can change.
+- Today and Sleep readings use the same clause checks as Running and weekly. Movements inside a
+  noise band read as unchanged, and a draft cannot pass over the readings that did change.
+- The exact-reading fallback offers only pairs with the most recorded changes.
+- The post-run review no longer asks about a difference inside the noise band and skips runs more
+  than 14 days old. The resting-estimate reading names the snapshot's day instead of "latest".
+- Saved AI reviews are regenerated once (insight contract 6, post-run contract 2).
+
 - Running and weekly direct reviews write one clause per reading, and Python checks each clause's
   measure, direction, comparison period and amounts before the model review. The model review had
   accepted reversed directions and rejected correct sentences (`clauses.py`, `deep_insight.py`,

@@ -49,6 +49,23 @@ def device_zone(payload, home):
         return home
 
 
+def day_zones(conn, home, first="0000-00-00", last="9999-12-31"):
+    """The watch's clock for each stored day that records one. Other days use `home`."""
+    zones = {}
+    # The pulse payload is read second so that it wins over the older export summary.
+    for dataset, gmt, local in (("ex_daily_summary", "wellnessStartTimeGmt", "wellnessStartTimeLocal"),
+                                ("pa_heart_rate", "startTimestampGMT", "startTimestampLocal")):
+        for day, raw in conn.execute(
+                "SELECT day, payload FROM raw_daily WHERE dataset=? AND day BETWEEN ? AND ?", (dataset, first, last)):
+            try:
+                payload = json.loads(raw)
+                recorded = {"startTimestampGMT": payload[gmt], "startTimestampLocal": payload[local]}
+            except (KeyError, TypeError, ValueError):
+                continue
+            zones[day] = device_zone(recorded, home)
+    return zones
+
+
 def archived_days(conn, start=None, end=None):
     sql = "SELECT day, payload FROM raw_daily WHERE dataset='stress'"
     params = ()

@@ -602,6 +602,7 @@ _CORRECTIONS = {
     "unsupported_wording": "Describe a short, measured contrast using the supplied readings.",
     "uncited_number": "Use no figures in the observation or question.",
     "wrong_comparison": "Keep the direction, metric and time period exactly as recorded.",
+    "low_signal_choice": "Include at least one reading marked changed.",
     "unsupported_claim": "State the measured names, both cited directions and their time windows. "
                          "Use verbs such as rose, fell, or stayed similar. Avoid broad conclusions.",
     "advice_or_prediction": "Ask what to measure again. Avoid targets, recommendations and forecasts.",

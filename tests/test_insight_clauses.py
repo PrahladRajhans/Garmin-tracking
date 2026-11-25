@@ -2,6 +2,7 @@
 
 import json
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -203,12 +204,17 @@ def test_drafter_is_told_each_direction_and_comparison_period():
     assert "2026" not in packet.concise_prompt
 
 
-def test_other_surfaces_keep_free_observation_drafting():
-    for case in ("today-written", "sleep-written", "mixed-recovery"):
+def test_today_and_sleep_readings_use_clause_drafting():
+    for case in ("today-written", "sleep-written"):
         lens, rows = deep_insight.FICTIONAL_CASES[case]
-        packet = deep_insight.Insight(rows, lens)
-        assert packet.concise_schema["required"] == ["observation", "evidence"]
-        assert packet.concise_prompt == packet.prompt
+        assert deep_insight.Insight(rows, lens).concise_schema["required"] == ["parts"]
+
+
+def test_readings_without_a_checkable_claim_keep_free_observation_drafting():
+    lens, rows = deep_insight.FICTIONAL_CASES["mixed-recovery"]
+    packet = deep_insight.Insight(rows, lens)
+    assert packet.concise_schema["required"] == ["observation", "evidence"]
+    assert packet.concise_prompt == packet.prompt
 
 
 @pytest.mark.parametrize("case", ["running-block", "sunday-review"])
@@ -310,6 +316,7 @@ def test_one_comparison_is_not_called_a_trend():
     text = "sleep was shorter this week than last week in a downward trend"
     assert assess(packet, (i["training"], TRUE["training"]), (i["sleep"], text)) == (None, "unsupported_claim")
     lens, rows = deep_insight.FICTIONAL_CASES["sleep-written"]
+    rows = tuple(replace(row, claim=None) for row in rows)  # the free-observation path
     free = {"evidence": [1, 2], "observation": "Average sleep rose this week while HRV showed a downward trend."}
     assert deep_insight.Insight(rows, lens).assess(json.dumps(free), concise=True) == (None, "unsupported_claim")
 
