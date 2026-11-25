@@ -381,8 +381,8 @@ def test_kilometre_splits_have_signed_bars_and_full_elapsed_readings():
     assert "Chart readings" not in html and "chart-readings" not in html
     assert html.count('class="split-slower"') == html.count('class="split-faster"') == 4
     assert 'data-title="km 2" data-value="5:51.0 · -2.6 s vs median"' in html
-    assert "above is slower · below is faster" in html and "All 4 split times" in html
-    assert ">5:55.2</span>" in html
+    assert "above is slower · below is faster" in html and "All 4 split times" not in html
+    assert "5:55.2" in html
     assert 'class="split-even"' in dashboard._split_chart([("km 1", 360)])
     assert "No full kilometre recorded." in dashboard._split_chart([])
 
@@ -415,3 +415,10 @@ def test_readiness_plot_explains_both_relationship_directions():
     base = {"available": True, "pairs": [], "paired_days": 20, "interpretation": "Descriptive."}
     assert "lower pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": -0.4}, set())
     assert "higher pulse" in dashboard._readiness_benchmark({**base, "spearman_rho": 0.4}, set())
+
+
+def test_pages_omit_redundant_data_disclosures():
+    content = '<details><summary>Weekly totals</summary><ul><li>1 km</li></ul></details>'
+    content += '<details><summary>All recorded values</summary><ul><li>44</li></ul></details>'
+    text = dashboard._page("test", "Test", "", content)
+    assert "Weekly totals" not in text and "All recorded values" not in text

@@ -379,3 +379,5 @@ Running overview now leads with the latest dated form review, pace-adjusted refe
 ## Chart purpose review
 
 Running form timelines were removed because pace and gaps confound comparisons. The replacement uses the latest run and its established pace reference, count, and next check. Efficiency history now uses independent points because recorded runs do not establish continuous change. Pace versus pulse explains its descriptive purpose and directs progress checks to matched runs, with larger sparse points. Readiness versus matched pulse now states what the observed direction implies. Monthly sleep bars require fourteen recorded nights per month to avoid presenting a few nights as a month’s sleep. Sleep duration/score, recovery vital references, weekly training load, intraday signals, route distance comparisons, and baseline-adjusted Patterns retain their distinct questions and coverage rules. Physical display and real-archive interpretation remain owner acceptance.
+
+Owner correction applies to every redundant raw-data disclosure, including split times. Page composition removes these lists across all pages. Chart tooltips retain exact point values.
