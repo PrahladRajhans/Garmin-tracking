@@ -52,7 +52,8 @@ def nightly_hrv(conn: sqlite3.Connection, start: str, end: str) -> dict[str, flo
     return valid  # HRV status wins; health status fills gaps
 
 
-def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict[str, float]]:
+def load_series(conn: sqlite3.Connection, end: str, days: int, *,
+                exclude_status: bool = True) -> dict[str, dict[str, float]]:
     start = (date.fromisoformat(end) - timedelta(days=days - 1)).isoformat()
     resp = _series(conn, "SELECT day, avg_respiration FROM sleep WHERE day BETWEEN ? AND ?",
                    start, end)
@@ -77,7 +78,7 @@ def load_series(conn: sqlite3.Connection, end: str, days: int) -> dict[str, dict
     # except the day being scored, so being ill doesn't redefine "normal".
     from garmin_mcp.health import status_days
 
-    skip = {d for d in status_days(conn) if d != end}
+    skip = {d for d in status_days(conn) if d != end} if exclude_status else set()
     if skip:
         out = {k: {d: v for d, v in ser.items() if d not in skip} for k, ser in out.items()}
     return out
@@ -159,6 +160,27 @@ def sleep_status(series: dict[str, dict[str, float]], day: str) -> dict[str, Any
                      "or incomplete nights are not counted",
         "need_source": "Garmin sleep need where available; otherwise 8 h planning fallback",
     }
+
+
+def sleep_shortfall_review(conn: sqlite3.Connection, day: str) -> dict[str, Any]:
+    """Compare recorded nights to their dated sleep needs without imputing missing nights."""
+    series = load_series(conn, day, 14, exclude_status=False)
+    previous_day = (date.fromisoformat(day) - timedelta(days=7)).isoformat()
+    current = sleep_status(series, day)
+    previous = sleep_status(series, previous_day)
+    inputs = current["debt_inputs"]
+    prior = previous["debt_inputs"]
+    def gaps(nights):
+        return [max(0.0, series["sleep_need_h"].get(row["day"], DEFAULT_SLEEP_NEED_H)
+                    - series["sleep_h"][row["day"]]) * 60 for row in nights]
+
+    current_gaps, previous_gaps = gaps(inputs), gaps(prior)
+    return {"current": current, "previous": previous, "total_min": round(sum(current_gaps)),
+            "per_night_min": round(statistics.fmean(current_gaps)) if inputs else None,
+            "previous_min": (round(statistics.fmean(previous_gaps))
+                             if len(inputs) >= 5 and len(prior) >= 5 else None),
+            "target_met": current_gaps.count(0),
+            "fallback": sum(row["source"] != "Garmin sleep need" for row in inputs)}
 
 
 def bedtime_consistency(conn: sqlite3.Connection, day: str, nights: int = 14) -> float | None:

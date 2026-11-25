@@ -27,6 +27,13 @@ on fictional evidence. The output distinguishes format and citation failures fro
 
 ### Thinking insights
 
+Daily and Sleep thinking can use the average sleep shortfall for two weeks with at least five
+usable nights each, and a flagged Garmin resting estimate with a qualified personal 28-day
+comparison. Longer qualified pulse medians add context without sending individual dates.
+Rule-written pulse verification guidance remains outside model output. The archive is read
+locally and only selected summaries enter the allowlist. See [metrics](../METRICS.md#day-readings-sleep-shortfall-and-archive-baselines).
+
+
 Use `--enable --model qwen3.5:9b --thinking` with an installed thinking-capable model, or
 `--eval-insight --model qwen3.5:9b` to exercise the same flow on fictional readings. Add `--no-thinking` to that evaluation to compare
 the direct mode separately. An existing

@@ -6,7 +6,7 @@ from garmin_mcp.normalize import rebuild
 
 def test_dashboard_builds_on_small_database(conn, tmp_path):
     db.put_daily(conn, "ex_daily_summary", "2026-11-20", "export",
-                 {"calendarDate": "2026-11-20", "totalSteps": 8000, "restingHeartRate": 46})
+                 {"calendarDate": "2026-11-20", "totalSteps": 8000, "currentDayRestingHeartRate": 46})
     db.upsert_activity(conn, {"activityId": 1, "activityType": {"typeKey": "running"},
                               "startTimeLocal": "2026-11-20 07:00:00", "duration": 1800.0,
                               "distance": 5000.0, "averageHR": 150})
@@ -152,7 +152,7 @@ def test_new_health_files_are_owner_only_on_posix(conn, tmp_path):
 def test_dashboard_keeps_older_summaries_and_hides_sparse_research_cards(conn, tmp_path):
     for day in ("2026-11-23", "2026-10-25", "2026-10-24"):
         db.put_daily(conn, "ex_daily_summary", day, "export",
-                     {"calendarDate": day, "totalSteps": 8000, "restingHeartRate": 46})
+                     {"calendarDate": day, "totalSteps": 8000, "currentDayRestingHeartRate": 46})
     conn.execute("INSERT INTO meta VALUES ('last_full_sync','2026-10-24T03:00:00+00:00')")
     conn.commit()
     rebuild(conn)
@@ -277,3 +277,18 @@ def test_sparse_absolute_scatter_keeps_single_run_and_clear_units():
                               absolute_x=True, absolute_y=True, x_unit="min/km",
                               y_unit="bpm", x_format=dashboard._run_pace, dense=True)
     assert "pt-sparse" in chart and "Pace: 5:40 min/km" in chart
+
+
+def test_daily_sleep_chart_keeps_missing_date_labels_and_observed_range():
+    from datetime import date, timedelta
+
+    origin = date(2026, 11, 19)
+    nights = {(origin + timedelta(days=i)).isoformat(): {"hours": 7 + i % 3 / 2}
+              for i in range(-28, 7) if i != 2}
+    items = [((origin + timedelta(days=i)).isoformat(),
+              nights.get((origin + timedelta(days=i)).isoformat(), {}).get("hours")) for i in range(7)]
+    html = dashboard._sleep_trend_chart(items, nights)
+    assert html.count('class="tick day-tick"') == 14  # Seven labels at both chart sizes.
+    assert '>21 Nov</tspan>' in html
+    assert 'data-title="2026-11-21"' not in html
+    assert 'class="moving-average"' in html and 'class="band"' in html

@@ -60,6 +60,44 @@ def clock(minutes):
     return f"{h:02d}:{m:02d}"
 
 
+def trend_context(chart, nights, *, monthly=False, metric="hours"):
+    """Trailing average and a separately qualified comparison range for sleep charts."""
+    trend = {}
+    if monthly:
+        for i in range(2, len(chart)):
+            values = [v for _, v in chart[i - 2:i + 1] if v is not None]
+            if len(values) == 3:
+                trend[chart[i][0]] = fmean(values)
+        prior = [value for _, value in chart if value is not None]
+        label, minimum = "Middle half of displayed months", 8
+    else:
+        for day, _ in chart:
+            end = date.fromisoformat(day)
+            dates = [(end - timedelta(days=i)).isoformat() for i in range(7)]
+            values = [value for d in dates if (value := nights.get(d, {}).get(metric)) is not None]
+            if len(values) >= 4:
+                trend[day] = fmean(values)
+        first = date.fromisoformat(chart[0][0]) if chart else None
+        prior = [value for i in range(1, 29) if first
+                 and (value := nights.get((first - timedelta(days=i)).isoformat(), {}).get(metric)) is not None]
+        label, minimum = "Middle half of nights in the prior 28 days", 14
+    band = None
+    if len(prior) >= minimum:
+        ordered = sorted(prior)
+        band = (ordered[len(ordered) // 4], ordered[(len(ordered) - 1) * 3 // 4])
+    return {"trend": trend, "band": band, "band_label": label,
+            "trend_label": "3-month average" if monthly else "7-day average"}
+
+
+def _monthly(chart):
+    buckets = {}
+    for day, value in chart:
+        bucket = buckets.setdefault(day[:7], [])
+        if value is not None:
+            bucket.append(value)
+    return [(month, fmean(values) if values else None) for month, values in buckets.items()]
+
+
 def collect(conn, end, zone, need_h):
     end_date = date.fromisoformat(end)
     start = (end_date - timedelta(days=364)).isoformat()
@@ -67,7 +105,7 @@ def collect(conn, end, zone, need_h):
     for day, seconds, score, start_at, wake_at, deep, light, rem, awake in conn.execute(
             "SELECT day,sleep_s,score,sleep_start,sleep_end,deep_s,light_s,rem_s,awake_s "
             "FROM sleep WHERE day BETWEEN ? AND ? AND sleep_s>=10800 ORDER BY day", (start, end)):
-        nights[day] = {"hours": seconds / 3600, "score": score,
+        nights[day] = {"hours": seconds / 3600, "score": score if score is not None and 0 <= score <= 100 else None,
                        "bed": _clock_minutes(start_at, zone), "wake": _clock_minutes(wake_at, zone),
                        "window": (start_at, wake_at),
                        "stages": {"Deep": deep, "Light": light, "REM": rem, "Awake": awake}}
@@ -91,17 +129,13 @@ def collect(conn, end, zone, need_h):
             continue
         chart = [(day.isoformat(), nights.get(day.isoformat(), {}).get("hours"))
                  for day in (first + timedelta(days=i) for i in range(size))]
+        score_chart = [(day, nights.get(day, {}).get("score")) for day, _ in chart]
         if size == 365:
-            buckets = {}
-            for day, value in chart:
-                bucket = buckets.setdefault(day[:7], [])
-                if value is not None:
-                    bucket.append(value)
-            chart = [(month, fmean(hours) if hours else None) for month, hours in buckets.items()]
+            chart, score_chart = _monthly(chart), _monthly(score_chart)
         scored = [n["score"] for _, n in rows if n["score"] is not None]
         windows[size] = {"nights": len(rows), "hours": fmean(n["hours"] for _, n in rows),
                          "score": fmean(scored) if scored else None,
-                         "scored": len(scored), "chart": chart}
+                         "scored": len(scored), "chart": chart, "score_chart": score_chart}
     wakes = [n["wake"] for day, n in nights.items()
              if day >= (end_date - timedelta(days=13)).isoformat() and n["wake"] is not None]
     anchor = {}

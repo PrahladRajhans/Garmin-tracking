@@ -4,15 +4,15 @@ A free, self-hosted [MCP](https://modelcontextprotocol.io) server that connects 
 account to AI assistants (Claude Desktop, Claude Code, etc.), so you can ask questions about your
 health and training data without a paid connector.
 
-> **Status:** v0.27.3. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
+> **Status:** v0.27.4. The 57 MCP tools and offline dashboard include running form at matched pace and grade, a saved weekly bedtime experiment, and local AI status. Qwen3.5 4B is the default local Ollama model. Local Ollama and private phone hosting are off by default.
 
 ## What this is, in one minute
 
 A personal alternative to paid Garmin AI connectors (Fitness AI Connector, AthleteData) and to
 Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 
-1. **Collect:** a sync job pulls *all* Garmin data (official Personal API + unofficial library +
-   the one-time account export), with full history, into a local SQLite database.
+1. **Collect:** sync the fields exposed by the Garmin Personal API and Connect library, and retain
+   historical data from the Garmin account export, in a local SQLite database.
 2. **Compute:** transparent analytics on top: recovery, sleep, strain, training load, race
    predictions, running form, patterns in your own data. Every formula is in
    [METRICS.md](METRICS.md), with sources, and checked against Garmin's own numbers.
@@ -22,6 +22,8 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 |---|---|
 | [HANDOVER.md](HANDOVER.md) | **Start here:** goal, story, every formula with file and source, how ours differs from Garmin and the apps, known issues, what's left |
 | [docs/CHATGPT_HANDOVER_PROMPT.md](docs/CHATGPT_HANDOVER_PROMPT.md) | Ready-to-paste prompt for handing the project to ChatGPT |
+| [Independent review guide](docs/REVIEW_START_HERE.md) | Follow each reading from Garmin to the dashboard and model, with fixture and account-specific checks |
+| [Garmin source register](docs/GARMIN_DATA_REVIEW.md) | Device and API evidence, research citations, and opportunities requiring archive verification |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit, data flow, where each file lives |
 | [AGENTS.md](AGENTS.md) | Rules and context for AI assistants (Claude, ChatGPT) working on this repo |
 | [ROADMAP.md](ROADMAP.md) | The single plan: phases, versions, open items, what was dropped and why |
@@ -30,6 +32,9 @@ Whoop/Oura-style scores, for one person with a Garmin Forerunner 955:
 | [CHANGELOG.md](CHANGELOG.md) | What changed, per version |
 | [MAC_SETUP.md](MAC_SETUP.md) | One-time setup on the Mac |
 | `research_notes/` | Competitor, Garmin and science research behind the decisions |
+
+In the dashboard, **Sleep** leads with the seven-day shortfall against recorded targets.
+**Trends → History** shows dated pulse traces, personal baselines and coverage gaps.
 
 ![Today page on a phone](docs/screenshots/today-phone.png)
 > **Metric design:** [METRICS.md](METRICS.md) explains how each derived metric is calculated (Garmin vs science vs ours).

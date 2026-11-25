@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.27.4] - 2026-11-25
+
+- Add a resting pulse check with source readings, a personal reference and awake verification
+  guidance. Stop using the rolling Garmin export value as a daily reading. Plot recent
+  intraday pulse in 15-minute windows with sample spans, gaps and workout start markers.
+- Show 28-day, 90-day and all-earlier reference windows with observed ranges, missing dates
+  and reading counts. Lead historical day pages with unusual complete-day readings where supported.
+- Show sleep shortfall, target source, usable nights and prior-week change. Use weekday and date
+  ticks, sleep duration and score trends, and shaded comparison ranges in Sleep.
+- Lead Patterns with what the association means and align fit lines to their full paired sample.
+  Give the local thinking prompt eligible sleep shortfall and resting pulse evidence.
+- Add a Garmin source register and an independent reviewer guide.
+
 ## [0.27.3] - 2026-11-25
 
 - Republish the configured private Pages dashboard after an Ollama worker enriches the local

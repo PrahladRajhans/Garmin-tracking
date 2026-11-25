@@ -133,3 +133,17 @@ def test_focus_detects_consistently_short_sleep_and_paired_changes():
     assert daily_focus(r, signals, {})["title"] == "Keep today’s effort easy."
     r["activity_status"] = "injured"
     assert daily_focus(r, signals, {})["title"] == "Pause training today."
+
+
+def test_shortfall_uses_dated_targets_and_requires_coverage_for_comparison(conn):
+    _make(conn, days=14)
+    conn.execute("UPDATE sleep SET sleep_s=7*3600, sleep_need_min=480")
+    conn.execute("UPDATE sleep SET sleep_need_min=NULL,sleep_s=9*3600 WHERE day=?", (END.isoformat(),))
+    conn.execute("UPDATE sleep SET sleep_s=3600 WHERE day=?", ((END - timedelta(days=1)).isoformat(),))
+    conn.execute("UPDATE sleep SET sleep_need_min=435 WHERE day=?", ((END - timedelta(days=2)).isoformat(),))
+    review = recovery.sleep_shortfall_review(conn, END.isoformat())
+    assert review["current"]["valid_nights_7d"] == 6
+    assert (review["total_min"], review["per_night_min"], review["previous_min"]) == (255, 42, 60)
+    assert review["target_met"] == review["fallback"] == 1
+    conn.execute("DELETE FROM sleep WHERE day <= ?", ((END - timedelta(days=11)).isoformat(),))
+    assert recovery.sleep_shortfall_review(conn, END.isoformat())["previous_min"] is None

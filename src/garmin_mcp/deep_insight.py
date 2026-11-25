@@ -35,6 +35,26 @@ def evidence(data):
             result.append(Evidence(domain, f"{label} averaged {a:.1f} {unit} "
                                    f"over {signal['recent_count']} readings this week versus "
                                    f"{b:.1f} {unit} over {signal['previous_count']} the previous week.", page))
+    shortfall = data.get("sleep_shortfall") or {}
+    if (prior := shortfall.get("previous_min")) is not None:
+        current = shortfall["current"]["valid_nights_7d"]
+        previous = shortfall["previous"]["valid_nights_7d"]
+        result.append(Evidence("sleep", f'Garmin or fallback sleep targets were missed by '
+                               f'{shortfall["per_night_min"]} min per usable night across {current} nights '
+                               f'versus {prior} min across {previous} the prior week.', "sleep"))
+    pulse = data.get("calendar", {}).get("days", {}).get(data.get("end"), {}).get("resting_pulse_check")
+    if pulse and pulse["verify"] and pulse["median"] is not None:
+        relation = {"lower": "below", "higher": "above", "near": "within"}[pulse["direction"]]
+        history = []
+        for key, scope in (("90 days", "the prior 90 days"), ("Full archive", "all earlier archive records")):
+            window = pulse.get("coverage", {}).get(key, {})
+            if typical := window.get("typical"):
+                history.append(f'{typical[0]:g} bpm over {window["count"]} readings from {scope}')
+        context = f' Other medians: {"; ".join(history)}.' if history else ""
+        result.append(Evidence("recovery", f'The latest Garmin daily resting estimate was '
+                               f'{pulse["value"]:g} bpm, {relation} the personal review range '
+                               f'with a median of {pulse["median"]:g} bpm over {pulse["count"]} readings '
+                               'in the prior 28 days. Garmin’s estimate can include sleep.' + context, "recovery"))
     hrv = data.get("hrv_context", {})
     a, b = hrv.get("rolling_7d_ms"), hrv.get("previous_average")
     if all(_number(v) for v in (a, b)):
@@ -55,8 +75,8 @@ def evidence(data):
 DEFAULT_VOICE = ("Be a curious, plainspoken coach. Lead with the most interesting contrast. "
                  "Name the uncertainty and ask a useful question in everyday language.")
 LENSES = {
-    "daily": "Look for readings that disagree, and distinguish an exception from a trend.",
-    "sleep": "Pay attention to the relationship between sleep and recovery readings.",
+    "daily": "Look for readings that disagree. Separate a one-day wearable reading from the longer trend.",
+    "sleep": "Contrast time below a sleep target with the recovery readings. Avoid causal or repayment claims.",
     "running": "Compare the matched run with the surrounding recovery signals, while noting the different windows.",
     "running_review": "Look for a contrast between running frequency and a measured response on the latest run. "
                       "Describe pulse, pace or cadence as up, down or similar in the recording. "

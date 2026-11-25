@@ -213,6 +213,14 @@ with the stored Garmin summaries by year. It opens SQLite read-only and prints o
 counts and aggregate differences. Keep the report local unless you choose to share it.
 Investigate large residuals alongside a few corresponding Garmin Connect activities.
 
+### Check the private archive and pulse source
+
+After the next full sync, Trends → History → What your archive can tell you shows the
+preceding 28-day, 90-day and all-earlier reference windows. Open the date of a concerning
+Garmin reading and expand the source and coverage disclosures on Resting pulse check.
+To replay the archive on a disposable copy, run `garmin-mcp-verify --replay-dashboard`
+from the installed environment. See the [review guide](docs/REVIEW_START_HERE.md).
+
 ### Open the interactive dashboard
 
 In Safari on the Mac, open the local generated HTML and tap **Light** or **Dark**.

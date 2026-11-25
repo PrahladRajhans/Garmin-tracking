@@ -296,3 +296,18 @@ themes. The plotted sample count is unchanged. The physical Safari check remains
   and load. It checked nine pages at 320, 390, 768 and 1200 px in both themes, verified keyboard
   readouts, band keys, switching overlays, split guides, and the JavaScript-disabled primary
   charts. Physical iPhone Safari and the owner's Garmin snapshot remain separate checks.
+
+## Dated health review
+
+Tested the Sleep week at 320, 390 and 1,200 px in Chromium and WebKit, in light and dark.
+All seven date labels fit and the missing night keeps its date. Verified the score overlay,
+trend lines and separate range, a synthetic 44 bpm check, the daily pulse range and readings
+disclosure, the archive baseline disclosure and navigation on the neighboring pages.
+Sleep still renders with JavaScript disabled. The test data is synthetic.
+
+Kept the duration and score in separate scales because their ranges have different meanings.
+On individual days the headline shows the highest sufficiently sampled pulse window and the
+chart marks workout starts, then exposes precise counts and ranges by point. The graph
+separates gaps in recording from changes in pulse. The resting estimate has its own section,
+away from the intraday curve. Owner differences with the Garmin app and a physical iPhone
+remain checks for the private environment. [Review guide](REVIEW_START_HERE.md)
